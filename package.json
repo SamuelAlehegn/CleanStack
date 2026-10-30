@@ -1,0 +1,29 @@
+{
+  "name": "cleanstack-generator",
+  "version": "0.1.0",
+  "description": "A clean, maintainable Angular and Spring Boot project generator.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "bin": {
+    "cleanstack": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "start": "npm run build && node dist/cli/index.js hello",
+    "clean": "node -e \"import('node:fs').then(({rmSync}) => rmSync('dist', {recursive: true, force: true}))\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0"
+  }
+}
