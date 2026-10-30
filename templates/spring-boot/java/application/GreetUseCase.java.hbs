@@ -1,0 +1,14 @@
+package {{project.packageName}}.application;
+
+import {{project.packageName}}.domain.Greeting;
+
+/** Creates a greeting for the given recipient. */
+@FunctionalInterface
+public interface GreetUseCase {
+
+    /**
+     * @param name the recipient name; blank values fall back to {@code world}
+     * @return the greeting
+     */
+    Greeting greet(String name);
+}

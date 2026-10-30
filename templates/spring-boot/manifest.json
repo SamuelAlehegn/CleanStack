@@ -1,0 +1,135 @@
+{
+  "name": "spring-boot",
+  "description": "Spring Boot 4 service skeleton with a pragmatic hexagonal architecture.",
+  "pathVariables": {
+    "package": "The configured Java package name with dots replaced by path separators.",
+    "ApplicationName": "The project name converted to PascalCase."
+  },
+  "files": [
+    {
+      "template": "build/pom.xml.hbs",
+      "destination": "pom.xml",
+      "when": { "buildTool": "maven" }
+    },
+    {
+      "template": "build/build.gradle.kts.hbs",
+      "destination": "build.gradle.kts",
+      "when": { "buildTool": "gradle" }
+    },
+    {
+      "template": "build/settings.gradle.kts.hbs",
+      "destination": "settings.gradle.kts",
+      "when": { "buildTool": "gradle" }
+    },
+    {
+      "template": "root/.gitignore.hbs",
+      "destination": ".gitignore"
+    },
+    {
+      "template": "root/README.md.hbs",
+      "destination": "README.md"
+    },
+    {
+      "template": "root/ARCHITECTURE.md.hbs",
+      "destination": "ARCHITECTURE.md"
+    },
+    {
+      "template": "docker/Dockerfile.maven.hbs",
+      "destination": "Dockerfile",
+      "when": { "docker": true, "buildTool": "maven" }
+    },
+    {
+      "template": "docker/Dockerfile.gradle.hbs",
+      "destination": "Dockerfile",
+      "when": { "docker": true, "buildTool": "gradle" }
+    },
+    {
+      "template": "docker/.dockerignore.hbs",
+      "destination": ".dockerignore",
+      "when": { "docker": true }
+    },
+    {
+      "template": "docker/docker-compose.yml.hbs",
+      "destination": "docker-compose.yml",
+      "when": { "docker": true }
+    },
+    {
+      "template": "resources/application.yml.hbs",
+      "destination": "src/main/resources/application.yml"
+    },
+    {
+      "template": "resources/application-dev.yml.hbs",
+      "destination": "src/main/resources/application-dev.yml"
+    },
+    {
+      "template": "resources/db/migration/V1__baseline.sql.hbs",
+      "destination": "src/main/resources/db/migration/V1__baseline.sql"
+    },
+    {
+      "template": "java/Application.java.hbs",
+      "destination": "src/main/java/{{package}}/{{ApplicationName}}Application.java"
+    },
+    {
+      "template": "java/domain/package-info.java.hbs",
+      "destination": "src/main/java/{{package}}/domain/package-info.java"
+    },
+    {
+      "template": "java/domain/Greeting.java.hbs",
+      "destination": "src/main/java/{{package}}/domain/Greeting.java"
+    },
+    {
+      "template": "java/application/package-info.java.hbs",
+      "destination": "src/main/java/{{package}}/application/package-info.java"
+    },
+    {
+      "template": "java/application/GreetUseCase.java.hbs",
+      "destination": "src/main/java/{{package}}/application/GreetUseCase.java"
+    },
+    {
+      "template": "java/application/GreetingService.java.hbs",
+      "destination": "src/main/java/{{package}}/application/GreetingService.java"
+    },
+    {
+      "template": "java/infrastructure/package-info.java.hbs",
+      "destination": "src/main/java/{{package}}/infrastructure/package-info.java"
+    },
+    {
+      "template": "java/infrastructure/config/package-info.java.hbs",
+      "destination": "src/main/java/{{package}}/infrastructure/config/package-info.java"
+    },
+    {
+      "template": "java/infrastructure/config/ApplicationConfig.java.hbs",
+      "destination": "src/main/java/{{package}}/infrastructure/config/ApplicationConfig.java"
+    },
+    {
+      "template": "java/infrastructure/persistence/package-info.java.hbs",
+      "destination": "src/main/java/{{package}}/infrastructure/persistence/package-info.java"
+    },
+    {
+      "template": "java/infrastructure/security/package-info.java.hbs",
+      "destination": "src/main/java/{{package}}/infrastructure/security/package-info.java"
+    },
+    {
+      "template": "java/infrastructure/security/SecurityConfig.java.hbs",
+      "destination": "src/main/java/{{package}}/infrastructure/security/SecurityConfig.java",
+      "when": { "auth": "jwt" }
+    },
+    {
+      "template": "java/infrastructure/security/SecurityConfig.java.hbs",
+      "destination": "src/main/java/{{package}}/infrastructure/security/SecurityConfig.java",
+      "when": { "auth": "keycloak" }
+    },
+    {
+      "template": "java/infrastructure/web/package-info.java.hbs",
+      "destination": "src/main/java/{{package}}/infrastructure/web/package-info.java"
+    },
+    {
+      "template": "java/infrastructure/web/GreetingController.java.hbs",
+      "destination": "src/main/java/{{package}}/infrastructure/web/GreetingController.java"
+    },
+    {
+      "template": "java/infrastructure/web/GreetingResponse.java.hbs",
+      "destination": "src/main/java/{{package}}/infrastructure/web/GreetingResponse.java"
+    }
+  ]
+}

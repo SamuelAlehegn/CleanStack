@@ -1,0 +1,15 @@
+package {{project.packageName}}.domain;
+
+/**
+ * A message produced by the application.
+ *
+ * @param message the greeting text
+ */
+public record Greeting(String message) {
+
+    public Greeting {
+        if (message == null || message.isBlank()) {
+            throw new IllegalArgumentException("message must not be blank");
+        }
+    }
+}

@@ -1,0 +1,99 @@
+# {{pascalCase project.name}}
+
+A Spring Boot service generated with CleanStack. The code follows a small hexagonal architecture: the domain and application layers stay independent of Spring and the database.
+
+## Stack
+
+- Java 21
+- Spring Boot 4.1
+- Spring Web MVC, Spring Data JPA, and Flyway
+- {{#if (eq project.options.database "postgresql")}}PostgreSQL{{/if}}{{#if (eq project.options.database "mysql")}}MySQL{{/if}}{{#if (eq project.options.database "h2")}}H2 (in-memory, for local development){{/if}}
+- {{#if (eq project.options.auth "jwt")}}JWT bearer-token authentication{{/if}}{{#if (eq project.options.auth "keycloak")}}Keycloak JWT bearer-token authentication{{/if}}{{#if (eq project.options.auth "none")}}No authentication{{/if}}
+- {{#if (eq project.options.buildTool "maven")}}Maven{{else}}Gradle{{/if}}
+
+## Requirements
+
+- JDK 21 or later
+{{#if (eq project.options.buildTool "maven")}}- Maven 3.9 or later{{else}}- Gradle 8.14 or later{{/if}}
+
+## Run locally
+
+```bash
+{{#if (eq project.options.buildTool "maven")}}mvn spring-boot:run -Dspring-boot.run.profiles=dev{{else}}gradle bootRun --args='--spring.profiles.active=dev'{{/if}}
+```
+
+The application starts on `http://localhost:8080`.
+
+```bash
+curl 'http://localhost:8080/api/greetings?name=Ada'
+```
+
+```json
+{"message":"Hello, Ada! The time is 14:32:07."}
+```
+
+Health check: `http://localhost:8080/actuator/health`.
+{{#if (eq project.options.auth "jwt")}}
+All application endpoints require a valid JWT bearer token. Set `JWT_ISSUER_URI` to the issuer that creates your tokens; it must publish OIDC metadata and signing keys. The actuator health endpoint remains public.
+{{/if}}{{#if (eq project.options.auth "keycloak")}}
+All application endpoints require a valid Keycloak bearer token. Create the `cleanstack` realm in Keycloak, then set `KEYCLOAK_ISSUER_URI` to that realm's issuer URL (for example, `http://localhost:8081/realms/cleanstack`). The issuer must be reachable by the application and match the token's `iss` claim. The actuator health endpoint remains public.
+{{/if}}
+
+## Build and test
+
+```bash
+{{#if (eq project.options.buildTool "maven")}}mvn clean verify{{else}}gradle clean build{{/if}}
+```
+
+## Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+{{#if (eq project.options.database "postgresql")}}| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/{{snakeCase project.name}}` | JDBC URL |
+| `SPRING_DATASOURCE_USERNAME` | `postgres` | Database user |
+| `SPRING_DATASOURCE_PASSWORD` | `postgres` | Database password |
+{{/if}}{{#if (eq project.options.database "mysql")}}| `SPRING_DATASOURCE_URL` | `jdbc:mysql://localhost:3306/{{snakeCase project.name}}` | JDBC URL |
+| `SPRING_DATASOURCE_USERNAME` | `root` | Database user |
+| `SPRING_DATASOURCE_PASSWORD` | `root` | Database password |
+{{/if}}{{#if (eq project.options.database "h2")}}| `SPRING_DATASOURCE_URL` | `jdbc:h2:mem:{{snakeCase project.name}}` | JDBC URL |
+| `SPRING_DATASOURCE_USERNAME` | `sa` | Database user |
+| `SPRING_DATASOURCE_PASSWORD` | *(empty)* | Database password |
+{{/if}}| `SERVER_PORT` | `8080` | HTTP port |
+| `SPRING_PROFILES_ACTIVE` | — | Set to `dev` for local development |
+{{#if (eq project.options.auth "jwt")}}| `JWT_ISSUER_URI` | `http://localhost:9000` | Issuer URI used to validate JWT bearer tokens |
+{{/if}}{{#if (eq project.options.auth "keycloak")}}| `KEYCLOAK_ISSUER_URI` | `http://localhost:8081/realms/cleanstack` | Keycloak realm issuer URI used to validate bearer tokens |
+{{/if}}
+
+The base configuration lives in `src/main/resources/application.yml`. Local overrides live in `src/main/resources/application-dev.yml`.
+
+## Docker
+
+{{#if project.options.docker}}
+Build and start the application with its database:
+
+```bash
+docker compose up --build
+```
+
+The API is available on `http://localhost:8080`.
+{{else}}
+Docker files were not generated for this project. Regenerate with the Docker option to add them.
+{{/if}}
+
+## Project structure
+
+```text
+src/main/java/{{packagePath project.packageName}}/
+  {{pascalCase project.name}}Application.java
+  domain/
+  application/
+  infrastructure/
+    config/
+    persistence/
+    security/
+    web/
+```
+
+## Architecture
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the dependency rules, layering, and conventions used in this project.
