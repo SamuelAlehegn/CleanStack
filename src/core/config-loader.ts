@@ -30,9 +30,7 @@ export class ConfigLoader {
   }
 
   private async loadConfigFile(cwd: string, configPath?: string): Promise<ConfigInput> {
-    const filePath = configPath
-      ? path.resolve(cwd, configPath)
-      : await findConfigFile(cwd);
+    const filePath = configPath ? path.resolve(cwd, configPath) : await findConfigFile(cwd);
     if (!filePath) return {};
 
     if (path.basename(filePath) === '.cleanstackrc' || filePath.endsWith('.json')) {
@@ -47,11 +45,7 @@ export class ConfigLoader {
       } & ConfigInput;
       let value: unknown = module.default ?? module;
       // tsx exposes CommonJS-transformed `export default` through a second default.
-      while (
-        isRecord(value) &&
-        Object.keys(value).length === 1 &&
-        'default' in value
-      ) {
+      while (isRecord(value) && Object.keys(value).length === 1 && 'default' in value) {
         value = value.default;
       }
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -80,7 +74,9 @@ export function parseCommandLineOptions(args: string[]): ConfigInput {
     const [rawName, inlineValue] = token.slice(2).split('=', 2);
     if (!rawName) continue;
     const negated = rawName.startsWith('no-');
-    const name = (negated ? rawName.slice(3) : rawName).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+    const name = (negated ? rawName.slice(3) : rawName).replace(/-([a-z])/g, (_, c: string) =>
+      c.toUpperCase(),
+    );
     const next = args[index + 1];
     const value = inlineValue ?? (next && !next.startsWith('--') ? args[++index] : undefined);
     const parsed: unknown = value === undefined ? !negated : value;
