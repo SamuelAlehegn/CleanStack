@@ -2,6 +2,7 @@ import Handlebars from 'handlebars';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureWithinRoot, isMissingPath, resolveWithinRoot } from '../utils/path-safety.js';
 
 export interface TemplateEngineOptions {
   /** Root of the project whose templates are rendered. Defaults to process.cwd(). */
@@ -12,8 +13,6 @@ export interface TemplateEngineOptions {
   builtInTemplatesDir?: string;
   /** File extension used when a template name has no extension. Defaults to .hbs. */
   extension?: string;
-  /** Enables preview mode. Rendering still returns the rendered text and never writes files. */
-  dryRun?: boolean;
 }
 
 export class TemplateNotFoundError extends Error {
@@ -45,8 +44,6 @@ const BUILT_IN_TEMPLATE_ROOT = path.resolve(
 
 /** Renders Handlebars templates without writing to the filesystem. */
 export class TemplateEngine {
-  readonly dryRun: boolean;
-
   private readonly roots: string[];
   private readonly extension: string;
 
@@ -63,7 +60,6 @@ export class TemplateEngine {
       builtInTemplatesDir,
     ];
     this.extension = normalizeExtension(options.extension ?? DEFAULT_EXTENSION);
-    this.dryRun = options.dryRun ?? false;
   }
 
   /**
@@ -78,7 +74,8 @@ export class TemplateEngine {
     await this.registerPartials(handlebars);
 
     try {
-      return handlebars.compile(source, { strict: true })(context);
+      // Generated source code must not be HTML-escaped.
+      return handlebars.compile(source, { strict: true, noEscape: true })(context);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(
@@ -92,16 +89,16 @@ export class TemplateEngine {
 
   private async resolveTemplate(templateName: string): Promise<ResolvedTemplate> {
     const relativeName = normalizeTemplateName(templateName, this.extension);
-    const searchedPaths = this.roots.map((root) => safeResolve(root, relativeName));
+    const searchedPaths: string[] = [];
 
-    for (let index = 0; index < searchedPaths.length; index += 1) {
-      const filePath = searchedPaths[index];
-      const root = this.roots[index];
-      if (!filePath || !root) continue;
+    for (const root of this.roots) {
+      // Symlinks are followed for reads, but must stay inside the template root.
+      const filePath = await resolveWithinRoot(root, relativeName);
+      searchedPaths.push(filePath);
       try {
         if ((await stat(filePath)).isFile()) return { filePath, root };
-      } catch {
-        // Continue through the remaining locations in priority order.
+      } catch (error) {
+        if (!isMissingPath(error)) throw error;
       }
     }
 
@@ -114,6 +111,7 @@ export class TemplateEngine {
     // First registration wins, so the roots' configured priority is preserved.
     for (const root of this.roots) {
       const partialRoot = path.join(root, 'partials');
+      await ensureWithinRoot(root, partialRoot, path.join('partials'));
       const partialFiles = await listFiles(partialRoot, this.extension);
       for (const filePath of partialFiles) {
         const relative = path.relative(partialRoot, filePath);
@@ -226,14 +224,6 @@ function normalizeTemplateName(name: string, extension: string): string {
   return path.normalize(path.extname(normalized) ? normalized : `${normalized}${extension}`);
 }
 
-function safeResolve(root: string, relativeName: string): string {
-  const filePath = path.resolve(root, relativeName);
-  if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
-    throw new TypeError(`Template path escapes its configured directory: "${relativeName}".`);
-  }
-  return filePath;
-}
-
 function normalizeExtension(extension: string): string {
   return extension.startsWith('.') ? extension : `.${extension}`;
 }
@@ -259,13 +249,4 @@ async function listFiles(directory: string, extension: string): Promise<string[]
     }),
   );
   return files.flat().sort((left, right) => left.localeCompare(right));
-}
-
-function isMissingPath(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error.code === 'ENOENT' || error.code === 'ENOTDIR')
-  );
 }

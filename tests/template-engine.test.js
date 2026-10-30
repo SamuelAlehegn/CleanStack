@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { TemplateEngine, TemplateNotFoundError } from '../dist/templates/template-engine.js';
+import { UnsafePathError } from '../dist/utils/path-safety.js';
 
 async function createFixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-template-engine-'));
@@ -93,7 +94,23 @@ test('registers naming, pluralization, comparison, and JSON helpers', async () =
   }
 });
 
-test('dry-run mode renders a preview without modifying templates', async () => {
+test('renders code without HTML-escaping template values', async () => {
+  const fixture = await createFixture();
+  try {
+    await fixture.write(
+      fixture.builtInTemplatesDir,
+      'code.hbs',
+      'class {{name}} { boolean ready = {{a}} && {{b}}; }',
+    );
+
+    const output = await fixture.engine().render('code', { name: 'A&B', a: true, b: false });
+    assert.equal(output, 'class A&B { boolean ready = true && false; }');
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('does not write rendered output to disk', async () => {
   const fixture = await createFixture();
   try {
     const templatePath = await fixture.write(
@@ -101,10 +118,8 @@ test('dry-run mode renders a preview without modifying templates', async () => {
       'preview.hbs',
       'Hello {{name}}',
     );
-    const engine = fixture.engine({ dryRun: true });
 
-    assert.equal(engine.dryRun, true);
-    assert.equal(await engine.render('preview', { name: 'Grace' }), 'Hello Grace');
+    assert.equal(await fixture.engine().render('preview', { name: 'Grace' }), 'Hello Grace');
     assert.equal(await readFile(templatePath, 'utf8'), 'Hello {{name}}');
   } finally {
     await fixture.cleanup();
@@ -130,6 +145,28 @@ test('rejects traversal paths', async () => {
   const fixture = await createFixture();
   try {
     await assert.rejects(fixture.engine().render('../outside', {}), /must be a relative path/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('refuses to read templates through symlinks that escape the root', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('Creating symlinks requires elevated privileges on Windows.');
+    return;
+  }
+
+  const fixture = await createFixture();
+  try {
+    const outsideDirectory = path.join(fixture.root, 'outside');
+    await fixture.write(outsideDirectory, 'secret.hbs', 'secret');
+    await mkdir(fixture.projectTemplatesDir, { recursive: true });
+    await symlink(
+      path.join(outsideDirectory, 'secret.hbs'),
+      path.join(fixture.projectTemplatesDir, 'secret.hbs'),
+    );
+
+    await assert.rejects(fixture.engine().render('secret', {}), UnsafePathError);
   } finally {
     await fixture.cleanup();
   }

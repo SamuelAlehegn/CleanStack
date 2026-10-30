@@ -5,11 +5,46 @@
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "bin": {
     "cleanstack": "./dist/cli/index.js"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/core/config.d.ts",
+      "default": "./dist/core/config.js"
+    },
+    "./config-loader": {
+      "types": "./dist/core/config-loader.d.ts",
+      "default": "./dist/core/config-loader.js"
+    },
+    "./templates": {
+      "types": "./dist/templates/template-engine.d.ts",
+      "default": "./dist/templates/template-engine.js"
+    },
+    "./filesystem": {
+      "types": "./dist/utils/file-system.d.ts",
+      "default": "./dist/utils/file-system.js"
+    },
+    "./path-safety": {
+      "types": "./dist/utils/path-safety.d.ts",
+      "default": "./dist/utils/path-safety.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test",
@@ -17,8 +52,17 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "start": "npm run build && node dist/cli/index.js hello",
-    "clean": "node -e \"import('node:fs').then(({rmSync}) => rmSync('dist', {recursive: true, force: true}))\""
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "prepublishOnly": "npm run build"
   },
+  "keywords": [
+    "generator",
+    "scaffold",
+    "angular",
+    "spring-boot",
+    "typescript",
+    "cli"
+  ],
   "devDependencies": {
     "@types/node": "^22.10.0",
     "eslint": "^9.17.0",
