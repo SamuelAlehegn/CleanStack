@@ -2,13 +2,14 @@ import {
   access as nodeAccess,
   cp as nodeCopy,
   mkdir as nodeMkdir,
+  readFile as nodeReadFile,
   readdir as nodeReaddir,
   realpath as nodeRealpath,
   rm as nodeRemove,
   writeFile as nodeWriteFile,
-  readFile as nodeReadFile,
 } from 'node:fs/promises';
 import path from 'node:path';
+import { ensureWithinRoot, isMissingPath, resolveWithinRoot } from './path-safety.js';
 
 export interface FileSystemEntry {
   name: string;
@@ -73,7 +74,7 @@ export interface WriteFileOptions {
   backup?: boolean;
 }
 
-export interface CopyOptions extends WriteFileOptions {}
+export type CopyOptions = WriteFileOptions;
 
 export interface DeleteOptions {
   recursive?: boolean;
@@ -93,10 +94,10 @@ export class FileExistsError extends Error {
   }
 }
 
-export class UnsafePathError extends Error {
-  constructor(filePath: string, rootDir: string) {
-    super(`Path "${filePath}" resolves outside the filesystem root "${rootDir}".`);
-    this.name = 'UnsafePathError';
+export class InvalidOperationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidOperationError';
   }
 }
 
@@ -211,9 +212,13 @@ export class FileSystemService {
     const source = await this.resolvePath(sourcePath);
     const destination = await this.resolvePath(destinationPath);
     if (source === this.rootDir || destination === this.rootDir) {
-      throw new UnsafePathError(
-        source === this.rootDir ? sourcePath : destinationPath,
-        this.rootDir,
+      throw new InvalidOperationError(
+        `Refusing to copy to or from the filesystem root "${this.rootDir}". Choose a path inside the root.`,
+      );
+    }
+    if (destination === source || destination.startsWith(`${source}${path.sep}`)) {
+      throw new InvalidOperationError(
+        `Cannot copy "${sourcePath}" into itself or one of its descendants ("${destinationPath}").`,
       );
     }
     const overwrite = options.overwrite ?? false;
@@ -241,7 +246,7 @@ export class FileSystemService {
   async delete(filePath: string, options: DeleteOptions = {}): Promise<void> {
     const target = await this.resolvePath(filePath);
     if (target === this.rootDir) {
-      throw new UnsafePathError(filePath, this.rootDir);
+      throw new InvalidOperationError(`Refusing to delete the filesystem root "${this.rootDir}".`);
     }
     await this.perform(
       'delete',
@@ -278,7 +283,9 @@ export class FileSystemService {
       suffix += 1;
     }
     const relativeBackupPath = `${relativePath}${this.backupSuffix}${suffix > 1 ? `.${suffix - 1}` : ''}`;
-    await this.ensurePathIsSafe(backupPath, relativeBackupPath);
+    await ensureWithinRoot(this.rootDir, backupPath, relativeBackupPath, (filePath) =>
+      this.adapter.realpath(filePath),
+    );
     await this.perform(
       'backup',
       relativeBackupPath,
@@ -306,54 +313,9 @@ export class FileSystemService {
   }
 
   private async resolvePath(relativePath: string): Promise<string> {
-    if (
-      typeof relativePath !== 'string' ||
-      relativePath.length === 0 ||
-      relativePath.includes('\0')
-    ) {
-      throw new TypeError('Filesystem paths must be non-empty relative strings.');
-    }
-    const portablePath = relativePath.replace(/\\/g, '/');
-    if (
-      path.posix.isAbsolute(portablePath) ||
-      path.win32.isAbsolute(relativePath) ||
-      portablePath.split('/').includes('..')
-    ) {
-      throw new UnsafePathError(relativePath, this.rootDir);
-    }
-    const target = path.resolve(this.rootDir, portablePath || '.');
-    await this.ensurePathIsSafe(target, relativePath);
-    return target;
-  }
-
-  private async ensurePathIsSafe(targetPath: string, originalPath: string): Promise<void> {
-    const [canonicalRoot, canonicalTarget] = await Promise.all([
-      this.canonicalize(this.rootDir),
-      this.canonicalize(targetPath),
-    ]);
-    const relative = path.relative(canonicalRoot, canonicalTarget);
-    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-      throw new UnsafePathError(originalPath, this.rootDir);
-    }
-  }
-
-  /** Resolve existing ancestors so symlinks cannot redirect operations outside rootDir. */
-  private async canonicalize(candidate: string): Promise<string> {
-    let current = candidate;
-    const missingParts: string[] = [];
-
-    while (true) {
-      try {
-        const realCurrent = await this.adapter.realpath(current);
-        return path.resolve(realCurrent, ...missingParts.reverse());
-      } catch (error) {
-        if (!isMissingPath(error)) throw error;
-        const parent = path.dirname(current);
-        if (parent === current) throw error;
-        missingParts.push(path.basename(current));
-        current = parent;
-      }
-    }
+    return resolveWithinRoot(this.rootDir, relativePath, (filePath) =>
+      this.adapter.realpath(filePath),
+    );
   }
 
   private async pathExists(target: string): Promise<boolean> {
@@ -413,13 +375,4 @@ export class FileSystemService {
   private log(action: FileSystemAction): void {
     this.logger.log(action);
   }
-}
-
-function isMissingPath(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error.code === 'ENOENT' || error.code === 'ENOTDIR')
-  );
 }
