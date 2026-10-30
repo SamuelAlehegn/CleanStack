@@ -33,6 +33,10 @@
       "types": "./dist/utils/file-system.d.ts",
       "default": "./dist/utils/file-system.js"
     },
+    "./logger": {
+      "types": "./dist/utils/logger.d.ts",
+      "default": "./dist/utils/logger.js"
+    },
     "./path-safety": {
       "types": "./dist/utils/path-safety.d.ts",
       "default": "./dist/utils/path-safety.js"
@@ -72,6 +76,8 @@
   },
   "dependencies": {
     "handlebars": "^4.7.10",
+    "ora": "^9.4.1",
+    "picocolors": "^1.1.1",
     "tsx": "^4.23.15",
     "zod": "^4.6.7"
   }
