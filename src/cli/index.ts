@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Logger } from '../utils/logger.js';
+import { runNewCommand } from './new.js';
 
 interface PackageMetadata {
   version: string;
@@ -25,7 +26,15 @@ const command = args.find((argument) => !argument.startsWith('-'));
 const usage = `Usage: cleanstack <command> [options]
 
 Commands:
+  new <name>       Create a new project skeleton
   hello            Print a welcome message
+
+New options:
+  --package <name> --db <postgresql|h2|mysql> --auth <jwt|none|keycloak>
+  --build <maven|gradle> --frontend <angular|none> --docker
+  --interactive       Prompt for any missing settings
+  -y, --yes           Skip prompts and use defaults for missing settings
+  --git             Initialize a git repository in the generated project
 
 Options:
   -v, --verbose    Show debug output
@@ -41,6 +50,11 @@ if (flags.has('--help') || flags.has('-h')) {
   logger.info(`CleanStack Generator v${packageMetadata.version}`);
   logger.success('Welcome to CleanStack!');
   logger.debug(`Running on Node.js ${process.version} (${process.platform})`);
+} else if (command === 'new') {
+  runNewCommand(args.slice(args.indexOf('new') + 1), { logger }).catch((error: unknown) => {
+    logger.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
 } else if (command === undefined) {
   logger.info(usage);
 } else {

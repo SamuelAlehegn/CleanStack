@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "{{kebabCase project.name}}-web": {
+    "{{kebabCase project.name}}": {
       "projectType": "application",
       "root": "",
       "sourceRoot": "src",
@@ -22,7 +22,7 @@
             "index": "src/index.html",
             "tsConfig": "tsconfig.app.json",
             "styles": ["src/styles.css"],
-            "outputPath": "dist/{{kebabCase project.name}}-web/browser"
+            "outputPath": "dist/{{kebabCase project.name}}/browser"
           },
           "configurations": {
             "production": {
@@ -62,10 +62,10 @@
           },
           "configurations": {
             "production": {
-              "buildTarget": "{{kebabCase project.name}}-web:build:production"
+              "buildTarget": "{{kebabCase project.name}}:build:production"
             },
             "development": {
-              "buildTarget": "{{kebabCase project.name}}-web:build:development"
+              "buildTarget": "{{kebabCase project.name}}:build:development"
             }
           },
           "defaultConfiguration": "development"
