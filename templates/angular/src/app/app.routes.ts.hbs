@@ -1,0 +1,19 @@
+import { Routes } from '@angular/router';
+
+export const routes: Routes = [
+  {
+    path: '',
+    title: 'Overview',
+    loadComponent: () =>
+      import('./features/home/pages/home-page').then((module) => module.HomePage),
+  },
+  {
+    path: 'settings',
+    title: 'Settings',
+    loadComponent: () =>
+      import('./features/settings/pages/settings-page').then(
+        (module) => module.SettingsPage,
+      ),
+  },
+  { path: '**', redirectTo: '' },
+];
