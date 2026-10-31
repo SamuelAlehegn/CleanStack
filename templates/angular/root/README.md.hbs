@@ -1,0 +1,42 @@
+# {{pascalCase project.name}} Web
+
+A small, standalone Angular application with a feature-first structure, signal-based UI state, and a development proxy for the Spring Boot API.
+
+## Requirements
+
+- Node.js 22.22.3 or later in the 22.x line, 24.15.0 or later in the 24.x line, or 26.0.0 or later in the 26.x line
+- npm
+
+## Start developing
+
+```bash
+npm install
+npm start
+```
+
+The frontend is served at `http://localhost:4200`. Requests under `/api` are proxied to the backend at `http://localhost:8080`.
+
+## Build
+
+```bash
+npm run build
+```
+
+The production build is written to `dist/{{kebabCase project.name}}-web/browser`.
+
+## Structure
+
+```text
+src/app/
+  api/                 OpenAPI client placeholder
+  core/                Application-wide services and layout
+  features/            Route-level product features
+  app.config.ts        Application providers
+  app.routes.ts        Lazy-loaded routes
+```
+
+Angular components are standalone. The app uses Angular signals and built-in `@if` / `@for` template control flow. Angular 22 enables zoneless change detection by default.
+
+## API client
+
+See `src/app/api/README.md` for the planned OpenAPI-generated client location and regeneration command.

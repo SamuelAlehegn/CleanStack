@@ -1,0 +1,298 @@
+:host {
+  display: block;
+  min-height: 100vh;
+}
+
+.app-frame {
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 20;
+  display: flex;
+  width: 248px;
+  flex-direction: column;
+  padding: 24px 16px 16px;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 8px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.brand-mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.brand-name {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-label {
+  margin: 42px 10px 10px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.primary-nav {
+  display: grid;
+  gap: 4px;
+}
+
+.primary-nav a {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 11px;
+  border-radius: 8px;
+  color: var(--muted-strong);
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: none;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.primary-nav a:hover,
+.primary-nav a.nav-link-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.primary-nav svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.sidebar-bottom {
+  display: grid;
+  gap: 14px;
+  margin-top: auto;
+}
+
+.workspace-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.workspace-avatar,
+.avatar-button {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: #e9e7ff;
+  color: #5c52b8;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.workspace-avatar {
+  width: 30px;
+  height: 30px;
+}
+
+.workspace-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.workspace-copy strong,
+.workspace-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-copy strong {
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.workspace-copy small,
+.version-label {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.workspace-menu {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 17px;
+}
+
+.version-label {
+  padding: 0 8px;
+}
+
+.main-column {
+  min-height: 100vh;
+  margin-left: 248px;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 36px;
+  border-bottom: 1px solid var(--line);
+  background: rgb(255 255 255 / 88%);
+  backdrop-filter: blur(14px);
+}
+
+.breadcrumb,
+.topbar-actions {
+  display: flex;
+  align-items: center;
+}
+
+.breadcrumb {
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.breadcrumb-divider {
+  color: #c6cad3;
+}
+
+.breadcrumb strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.topbar-actions {
+  gap: 18px;
+}
+
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-strong);
+  font-size: 11px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #38b982;
+  box-shadow: 0 0 0 3px #e6f7ef;
+}
+
+.avatar-button {
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.page-content {
+  width: min(100%, 1220px);
+  margin: 0 auto;
+  padding: 38px 40px 56px;
+}
+
+.mobile-menu,
+.mobile-scrim {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 180ms ease;
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .main-column {
+    margin-left: 0;
+  }
+
+  .topbar {
+    height: 58px;
+    justify-content: flex-start;
+    gap: 14px;
+    padding: 0 18px;
+  }
+
+  .mobile-menu {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    align-content: center;
+    justify-items: center;
+    gap: 4px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+
+  .mobile-menu span {
+    width: 13px;
+    height: 1px;
+    background: var(--ink);
+  }
+
+  .topbar-actions {
+    gap: 0;
+    margin-left: auto;
+  }
+
+  .status-pill {
+    display: none;
+  }
+
+  .page-content {
+    padding: 28px 20px 40px;
+  }
+
+  .mobile-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    display: block;
+    border: 0;
+    background: rgb(23 28 39 / 28%);
+  }
+}

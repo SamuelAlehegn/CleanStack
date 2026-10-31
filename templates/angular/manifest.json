@@ -1,0 +1,63 @@
+{
+  "name": "angular",
+  "description": "A minimal Angular 22 standalone application with signal-driven features and routing.",
+  "files": [
+    { "template": "root/package.json.hbs", "destination": "package.json" },
+    { "template": "root/angular.json.hbs", "destination": "angular.json" },
+    { "template": "root/tsconfig.json.hbs", "destination": "tsconfig.json" },
+    { "template": "root/tsconfig.app.json.hbs", "destination": "tsconfig.app.json" },
+    { "template": "root/.gitignore.hbs", "destination": ".gitignore" },
+    { "template": "root/README.md.hbs", "destination": "README.md" },
+    { "template": "src/index.html.hbs", "destination": "src/index.html" },
+    { "template": "src/main.ts.hbs", "destination": "src/main.ts" },
+    { "template": "src/styles.css.hbs", "destination": "src/styles.css" },
+    { "template": "src/styles.css.hbs", "destination": "src/styles.css" },
+    {
+      "template": "src/environments/environment.ts.hbs",
+      "destination": "src/environments/environment.ts"
+    },
+    {
+      "template": "src/environments/environment.development.ts.hbs",
+      "destination": "src/environments/environment.development.ts"
+    },
+    { "template": "src/proxy.conf.json.hbs", "destination": "src/proxy.conf.json" },
+    { "template": "src/app/app.config.ts.hbs", "destination": "src/app/app.config.ts" },
+    { "template": "src/app/app.routes.ts.hbs", "destination": "src/app/app.routes.ts" },
+    { "template": "src/app/app.ts.hbs", "destination": "src/app/app.ts" },
+    { "template": "src/app/app.html.hbs", "destination": "src/app/app.html" },
+    { "template": "src/app/app.css.hbs", "destination": "src/app/app.css" },
+    {
+      "template": "src/app/features/home/pages/home-page.ts.hbs",
+      "destination": "src/app/features/home/pages/home-page.ts"
+    },
+    {
+      "template": "src/app/features/home/pages/home-page.html.hbs",
+      "destination": "src/app/features/home/pages/home-page.html"
+    },
+    {
+      "template": "src/app/features/home/pages/home-page.css.hbs",
+      "destination": "src/app/features/home/pages/home-page.css"
+    },
+    {
+      "template": "src/app/features/settings/pages/settings-page.ts.hbs",
+      "destination": "src/app/features/settings/pages/settings-page.ts"
+    },
+    {
+      "template": "src/app/features/settings/pages/settings-page.html.hbs",
+      "destination": "src/app/features/settings/pages/settings-page.html"
+    },
+    {
+      "template": "src/app/features/settings/pages/settings-page.css.hbs",
+      "destination": "src/app/features/settings/pages/settings-page.css"
+    },
+    {
+      "template": "src/app/core/README.md.hbs",
+      "destination": "src/app/core/README.md"
+    },
+    { "template": "src/app/api/README.md.hbs", "destination": "src/app/api/README.md" },
+    {
+      "template": "src/app/api/generated/.gitkeep.hbs",
+      "destination": "src/app/api/generated/.gitkeep"
+    }
+  ]
+}

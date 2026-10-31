@@ -1,0 +1,14 @@
+# OpenAPI client placeholder
+
+Generated API code belongs in `src/app/api/generated/`. Keep generated files separate from hand-written feature code so they can be safely replaced when the backend contract changes.
+
+When an OpenAPI document is available, generate a TypeScript Angular client with:
+
+```bash
+npx @openapitools/openapi-generator-cli generate \
+  -i http://localhost:8080/v3/api-docs \
+  -g typescript-angular \
+  -o src/app/api/generated
+```
+
+Import generated services through a small application-owned adapter instead of coupling feature components directly to generated code.
