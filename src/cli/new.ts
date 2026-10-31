@@ -1,8 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { createInterface } from 'node:readline/promises';
+import { confirm, input as inputPrompt, select } from '@inquirer/prompts';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stdin, stdout } from 'node:process';
 import { ConfigLoader, CliOptionError, parseCommandLineOptions } from '../core/config-loader.js';
 import type { ProjectConfig } from '../core/config.js';
 import { TemplateEngine } from '../templates/template-engine.js';
@@ -24,64 +23,113 @@ interface NewCommandOptions {
   logger: Logger;
 }
 
-const defaults = { database: 'postgresql', auth: 'jwt', buildTool: 'maven', frontend: true, docker: false } as const;
+const defaults = {
+  packageName: 'com.example',
+  database: 'postgresql',
+  auth: 'jwt',
+  buildTool: 'maven',
+  frontend: true,
+  docker: false,
+} as const;
+const JAVA_PACKAGE_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 
 export async function runNewCommand(args: string[], options: NewCommandOptions): Promise<void> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
-  const { interactive, initializeGit, configArgs } = extractControlFlags(args);
+  const { interactive, yes, initializeGit, configArgs } = extractControlFlags(args);
   let cliOptions = mapFrontendOption(parseCommandLineOptions(configArgs));
-  if (!cliOptions.name && interactive) cliOptions.name = await ask('Project name');
-
-  if (!cliOptions.name) throw new CliOptionError('A project name is required. Usage: cleanstack new <project-name> [options]');
-  const projectName = String(cliOptions.name).trim();
-  if (!projectName || projectName === '.' || projectName === '..' || /[\\/]/.test(projectName)) {
-    throw new CliOptionError('Project name must be a single directory name without path separators.');
-  }
-  cliOptions.name = projectName;
-
-  if (interactive) {
+  if (!yes && (interactive || hasMissingSettings(cliOptions))) {
     cliOptions = await collectInteractiveOptions(cliOptions);
   }
+  validateProjectName(cliOptions.name);
   const project = await new ConfigLoader().load({ cwd, cliOptions });
   const targetRelative = path.posix.join(project.options.outputDir, project.name);
-  const filesystemLogger: FileSystemLogger = { log: (action) => options.logger.debug(`[filesystem] ${action.operation} ${action.path}: ${action.status}`) };
+  const filesystemLogger: FileSystemLogger = {
+    log: (action) =>
+      options.logger.debug(`[filesystem] ${action.operation} ${action.path}: ${action.status}`),
+  };
   const targetFs = new FileSystemService({ rootDir: cwd, logger: filesystemLogger });
   if (await targetFs.exists(targetRelative)) throw new FileExistsError(targetRelative);
 
   await targetFs.createDirectory(targetRelative);
-  const outputFs = new FileSystemService({ rootDir: path.resolve(cwd, targetRelative), logger: filesystemLogger });
+  const projectRootFs = new FileSystemService({
+    rootDir: path.resolve(cwd, targetRelative),
+    logger: filesystemLogger,
+  });
   const engine = new TemplateEngine();
-  const context = { project, ...project, ...templateAliases(project) } as unknown as Record<string, unknown>;
-  await renderManifest('spring-boot', project, context, engine, outputFs, filesystemLogger);
+  const backendProject = withProjectSuffix(project, 'backend');
+  const backendDirectory = `${kebabCase(project.name)}-backend`;
+  await projectRootFs.createDirectory(backendDirectory);
+  const backendFs = new FileSystemService({
+    rootDir: path.join(projectRootFs.rootDir, backendDirectory),
+    logger: filesystemLogger,
+  });
+  await renderManifest(
+    'spring-boot',
+    backendProject,
+    templateContext(backendProject),
+    engine,
+    backendFs,
+    filesystemLogger,
+  );
+
+  const uiDirectory = `${kebabCase(project.name)}-ui`;
   if (project.options.frontend) {
-    await outputFs.createDirectory('web');
+    await projectRootFs.createDirectory(uiDirectory);
+    const uiProject = withProjectSuffix(project, 'ui');
     await renderManifest(
       'angular',
-      project,
-      context,
+      uiProject,
+      templateContext(uiProject),
       engine,
-      new FileSystemService({ rootDir: path.join(outputFs.rootDir, 'web'), logger: filesystemLogger }),
+      new FileSystemService({
+        rootDir: path.join(projectRootFs.rootDir, uiDirectory),
+        logger: filesystemLogger,
+      }),
       filesystemLogger,
     );
   }
 
   if (initializeGit) {
-    execFileSync('git', ['init'], { cwd: outputFs.rootDir, stdio: 'ignore' });
+    execFileSync('git', ['init'], { cwd: projectRootFs.rootDir, stdio: 'ignore' });
     options.logger.success('Initialized git repository.');
   }
   options.logger.success(`Created ${project.name} in ${path.resolve(cwd, targetRelative)}.`);
   const nextSteps = [
     `cd ${targetRelative}`,
-    ...(project.options.frontend ? ['(cd web && npm install)'] : []),
-    ...(project.options.docker ? ['docker compose up --build'] : [project.options.buildTool === 'maven' ? './mvnw spring-boot:run' : './gradlew bootRun']),
+    ...(project.options.frontend ? [`(cd ${uiDirectory} && npm install && npm start)`] : []),
+    ...(project.options.docker
+      ? [`(cd ${backendDirectory} && docker compose up --build)`]
+      : [
+          project.options.buildTool === 'maven'
+            ? `(cd ${backendDirectory} && mvn spring-boot:run -Dspring-boot.run.profiles=dev)`
+            : `(cd ${backendDirectory} && gradle bootRun --args='--spring.profiles.active=dev')`,
+        ]),
   ];
   options.logger.info(`Next steps:\n  ${nextSteps.join('\n  ')}`);
+}
+
+function withProjectSuffix(project: ProjectConfig, suffix: 'backend' | 'ui'): ProjectConfig {
+  return { ...project, name: `${kebabCase(project.name)}-${suffix}` };
+}
+
+function templateContext(project: ProjectConfig): Record<string, unknown> {
+  return { project, ...project, ...templateAliases(project) } as unknown as Record<string, unknown>;
 }
 
 function templateAliases(project: ProjectConfig): Record<string, unknown> {
   const words = project.name.split(/[^A-Za-z0-9]+/).filter(Boolean);
   const applicationName = words.map((word) => word[0]!.toUpperCase() + word.slice(1)).join('');
   return { ApplicationName: applicationName };
+}
+
+function kebabCase(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .join('-')
+    .toLowerCase();
 }
 
 async function renderManifest(
@@ -95,7 +143,11 @@ async function renderManifest(
   const manifestText = await outputManifestReader(templateSet, filesystemLogger);
   const manifest = JSON.parse(manifestText) as TemplateManifest;
   for (const entry of manifest.files) {
-    if (entry.when && !Object.entries(entry.when).every(([key, value]) => getCondition(project, key) === value)) continue;
+    if (
+      entry.when &&
+      !Object.entries(entry.when).every(([key, value]) => getCondition(project, key) === value)
+    )
+      continue;
     const contents = await engine.render(`${templateSet}/${entry.template}`, context);
     const destination = entry.destination
       .replaceAll('{{package}}', project.packageName.replaceAll('.', '/'))
@@ -106,7 +158,10 @@ async function renderManifest(
   }
 }
 
-async function outputManifestReader(templateSet: string, filesystemLogger: FileSystemLogger): Promise<string> {
+async function outputManifestReader(
+  templateSet: string,
+  filesystemLogger: FileSystemLogger,
+): Promise<string> {
   const fs = new FileSystemService({
     rootDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../templates'),
     logger: filesystemLogger,
@@ -131,16 +186,24 @@ function mapFrontendOption(input: Record<string, unknown>): Record<string, unkno
   return input;
 }
 
-function extractControlFlags(args: string[]): { interactive: boolean; initializeGit: boolean; configArgs: string[] } {
+function extractControlFlags(args: string[]): {
+  interactive: boolean;
+  yes: boolean;
+  initializeGit: boolean;
+  configArgs: string[];
+} {
   let interactive = false;
+  let yes = false;
   let initializeGit = false;
   const configArgs: string[] = [];
   for (const arg of args) {
     if (arg === '--interactive') interactive = true;
+    else if (arg === '--yes' || arg === '-y') yes = true;
     else if (arg === '--git') initializeGit = true;
     else if (arg.startsWith('--frontend=')) {
       const value = arg.slice('--frontend='.length);
-      if (value !== 'angular' && value !== 'none') throw new CliOptionError('Option "--frontend" must be "angular" or "none".');
+      if (value !== 'angular' && value !== 'none')
+        throw new CliOptionError('Option "--frontend" must be "angular" or "none".');
       configArgs.push(`--frontend=${value === 'angular'}`);
     } else if (arg === '--frontend') {
       configArgs.push(arg);
@@ -149,26 +212,101 @@ function extractControlFlags(args: string[]): { interactive: boolean; initialize
   const frontIndex = configArgs.indexOf('--frontend');
   if (frontIndex !== -1) {
     const value = configArgs[frontIndex + 1];
-    if (value === 'angular' || value === 'none') configArgs[frontIndex + 1] = String(value === 'angular');
+    if (value === 'angular' || value === 'none')
+      configArgs[frontIndex + 1] = String(value === 'angular');
   }
-  return { interactive, initializeGit, configArgs };
+  return { interactive, yes, initializeGit, configArgs };
 }
 
-async function collectInteractiveOptions(input: Record<string, unknown>): Promise<Record<string, unknown>> {
+function hasMissingSettings(input: Record<string, unknown>): boolean {
+  const options = (input.options as Record<string, unknown> | undefined) ?? {};
+  return (
+    input.name === undefined ||
+    input.packageName === undefined ||
+    options.database === undefined ||
+    options.auth === undefined ||
+    options.buildTool === undefined ||
+    options.frontend === undefined ||
+    options.docker === undefined
+  );
+}
+
+function validateProjectName(value: unknown): void {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new CliOptionError(
+      'A project name is required. Usage: cleanstack new <project-name> [options]',
+    );
+  }
+  const projectName = value.trim();
+  if (projectName === '.' || projectName === '..' || /[\\/]/.test(projectName)) {
+    throw new CliOptionError(
+      'Project name must be a single directory name without path separators.',
+    );
+  }
+}
+
+async function collectInteractiveOptions(
+  input: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const name =
+    input.name ??
+    (await inputPrompt({
+      message: 'What should we call your project?',
+      default: 'my-cleanstack-app',
+      validate: (value) => {
+        try {
+          validateProjectName(value);
+          return true;
+        } catch (error) {
+          return error instanceof Error ? error.message : String(error);
+        }
+      },
+    }));
+  const packageName =
+    input.packageName ??
+    (await inputPrompt({
+      message: 'Java package name',
+      default: defaults.packageName,
+      validate: (value) =>
+        JAVA_PACKAGE_PATTERN.test(value.trim()) ||
+        'Enter a valid Java package, such as com.example.app.',
+    }));
   const partial = (input.options as Record<string, unknown> | undefined) ?? {};
   const options = { ...partial };
-  options.database = options.database ?? ((await ask(`Database (${defaults.database})`)) || defaults.database);
-  options.auth = options.auth ?? ((await ask(`Authentication (${defaults.auth})`)) || defaults.auth);
-  options.buildTool = options.buildTool ?? ((await ask(`Build tool (${defaults.buildTool})`)) || defaults.buildTool);
-  const frontendAnswer = options.frontend === undefined ? await ask('Frontend (angular/none, default angular)') : undefined;
-  if (frontendAnswer !== undefined) options.frontend = frontendAnswer.trim() === '' || frontendAnswer === 'angular';
-  if (typeof options.frontend === 'string') options.frontend = options.frontend === 'angular';
-  options.docker = options.docker ?? (await ask('Include Docker? (y/N)')).toLowerCase() === 'y';
-  return { ...input, options };
-}
-
-async function ask(question: string): Promise<string> {
-  const terminal = createInterface({ input: stdin, output: stdout });
-  try { return (await terminal.question(`${question}: `)).trim(); }
-  finally { terminal.close(); }
+  options.database ??= await select({
+    message: 'Which database should the backend use?',
+    default: defaults.database,
+    choices: [
+      { name: 'PostgreSQL', value: 'postgresql' },
+      { name: 'H2 (in-memory)', value: 'h2' },
+      { name: 'MySQL', value: 'mysql' },
+    ],
+  });
+  options.auth ??= await select({
+    message: 'How should authentication be handled?',
+    default: defaults.auth,
+    choices: [
+      { name: 'JWT resource server', value: 'jwt' },
+      { name: 'No authentication', value: 'none' },
+      { name: 'Keycloak', value: 'keycloak' },
+    ],
+  });
+  options.buildTool ??= await select({
+    message: 'Choose a Java build tool',
+    default: defaults.buildTool,
+    choices: [
+      { name: 'Maven', value: 'maven' },
+      { name: 'Gradle', value: 'gradle' },
+    ],
+  });
+  options.frontend ??= await select({
+    message: 'Include a frontend?',
+    default: defaults.frontend,
+    choices: [
+      { name: 'Angular', value: true },
+      { name: 'No frontend', value: false },
+    ],
+  });
+  options.docker ??= await confirm({ message: 'Include Docker files?', default: defaults.docker });
+  return { ...input, name, packageName, options };
 }

@@ -31,7 +31,9 @@ Commands:
 
 New options:
   --package <name> --db <postgresql|h2|mysql> --auth <jwt|none|keycloak>
-  --build <maven|gradle> --frontend <angular|none> --docker --interactive
+  --build <maven|gradle> --frontend <angular|none> --docker
+  --interactive       Prompt for any missing settings
+  -y, --yes           Skip prompts and use defaults for missing settings
   --git             Initialize a git repository in the generated project
 
 Options:

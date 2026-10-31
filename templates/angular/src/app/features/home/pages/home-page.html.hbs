@@ -35,7 +35,7 @@
         <p class="eyebrow">Getting started</p>
         <h2>Your setup checklist</h2>
       </div>
-      <span class="progress-count">{{ "{{" }} completedSteps() {{ "}}" }} / {{ "{{" }} setupSteps().length {{ "}}" }}</span>
+      <span class="progress-count">\{{ completedSteps() }} / \{{ setupSteps().length }}</span>
     </div>
     <div class="progress-track" role="progressbar" [attr.aria-valuenow]="progress()" aria-valuemin="0" aria-valuemax="100" aria-label="Setup progress">
       <span [style.width.%]="progress()"></span>
@@ -45,8 +45,8 @@
         <label class="setup-row" [class.setup-row-complete]="step.complete">
           <input type="checkbox" [checked]="step.complete" (change)="toggleStep(step.id)" />
           <span class="setup-copy">
-            <strong>{{ "{{" }} step.title {{ "}}" }}</strong>
-            <small>{{ "{{" }} step.detail {{ "}}" }}</small>
+            <strong>\{{ step.title }}</strong>
+            <small>\{{ step.detail }}</small>
           </span>
           <span class="row-arrow" aria-hidden="true">↗</span>
         </label>
