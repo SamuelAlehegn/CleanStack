@@ -101,7 +101,7 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
       ? [`(cd ${backendDirectory} && docker compose up --build)`]
       : [
           project.options.buildTool === 'maven'
-            ? `(cd ${backendDirectory} && mvn spring-boot:run -Dspring-boot.run.profiles=dev)`
+            ? `(cd ${backendDirectory} && mvn org.springframework.boot:spring-boot-maven-plugin:4.1.2:run -Dspring-boot.run.profiles=dev)`
             : `(cd ${backendDirectory} && gradle bootRun --args='--spring.profiles.active=dev')`,
         ]),
   ];
