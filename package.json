@@ -25,6 +25,10 @@
       "types": "./dist/core/config-loader.d.ts",
       "default": "./dist/core/config-loader.js"
     },
+    "./entity-parser": {
+      "types": "./dist/core/entity-parser.d.ts",
+      "default": "./dist/core/entity-parser.js"
+    },
     "./templates": {
       "types": "./dist/templates/template-engine.d.ts",
       "default": "./dist/templates/template-engine.js"
@@ -80,6 +84,7 @@
     "ora": "^9.4.1",
     "picocolors": "^1.1.1",
     "tsx": "^4.23.15",
+    "yaml": "^2.9.1",
     "zod": "^4.6.7"
   }
 }

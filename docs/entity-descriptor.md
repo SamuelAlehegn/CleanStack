@@ -109,4 +109,15 @@ The older `name` property is accepted as an alias for `field` for existing proje
 
 ## Validation
 
-The Zod entity schema validates field types, field-specific constraints, identifiers, duplicate fields and relations, and relation targets when descriptors are combined in a project configuration. YAML file loading is handled by the entity parser stage; this document defines the descriptor shape and validation contract.
+`EntityParser` reads `.yaml`, `.yml`, and `.json` files through the safe filesystem service. Use `parseFile()` to validate one descriptor, or `parseDirectory()` / `parseFiles()` to validate a set, reject duplicate entities and unresolved relation targets, and receive normalized models.
+
+```ts
+import { EntityParser } from 'cleanstack-generator/entity-parser';
+
+const parser = new EntityParser({ rootDir: process.cwd() });
+const entities = await parser.parseDirectory('entities');
+```
+
+Each returned `EntityModel` has normalized `className`, `variableName`, `pluralName`, `pluralClassName`, `pluralVariableName`, `routeName`, and `tableName` values. Its field models include the Java and TypeScript types, snake-case column names, and rendered validation annotation names. Relations include the resolved target entity's names and table name, plus collection and owning-side metadata.
+
+For example, `Product` defaults to the `products` table and a `products` route. A `Product.category` relation targeting `Category` carries the target's normalized class and table names. An explicit `tableName` takes precedence over the generated plural snake-case name.

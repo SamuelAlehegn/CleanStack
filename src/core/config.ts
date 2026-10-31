@@ -272,7 +272,7 @@ export const ProjectConfigSchema = z
         if (!knownEntities.has(relation.target.toLowerCase())) {
           ctx.addIssue({
             code: 'custom',
-            message: `Relation "${relation.name}" targets unknown entity "${relation.target}".`,
+            message: `Relation "${relation.field}" targets unknown entity "${relation.target}".`,
             path: ['entities', entityIndex, 'relations', relationIndex, 'target'],
           });
         }
