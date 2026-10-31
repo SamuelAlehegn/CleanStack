@@ -1,0 +1,26 @@
+package {{project.packageName}}.infrastructure.config;
+
+import {{project.packageName}}.application.GreetUseCase;
+import {{project.packageName}}.application.GreetingService;
+import java.time.Clock;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * Wires application ports to their implementations.
+ *
+ * <p>Keeping this wiring here lets the application layer stay free of Spring annotations.
+ */
+@Configuration(proxyBeanMethods = false)
+public class ApplicationConfig {
+
+    @Bean
+    GreetUseCase greetUseCase(Clock clock) {
+        return new GreetingService(clock);
+    }
+
+    @Bean
+    Clock clock() {
+        return Clock.systemDefaultZone();
+    }
+}

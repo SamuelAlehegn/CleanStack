@@ -1,0 +1,60 @@
+# Architecture
+
+This project follows a pragmatic hexagonal architecture. The goal is simple: business rules do not know about Spring, HTTP, or the database.
+
+## Dependency rule
+
+```text
+infrastructure/web ─────────┐
+                            ├──> application ───> domain
+infrastructure/persistence ─┘
+```
+
+- `domain` depends on nothing.
+- `application` depends on `domain` and defines inbound and outbound ports.
+- `infrastructure` depends on `application` and `domain`.
+- Configuration wires implementations to ports.
+
+Never add a dependency that points from `domain` or `application` back into `infrastructure`.
+
+## Packages
+
+| Package | Responsibility |
+| --- | --- |
+| `domain` | Records and business rules. No framework annotations. |
+| `application` | Use cases and outbound ports. Framework-free. |
+| `infrastructure/web` | REST controllers and HTTP DTOs. |
+| `infrastructure/persistence` | JPA entities, repositories, and mappers. |
+| `infrastructure/security` | Authentication and authorization adapters. |
+| `infrastructure/config` | Spring configuration and bean wiring. |
+
+## Request flow
+
+`GET /api/greetings?name=Ada`
+
+1. `GreetingController` (web adapter) receives the request.
+2. `GreetUseCase` is called through its interface.
+3. `GreetingService` (application) applies the rule and returns a `Greeting` record.
+4. The controller maps the domain record to `GreetingResponse`.
+
+`ApplicationConfig` creates the use case bean, so `GreetingService` stays free of Spring annotations.
+
+## Conventions
+
+- Java 21 records for immutable data and DTOs.
+- Constructor injection only. No field injection.
+- Keep domain records free of JPA and Spring annotations.
+- Map between domain objects and persistence or web models at the boundary.
+- Put database changes in Flyway migrations under `src/main/resources/db/migration`.
+- Expose only what other packages need; keep implementation details package-private.
+- Tests for domain and application code should not start Spring.
+
+## Adding a feature
+
+1. Add the domain model or rule in `domain`.
+2. Define the use case and any outbound ports in `application`.
+3. Implement the use case in `application`.
+4. Add web adapters in `infrastructure/web`.
+5. Add persistence adapters in `infrastructure/persistence`.
+6. Wire beans in `infrastructure/config`.
+7. Add a Flyway migration if the schema changes.

@@ -1,0 +1,91 @@
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">Workspace</p>
+    <h1>Good to have you here.</h1>
+    <p class="page-description">A calm place to start building your next idea.</p>
+  </div>
+  <a class="primary-button" routerLink="/settings">
+    <span aria-hidden="true">＋</span>
+    Configure workspace
+  </a>
+</section>
+
+<section class="welcome-card" aria-labelledby="welcome-title">
+  <div class="welcome-copy">
+    <span class="welcome-kicker"><span class="welcome-sparkle">✳</span> Your workspace is ready</span>
+    <h2 id="welcome-title">A clean start.<br /><span>Room to grow.</span></h2>
+    <p>Your standalone Angular app is set up with routing, signals, and a backend proxy. Make it yours, one feature at a time.</p>
+    <a class="text-link" routerLink="/settings">Review your setup <span aria-hidden="true">→</span></a>
+  </div>
+  <div class="welcome-art" aria-hidden="true">
+    <div class="art-orbit orbit-one"></div>
+    <div class="art-orbit orbit-two"></div>
+    <div class="art-orbit orbit-three"></div>
+    <div class="art-core"><span></span><span></span><span></span></div>
+    <div class="art-node node-one"></div>
+    <div class="art-node node-two"></div>
+    <div class="art-node node-three"></div>
+  </div>
+</section>
+
+<section class="overview-grid" aria-label="Workspace overview">
+  <article class="surface-card progress-card">
+    <div class="card-heading">
+      <div>
+        <p class="eyebrow">Getting started</p>
+        <h2>Your setup checklist</h2>
+      </div>
+      <span class="progress-count">{{ "{{" }} completedSteps() {{ "}}" }} / {{ "{{" }} setupSteps().length {{ "}}" }}</span>
+    </div>
+    <div class="progress-track" role="progressbar" [attr.aria-valuenow]="progress()" aria-valuemin="0" aria-valuemax="100" aria-label="Setup progress">
+      <span [style.width.%]="progress()"></span>
+    </div>
+    <div class="setup-list">
+      @for (step of setupSteps(); track step.id) {
+        <label class="setup-row" [class.setup-row-complete]="step.complete">
+          <input type="checkbox" [checked]="step.complete" (change)="toggleStep(step.id)" />
+          <span class="setup-copy">
+            <strong>{{ "{{" }} step.title {{ "}}" }}</strong>
+            <small>{{ "{{" }} step.detail {{ "}}" }}</small>
+          </span>
+          <span class="row-arrow" aria-hidden="true">↗</span>
+        </label>
+      } @empty {
+        <p class="empty-state">You're all set. Start building a feature.</p>
+      }
+    </div>
+  </article>
+
+  <article class="surface-card stack-card">
+    <div class="card-heading">
+      <div>
+        <p class="eyebrow">Under the hood</p>
+        <h2>Built for a clear path</h2>
+      </div>
+      <span class="spark-icon" aria-hidden="true">✳</span>
+    </div>
+    <div class="stack-list">
+      <div class="stack-row">
+        <span class="stack-icon angular-icon">A</span>
+        <span class="stack-copy"><strong>Angular 22</strong><small>Standalone & zoneless</small></span>
+        <span class="stack-state">Ready</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-icon signal-icon">⌁</span>
+        <span class="stack-copy"><strong>Signals</strong><small>Reactive UI state</small></span>
+        <span class="stack-state">Ready</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-icon api-icon">↗</span>
+        <span class="stack-copy"><strong>Backend API</strong><small>Local proxy at /api</small></span>
+        <span class="stack-state stack-state-muted">Connect</span>
+      </div>
+    </div>
+    <a class="subtle-link" routerLink="/settings">View project settings <span aria-hidden="true">→</span></a>
+  </article>
+</section>
+
+<section class="bottom-note">
+  <span class="note-icon" aria-hidden="true">⌘</span>
+  <p><strong>Designed to stay out of your way.</strong> Add features as your product takes shape. Keep shared services in <code>core</code> and build each route inside <code>features</code>.</p>
+</section>

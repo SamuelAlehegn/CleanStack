@@ -141,6 +141,12 @@ function registerHelpers(handlebars: typeof Handlebars): void {
   handlebars.registerHelper('snakeCase', (value: unknown) =>
     toWords(String(value ?? '')).join('_'),
   );
+  handlebars.registerHelper('packagePath', (value: unknown) =>
+    String(value ?? '')
+      .split('.')
+      .filter(Boolean)
+      .join('/'),
+  );
   handlebars.registerHelper('capitalize', (value: unknown) => {
     const text = String(value ?? '');
     return text.length === 0 ? text : text[0]!.toUpperCase() + text.slice(1);

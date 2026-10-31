@@ -1,0 +1,52 @@
+import { Component, computed, signal } from '@angular/core';
+
+interface SetupStep {
+  id: string;
+  title: string;
+  detail: string;
+  complete: boolean;
+}
+
+@Component({
+  selector: 'app-home-page',
+  templateUrl: './home-page.html',
+  styleUrl: './home-page.css',
+})
+export class HomePage {
+  readonly setupSteps = signal<SetupStep[]>([
+    {
+      id: 'routes',
+      title: 'Explore the app routes',
+      detail: 'Open the route table and add your first feature page.',
+      complete: true,
+    },
+    {
+      id: 'api',
+      title: 'Connect your API',
+      detail: 'Point the dev proxy at your Spring Boot service.',
+      complete: false,
+    },
+    {
+      id: 'openapi',
+      title: 'Generate the API client',
+      detail: 'Replace the placeholder with your OpenAPI client.',
+      complete: false,
+    },
+  ]);
+
+  readonly completedSteps = computed(
+    () => this.setupSteps().filter((step) => step.complete).length,
+  );
+
+  readonly progress = computed(
+    () => Math.round((this.completedSteps() / this.setupSteps().length) * 100),
+  );
+
+  toggleStep(id: string): void {
+    this.setupSteps.update((steps) =>
+      steps.map((step) =>
+        step.id === id ? { ...step, complete: !step.complete } : step,
+      ),
+    );
+  }
+}

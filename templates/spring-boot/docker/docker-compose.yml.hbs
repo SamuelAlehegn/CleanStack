@@ -1,0 +1,79 @@
+services:
+  app:
+    build: .
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+{{#if (eq project.options.database "postgresql")}}
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://db:5432/{{snakeCase project.name}}"
+      SPRING_DATASOURCE_USERNAME: "{{snakeCase project.name}}"
+      SPRING_DATASOURCE_PASSWORD: "{{snakeCase project.name}}"
+{{/if}}
+{{#if (eq project.options.database "mysql")}}
+      SPRING_DATASOURCE_URL: "jdbc:mysql://db:3306/{{snakeCase project.name}}"
+      SPRING_DATASOURCE_USERNAME: "app"
+      SPRING_DATASOURCE_PASSWORD: "app"
+{{/if}}
+{{#if (eq project.options.database "h2")}}
+      SPRING_DATASOURCE_URL: "jdbc:h2:mem:{{snakeCase project.name}};MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE"
+{{/if}}
+{{#if (eq project.options.database "postgresql")}}
+    depends_on:
+      db:
+        condition: service_healthy
+{{/if}}
+{{#if (eq project.options.database "mysql")}}
+    depends_on:
+      db:
+        condition: service_healthy
+{{/if}}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+{{#if (eq project.options.database "postgresql")}}
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: "{{snakeCase project.name}}"
+      POSTGRES_USER: "{{snakeCase project.name}}"
+      POSTGRES_PASSWORD: "{{snakeCase project.name}}"
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{snakeCase project.name}} -d {{snakeCase project.name}}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db-data:
+{{/if}}
+{{#if (eq project.options.database "mysql")}}
+
+  db:
+    image: mysql:9
+    environment:
+      MYSQL_DATABASE: "{{snakeCase project.name}}"
+      MYSQL_USER: "app"
+      MYSQL_PASSWORD: "app"
+      MYSQL_ROOT_PASSWORD: "root"
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -proot --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:
+{{/if}}

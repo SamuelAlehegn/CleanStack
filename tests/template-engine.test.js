@@ -78,7 +78,7 @@ test('registers naming, pluralization, comparison, and JSON helpers', async () =
     await fixture.write(
       fixture.builtInTemplatesDir,
       'helpers.hbs',
-      '{{camelCase "HTTP response_code"}}|{{pascalCase "user profile"}}|{{pluralize "category"}}|{{pluralize 2 "entity"}}|{{#if (eq value "ok")}}yes{{/if}}|{{json payload}}',
+      '{{camelCase "HTTP response_code"}}|{{pascalCase "user profile"}}|{{pluralize "category"}}|{{pluralize 2 "entity"}}|{{#if (eq value "ok")}}yes{{/if}}|{{json payload}}|{{packagePath "com.acme.shop"}}',
     );
 
     const output = await fixture.engine().render('helpers', {
@@ -87,7 +87,7 @@ test('registers naming, pluralization, comparison, and JSON helpers', async () =
     });
     assert.equal(
       output,
-      'httpResponseCode|UserProfile|categories|entities|yes|{\n  "active": true\n}',
+      'httpResponseCode|UserProfile|categories|entities|yes|{\n  "active": true\n}|com/acme/shop',
     );
   } finally {
     await fixture.cleanup();
