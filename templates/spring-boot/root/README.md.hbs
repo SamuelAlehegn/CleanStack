@@ -1,6 +1,6 @@
 # {{pascalCase project.name}}
 
-A Spring Boot service generated with CleanStack. The code follows a small hexagonal architecture: the domain and application layers stay independent of Spring and the database.
+A Spring Boot service generated with CleanStack. The code uses a simple package layout organized around common Spring Boot responsibilities.
 
 ## Stack
 
@@ -85,13 +85,16 @@ Docker files were not generated for this project. Regenerate with the Docker opt
 ```text
 src/main/java/{{packagePath project.packageName}}/
   {{pascalCase project.name}}Application.java
+  config/
+  controller/
   domain/
-  application/
-  infrastructure/
-    config/
-    persistence/
-    security/
-    web/
+  exception/
+  repository/
+  security/
+  service/
+  web/
+    dto/
+    mapper/
 ```
 
 ## Architecture

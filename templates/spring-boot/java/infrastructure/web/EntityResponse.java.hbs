@@ -1,0 +1,14 @@
+package {{project.packageName}}.web.dto;
+
+import java.util.UUID;
+{{#each entity.fields}}
+{{#if (eq javaType "BigDecimal")}}import java.math.BigDecimal;{{/if}}{{#if (eq javaType "BigInteger")}}import java.math.BigInteger;{{/if}}{{#if (eq javaType "Instant")}}import java.time.Instant;{{/if}}{{#if (eq javaType "LocalDate")}}import java.time.LocalDate;{{/if}}{{#if (eq javaType "LocalTime")}}import java.time.LocalTime;{{/if}}{{#if (eq javaType "LocalDateTime")}}import java.time.LocalDateTime;{{/if}}{{#if (eq javaType "OffsetDateTime")}}import java.time.OffsetDateTime;{{/if}}
+{{/each}}
+
+/** HTTP representation of a {{entity.className}}. */
+public record {{entity.className}}Response(
+        UUID id{{#each entity.fields}},
+        {{javaType}} {{name}}{{/each}}) {
+    // <cleanstack:protected id="response-{{entity.variableName}}">
+    // </cleanstack:protected>
+}

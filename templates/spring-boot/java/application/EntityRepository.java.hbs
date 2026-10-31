@@ -1,0 +1,11 @@
+package {{project.packageName}}.repository;
+
+import {{project.packageName}}.domain.{{entity.className}};
+import java.util.UUID;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+/** Spring Data repository for {{entity.className}}. */
+public interface {{entity.className}}Repository extends JpaRepository<{{entity.className}}, UUID> {
+    // <cleanstack:protected id="repository-{{entity.variableName}}">
+    // </cleanstack:protected>
+}

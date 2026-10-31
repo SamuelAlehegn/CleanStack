@@ -1,0 +1,10 @@
+CREATE TABLE {{entity.tableName}} (
+    id UUID NOT NULL,
+{{#each entity.fields}}
+    {{columnName}} {{#if (eq javaType "String")}}VARCHAR({{#if maxLength}}{{maxLength}}{{else}}255{{/if}}){{else if (eq javaType "UUID")}}UUID{{else if (eq javaType "BigDecimal")}}NUMERIC{{else if (eq javaType "BigInteger")}}NUMERIC{{else if (eq javaType "Instant")}}TIMESTAMP WITH TIME ZONE{{else if (eq javaType "OffsetDateTime")}}TIMESTAMP WITH TIME ZONE{{else if (eq javaType "LocalDateTime")}}TIMESTAMP{{else if (eq javaType "LocalDate")}}DATE{{else if (eq javaType "LocalTime")}}TIME{{else if (eq javaType "boolean")}}BOOLEAN{{else if (eq javaType "Boolean")}}BOOLEAN{{else if (eq javaType "byte")}}SMALLINT{{else if (eq javaType "Byte")}}SMALLINT{{else if (eq javaType "short")}}SMALLINT{{else if (eq javaType "Short")}}SMALLINT{{else if (eq javaType "int")}}INTEGER{{else if (eq javaType "Integer")}}INTEGER{{else if (eq javaType "long")}}BIGINT{{else if (eq javaType "Long")}}BIGINT{{else if (eq javaType "float")}}REAL{{else if (eq javaType "Float")}}REAL{{else if (eq javaType "double")}}DOUBLE PRECISION{{else if (eq javaType "Double")}}DOUBLE PRECISION{{else}}VARCHAR(255){{/if}}{{#if required}} NOT NULL{{/if}}{{#if unique}} UNIQUE{{/if}},
+{{/each}}
+    CONSTRAINT pk_{{entity.tableName}} PRIMARY KEY (id)
+);
+
+-- <cleanstack:protected id="migration-{{entity.variableName}}">
+-- </cleanstack:protected>

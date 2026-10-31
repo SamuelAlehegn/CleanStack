@@ -1,0 +1,27 @@
+name: Product
+tableName: products
+
+fields:
+  - name: name
+    type: String
+    required: true
+    minLength: 2
+    maxLength: 120
+    validations:
+      - NotBlank
+
+  - name: price
+    type: BigDecimal
+    required: true
+    min: 0
+    validations:
+      - PositiveOrZero
+
+  - name: active
+    type: boolean
+    required: true
+    default: true
+
+  - name: createdAt
+    type: Instant
+    required: true

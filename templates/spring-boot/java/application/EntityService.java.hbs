@@ -1,0 +1,47 @@
+package {{project.packageName}}.service;
+
+import {{project.packageName}}.domain.{{entity.className}};
+import {{project.packageName}}.exception.{{entity.className}}NotFoundException;
+import {{project.packageName}}.repository.{{entity.className}}Repository;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/** CRUD use cases for {{entity.className}}. */
+@Service
+@Transactional(readOnly = true)
+public class {{entity.className}}Service {
+    private final {{entity.className}}Repository repository;
+
+    public {{entity.className}}Service({{entity.className}}Repository repository) {
+        this.repository = repository;
+    }
+
+    public List<{{entity.className}}> findAll() { return repository.findAll(); }
+
+    public {{entity.className}} get(UUID id) {
+        return repository.findById(id).orElseThrow(() -> new {{entity.className}}NotFoundException(id));
+    }
+
+    @Transactional
+    public {{entity.className}} create({{entity.className}} entity) {
+        return repository.save(entity);
+    }
+
+    @Transactional
+    public {{entity.className}} update(UUID id, {{entity.className}} entity) {
+        get(id);
+        entity.setId(id);
+        return repository.save(entity);
+    }
+
+    @Transactional
+    public void delete(UUID id) {
+        get(id);
+        repository.deleteById(id);
+    }
+
+    // <cleanstack:protected id="service-{{entity.variableName}}">
+    // </cleanstack:protected>
+}
