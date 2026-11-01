@@ -61,7 +61,8 @@ h1 {
 .field input[type='number'],
 .field input[type='date'],
 .field input[type='time'],
-.field input[type='datetime-local'] {
+.field input[type='datetime-local'],
+.field select {
   width: 100%;
   min-height: 38px;
   padding: 0 11px;
@@ -70,6 +71,15 @@ h1 {
   background: #fff;
   color: var(--ink);
   font-size: 13px;
+}
+
+.field select[multiple] {
+  padding: 6px 11px;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .field input:hover {

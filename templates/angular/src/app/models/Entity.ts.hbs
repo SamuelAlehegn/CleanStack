@@ -4,6 +4,19 @@ export interface {{entity.className}} {
 {{#each entity.fields}}
   {{name}}{{#unless required}}?{{/unless}}: {{typescriptType}};
 {{/each}}
+{{#each entity.relations}}
+{{#if collection}}
+  /** IDs of the related {{targetEntity.pluralName}}. */
+  {{idField}}: string[];
+  /** Labels of the related {{targetEntity.pluralName}}. */
+  {{labelField}}: string[];
+{{else}}
+  /** ID of the related {{targetEntity.className}}. */
+  {{idField}}: string | null;
+  /** Label of the related {{targetEntity.className}}. */
+  {{labelField}}: string | null;
+{{/if}}
+{{/each}}
 }
 
 /** The payload accepted when creating or updating a {{entity.className}}. */
@@ -12,5 +25,12 @@ export type {{entity.className}}Input = {
 {{#unless generated}}
   {{name}}{{#unless required}}?{{/unless}}: {{typescriptType}};
 {{/unless}}
+{{/each}}
+{{#each entity.owningRelations}}
+{{#if collection}}
+  {{idField}}?: string[];
+{{else}}
+  {{idField}}{{#unless required}}?{{/unless}}: string | null;
+{{/if}}
 {{/each}}
 };

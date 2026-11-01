@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildEntityModels } from '../core/entity-model.js';
+import { buildEntityModels, type EntityModel } from '../core/entity-model.js';
 import type { ProjectConfig } from '../core/config.js';
 import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
 import type { TemplateEngine } from './template-engine.js';
@@ -57,9 +57,11 @@ export function templateAliases(project: ProjectConfig): Record<string, unknown>
 
 /** Builds the Handlebars context shared by project and entity templates. */
 export function templateContext(project: ProjectConfig): Record<string, unknown> {
-  const entities = buildEntityModels(project.entities).map((entity, index) => ({
+  const models = buildEntityModels(project.entities);
+  const versions = migrationVersions(models);
+  const entities = models.map((entity) => ({
     ...entity,
-    migrationVersion: index + 2,
+    migrationVersion: versions.get(entity.name.toLowerCase()) ?? 2,
   }));
   return {
     project: { ...project, entities },
@@ -67,6 +69,35 @@ export function templateContext(project: ProjectConfig): Record<string, unknown>
     entities,
     ...templateAliases(project),
   } as unknown as Record<string, unknown>;
+}
+
+/**
+ * Assigns migration numbers so related tables exist before foreign keys and join
+ * tables that reference them. Entity order itself is left untouched.
+ */
+export function migrationVersions(entities: EntityModel[]): Map<string, number> {
+  const byKey = new Map(entities.map((entity) => [entity.name.toLowerCase(), entity]));
+  const ordered: EntityModel[] = [];
+  const visited = new Set<string>();
+  const visiting = new Set<string>();
+
+  const visit = (entity: EntityModel): void => {
+    const key = entity.name.toLowerCase();
+    if (visited.has(key) || visiting.has(key)) return;
+    visiting.add(key);
+    for (const relation of entity.relations) {
+      if (!relation.owningSide || relation.type === 'one-to-many') continue;
+      const target = byKey.get(relation.targetEntity.name.toLowerCase());
+      if (target && target !== entity) visit(target);
+    }
+    visiting.delete(key);
+    visited.add(key);
+    ordered.push(entity);
+  };
+
+  for (const entity of entities) visit(entity);
+
+  return new Map(ordered.map((entity, index) => [entity.name.toLowerCase(), index + 2]));
 }
 
 /** Reads a built-in template manifest. */

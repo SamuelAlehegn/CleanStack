@@ -131,11 +131,14 @@ export const FieldConfigSchema = z
       });
     }
   })
-  .transform((field) => ({
-    ...field,
-    required: field.required ?? (field.nullable === undefined ? false : !field.nullable),
-    nullable: field.required === undefined ? (field.nullable ?? false) : !field.required,
-  }));
+  .transform((field) => {
+    const required = field.required ?? (field.nullable === undefined ? false : !field.nullable);
+    return {
+      ...field,
+      required,
+      nullable: !required,
+    };
+  });
 
 const RELATION_TYPES = [
   'OneToOne',

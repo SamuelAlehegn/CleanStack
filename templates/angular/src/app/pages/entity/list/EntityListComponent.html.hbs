@@ -28,6 +28,9 @@
 {{#each entity.fields}}
           <th>{{capitalize name}}</th>
 {{/each}}
+{{#each entity.relations}}
+          <th>{{capitalize variableName}}</th>
+{{/each}}
           <th class="actions-heading">Actions</th>
         </tr>
       </thead>
@@ -49,6 +52,15 @@
 {{else}}
               \{{ {{../entity.variableName}}.{{name}} ?? '—' }}
 {{/if}}
+{{/if}}
+            </td>
+{{/each}}
+{{#each entity.relations}}
+            <td>
+{{#if collection}}
+              \{{ {{../entity.variableName}}.{{labelField}}.length ? {{../entity.variableName}}.{{labelField}}.join(', ') : '—' }}
+{{else}}
+              \{{ {{../entity.variableName}}.{{labelField}} ?? '—' }}
 {{/if}}
             </td>
 {{/each}}

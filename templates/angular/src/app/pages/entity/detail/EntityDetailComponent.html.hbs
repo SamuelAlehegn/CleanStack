@@ -45,6 +45,18 @@
           </dd>
         </div>
 {{/each}}
+{{#each entity.relations}}
+        <div class="detail-row">
+          <dt>{{capitalize variableName}}</dt>
+          <dd>
+{{#if collection}}
+            \{{ {{../entity.variableName}}.{{labelField}}.length ? {{../entity.variableName}}.{{labelField}}.join(', ') : '—' }}
+{{else}}
+            \{{ {{../entity.variableName}}.{{labelField}} ?? '—' }}
+{{/if}}
+          </dd>
+        </div>
+{{/each}}
       </dl>
     </section>
 

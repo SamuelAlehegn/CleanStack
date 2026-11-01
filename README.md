@@ -69,6 +69,35 @@ the next Flyway migration version from the existing migrations. See
 [docs/entity-descriptor.md](docs/entity-descriptor.md) for the descriptor
 format and the inline field syntax.
 
+### Relations
+
+Descriptors support `ManyToOne`, `OneToMany`, `ManyToMany` (with a join table),
+and `OneToOne` relations. Generated entities use the matching JPA annotations,
+migrations add foreign keys or join tables, requests accept relation ids, and
+responses include readable labels. Angular forms render selects for the owning
+side of each relation.
+
+```yaml
+name: Product
+fields:
+  - name: name
+    type: String
+    required: true
+relations:
+  - type: ManyToOne
+    target: Category
+    field: category
+    required: true
+  - type: ManyToMany
+    target: Tag
+    field: tags
+```
+
+Related descriptors must be present in `entities/`, and the target entity
+should be generated before the entity that owns the foreign key or join table.
+See [docs/entity-descriptor.md](docs/entity-descriptor.md#relations) for the
+owning and inverse side rules.
+
 ## Development
 
 ```sh

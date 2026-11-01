@@ -35,6 +35,24 @@ test('accepts a complete configuration with relations', () => {
   assert.equal(config.options.database, 'postgresql');
 });
 
+test('accepts already-parsed configs without conflicting required and nullable values', () => {
+  const parsed = ProjectConfigSchema.parse({
+    name: 'shop',
+    entities: [
+      {
+        name: 'Product',
+        fields: [
+          { name: 'name', type: 'String' },
+          { name: 'active', type: 'boolean', required: false },
+          { name: 'code', type: 'String', required: true },
+        ],
+      },
+    ],
+  });
+
+  assert.doesNotThrow(() => ProjectConfigSchema.parse(parsed));
+});
+
 test('rejects an invalid Java package name', () => {
   expectIssue({ name: 'shop', packageName: 'not a package!' }, /valid Java package name/);
 });

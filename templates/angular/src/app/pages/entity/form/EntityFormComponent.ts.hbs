@@ -6,7 +6,15 @@ import {
   type AbstractControl,
 } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+{{#if entity.owningRelations}}
 
+import type { {{entity.className}}Input } from '../../../models/{{entity.variableName}}';
+{{/if}}
+{{#each entity.formOptionSources}}
+{{#unless (eq className ../entity.className)}}
+import { {{serviceName}} } from '../../../services/{{variableName}}.service';
+{{/unless}}
+{{/each}}
 import { {{entity.className}}Service } from '../../../services/{{entity.variableName}}.service';
 
 @Component({
@@ -20,11 +28,20 @@ export class {{entity.className}}FormComponent {
   private readonly service = inject({{entity.className}}Service);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+{{#each entity.formOptionSources}}
+{{#unless (eq className ../entity.className)}}
+  private readonly {{variableName}}Service = inject({{serviceName}});
+{{/unless}}
+{{/each}}
 
   readonly {{entity.variableName}}Id = this.route.snapshot.paramMap.get('id');
   readonly isEdit = this.{{entity.variableName}}Id !== null;
   readonly saving = signal(false);
   readonly error = signal<string | null>(null);
+{{#each entity.formOptionSources}}
+
+  readonly {{optionsSignalName}} = signal<{ id: string; label: string }[]>([]);
+{{/each}}
 
   readonly form = this.formBuilder.nonNullable.group({
 {{#each entity.fields}}
@@ -63,6 +80,13 @@ export class {{entity.className}}FormComponent {
     ],
 {{/unless}}
 {{/each}}
+{{#each entity.owningRelations}}
+{{#if collection}}
+    {{idField}}: [[] as string[]],
+{{else}}
+    {{idField}}: [''{{#if required}}, [Validators.required]{{/if}}],
+{{/if}}
+{{/each}}
   });
 
   constructor() {
@@ -70,10 +94,36 @@ export class {{entity.className}}FormComponent {
 
     if (id) {
       this.service.get(id).subscribe({
-        next: ({{entity.variableName}}) => this.form.patchValue({{entity.variableName}}),
+        next: ({{entity.variableName}}) =>
+          this.form.patchValue({
+{{#each entity.fields}}
+{{#unless generated}}
+            {{name}}: {{../entity.variableName}}.{{name}}{{#unless required}} ?? {{typescriptDefault}}{{/unless}},
+{{/unless}}
+{{/each}}
+{{#each entity.owningRelations}}
+{{#if collection}}
+            {{idField}}: {{../entity.variableName}}.{{idField}} ?? [],
+{{else}}
+            {{idField}}: {{../entity.variableName}}.{{idField}} ?? '',
+{{/if}}
+{{/each}}
+          }),
         error: () => this.error.set('Unable to load this {{lowercase entity.name}}.'),
       });
     }
+{{#each entity.formOptionSources}}
+    {{#if (eq className ../entity.className)}}this.service{{else}}this.{{variableName}}Service{{/if}}.list().subscribe({
+      next: (items) =>
+        this.{{optionsSignalName}}.set(
+          items.map((item) => ({
+            id: item.id,
+            label: {{#if labelField}}item.{{labelField}} ?? item.id{{else}}item.id{{/if}},
+          })),
+        ),
+      error: () => this.error.set('Unable to load {{lowercase pluralName}}.'),
+    });
+{{/each}}
   }
 
   submit(): void {
@@ -86,7 +136,25 @@ export class {{entity.className}}FormComponent {
     this.error.set(null);
 
     const id = this.{{entity.variableName}}Id;
+{{#if entity.owningRelations}}
+    const raw = this.form.getRawValue();
+    const input: {{entity.className}}Input = {
+{{#each entity.fields}}
+{{#unless generated}}
+      {{name}}: raw.{{name}},
+{{/unless}}
+{{/each}}
+{{#each entity.owningRelations}}
+{{#if collection}}
+      {{idField}}: raw.{{idField}},
+{{else}}
+      {{idField}}: raw.{{idField}} === '' ? null : raw.{{idField}},
+{{/if}}
+{{/each}}
+    };
+{{else}}
     const input = this.form.getRawValue();
+{{/if}}
     const request = id
       ? this.service.update(id, input)
       : this.service.create(input);

@@ -70,6 +70,40 @@
 {{/if}}
 {{/unless}}
 {{/each}}
+{{#each entity.owningRelations}}
+{{#if collection}}
+  <label class="field">
+    <span class="field-label">{{capitalize variableName}}</span>
+    <select multiple formControlName="{{idField}}" size="4">
+      @for (option of {{optionsSignalName}}(); track option.id) {
+        <option [value]="option.id">\{{ option.label }}</option>
+      }
+    </select>
+    <small class="field-hint">Hold Ctrl or Cmd to select multiple {{lowercase targetEntity.pluralName}}.</small>
+    @if (form.controls.{{idField}}.invalid && form.controls.{{idField}}.touched) {
+      <small class="field-error">\{{ errorFor(form.controls.{{idField}}) }}</small>
+    }
+  </label>
+{{else}}
+  <label class="field">
+    <span class="field-label">
+      {{capitalize variableName}}
+{{#if required}}
+      <span class="required" aria-hidden="true">*</span>
+{{/if}}
+    </span>
+    <select formControlName="{{idField}}">
+      <option value="">Select {{targetEntity.name}}</option>
+      @for (option of {{optionsSignalName}}(); track option.id) {
+        <option [value]="option.id">\{{ option.label }}</option>
+      }
+    </select>
+    @if (form.controls.{{idField}}.invalid && form.controls.{{idField}}.touched) {
+      <small class="field-error">\{{ errorFor(form.controls.{{idField}}) }}</small>
+    }
+  </label>
+{{/if}}
+{{/each}}
 
   @if (error()) {
     <p class="form-error">\{{ error() }}</p>
