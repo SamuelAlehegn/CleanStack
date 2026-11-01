@@ -2,6 +2,103 @@
 
 An entity descriptor is one YAML document per entity. Store descriptors in `entities/` and use the entity name as the file name, for example `entities/product.yaml`.
 
+## Command-line usage
+
+Add an entity to a project that was already generated with `cleanstack new`:
+
+```sh
+cleanstack entity Product
+cleanstack generate entity Product
+cleanstack g e Product
+```
+
+All three forms are equivalent. The command can run from the project root, from
+the backend or frontend directory, or from a directory that contains exactly
+one generated project.
+
+### Finding the descriptor
+
+`cleanstack entity Product` searches these locations for a matching descriptor:
+
+1. `entities/` in the current directory
+2. `entities/` in the generated project root
+3. `entities/` next to the generated project root
+
+Descriptor files may use `.yaml`, `.yml`, or `.json`. A file matches when its
+name is the entity name in PascalCase, kebab-case, camelCase, or snake_case, or
+when the descriptor's declared `name` matches. Use `--descriptor <path>` to
+point at a specific file.
+
+### Inline fields
+
+When no descriptor is available, pass one or more `--field` options:
+
+```sh
+cleanstack entity Product \
+  --field 'name:String:required:maxLength=120' \
+  --field 'price:BigDecimal:required:min=0' \
+  --field 'active:boolean:default=true' \
+  --table products
+```
+
+The shorthand is `name:type[:modifier...]`. Supported modifiers are:
+
+| Modifier                      | Meaning                                                            |
+| ----------------------------- | ------------------------------------------------------------------ |
+| `required`                    | The value must be present.                                         |
+| `unique`                      | The value must be unique.                                          |
+| `generated`                   | Persistence generates the value.                                   |
+| `minLength=<n>`               | Minimum string length.                                             |
+| `maxLength=<n>`               | Maximum string length.                                             |
+| `min=<n>` / `max=<n>`         | Numeric bounds.                                                    |
+| `pattern=<regex>`             | Regular expression for strings.                                    |
+| `validations=NotBlank\|Email` | Additional Bean Validation constraints.                            |
+| `default=<value>`             | Default value; `true`, `false`, `null`, and numbers are converted. |
+
+For any option that has no shorthand, pass a JSON object instead:
+
+```sh
+cleanstack entity Product \
+  --field '{"name":"price","type":"BigDecimal","required":true,"min":0}'
+```
+
+### Options
+
+| Option                    | Meaning                                              |
+| ------------------------- | ---------------------------------------------------- |
+| `-d, --descriptor <path>` | Use a specific entity descriptor.                    |
+| `--field <spec>`          | Inline field definition; repeatable.                 |
+| `--table <name>`          | Table name for an inline entity.                     |
+| `--package <name>`        | Override the Java package detected from the backend. |
+| `--backend`               | Generate backend artifacts only.                     |
+| `--no-backend`            | Skip backend artifacts.                              |
+| `--frontend`              | Generate frontend artifacts only.                    |
+| `--no-frontend`           | Skip frontend artifacts.                             |
+| `--force`                 | Overwrite existing generated files.                  |
+| `--dry-run`               | Report what would be written without writing.        |
+
+Without a side flag, the command generates both sides when both projects are
+present. The Java package is detected from the backend's `*Application.java`
+unless `--package` is passed.
+
+### Generated artifacts
+
+For the backend, the command writes the JPA entity, repository, service,
+controller, request/response DTOs, mapper, not-found exception, and a Flyway
+migration. The migration version is derived from the existing
+`V<number>__*.sql` files; an existing migration for the same table is reused.
+
+For the frontend, the command writes the model, HTTP service, and list, detail,
+and form pages, then adds the entity routes to `app.routes.ts` and a link to
+`app-layout.component.html`. Route and navigation insertion uses the
+`<cleanstack:entity-routes>` and `<cleanstack:entity-nav>` markers in the
+built-in templates. If those markers are missing, the command falls back to the
+route array and the `<nav>` element.
+
+Existing entity files are not overwritten unless `--force` is passed. Repeated
+route and navigation updates are skipped when the entity is already present, so
+`--force` remains safe to re-run.
+
 ```yaml
 name: Product
 tableName: products # optional; defaults can be derived from the entity name

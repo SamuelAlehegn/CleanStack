@@ -21,6 +21,7 @@ export const routes: Routes = [
             (module) => module.SettingsComponent,
           ),
       },
+      // <cleanstack:entity-routes>
 {{#each entities}}
       {
         path: '{{routeName}}',
@@ -55,6 +56,7 @@ export const routes: Routes = [
           ),
       },
 {{/each}}
+      // </cleanstack:entity-routes>
     ],
   },
   { path: '**', redirectTo: '' },

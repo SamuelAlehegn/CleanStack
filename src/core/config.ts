@@ -3,6 +3,9 @@ import { z } from 'zod';
 const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const PACKAGE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 
+/** Pattern for a dotted Java package name. */
+export const JAVA_PACKAGE_PATTERN = PACKAGE_NAME_PATTERN;
+
 export const FIELD_TYPES = [
   'String',
   'boolean',

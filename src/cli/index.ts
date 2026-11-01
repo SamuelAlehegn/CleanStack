@@ -3,6 +3,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Logger } from '../utils/logger.js';
+import { resolveCommand } from './command-router.js';
+import { ENTITY_USAGE, runEntityCommand } from './entity.js';
 import { runNewCommand } from './new.js';
 
 interface PackageMetadata {
@@ -21,13 +23,14 @@ const logger = new Logger({
   quiet: flags.has('--quiet') || flags.has('-q'),
 });
 
-const command = args.find((argument) => !argument.startsWith('-'));
-
 const usage = `Usage: cleanstack <command> [options]
 
 Commands:
-  new <name>       Create a new project skeleton
-  hello            Print a welcome message
+  new <name>               Create a new project skeleton
+  entity <name>            Generate an entity in an existing project
+  generate entity <name>   Alias for "entity"
+  g e <name>               Alias for "entity"
+  hello                    Print a welcome message
 
 New options:
   --package <name> --db <postgresql|h2|mysql> --auth <jwt|none|keycloak>
@@ -38,29 +41,48 @@ New options:
   -y, --yes           Skip prompts and use defaults for missing settings
   --git             Initialize a git repository in the generated project
 
+Entity options:
+  -d, --descriptor <path>   Use a specific entity descriptor
+  --field <spec>            Inline field: name:type[:required][:maxLength=100]
+  --table <name>            Table name for an inline entity
+  --package <name>          Override the detected Java package
+  --backend / --no-backend  Generate or skip backend artifacts
+  --frontend / --no-frontend Generate or skip frontend artifacts
+  --force                   Overwrite existing generated files
+  --dry-run                 Show what would be generated without writing
+
 Options:
   -v, --verbose    Show debug output
   -q, --quiet      Suppress non-error output
   -h, --help       Show this help
   -V, --version    Show the version`;
 
-if (flags.has('--help') || flags.has('-h')) {
-  logger.info(usage);
-} else if (flags.has('--version') || flags.has('-V')) {
+const resolved = resolveCommand(args);
+const wantsHelp = flags.has('--help') || flags.has('-h');
+const wantsVersion = flags.has('--version') || flags.has('-V');
+
+if (wantsHelp) {
+  logger.info(resolved.name === 'entity' ? ENTITY_USAGE : usage);
+} else if (wantsVersion) {
   logger.info(packageMetadata.version);
-} else if (command === 'hello') {
+} else if (resolved.name === 'hello') {
   logger.info(`CleanStack Generator v${packageMetadata.version}`);
   logger.success('Welcome to CleanStack!');
   logger.debug(`Running on Node.js ${process.version} (${process.platform})`);
-} else if (command === 'new') {
-  runNewCommand(args.slice(args.indexOf('new') + 1), { logger }).catch((error: unknown) => {
+} else if (resolved.name === 'new') {
+  runNewCommand(resolved.args, { logger }).catch((error: unknown) => {
     logger.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });
-} else if (command === undefined) {
+} else if (resolved.name === 'entity') {
+  runEntityCommand(resolved.args, { logger }).catch((error: unknown) => {
+    logger.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+} else if (resolved.name === 'help') {
   logger.info(usage);
 } else {
-  logger.error(`Unknown command "${command}".`);
+  logger.error(resolved.error ?? `Unknown command "${resolved.unknownCommand ?? ''}".`);
   logger.info(usage);
   process.exitCode = 1;
 }

@@ -83,7 +83,7 @@ export class EntityParser {
   }
 }
 
-function formatZodError(error: z.ZodError): string {
+export function formatZodError(error: z.ZodError): string {
   return error.issues
     .map((issue) => {
       const location = issue.path.length > 0 ? `${issue.path.join('.')}: ` : '';
