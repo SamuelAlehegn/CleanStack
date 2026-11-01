@@ -5,6 +5,7 @@ export * from './core/entity-model.js';
 export * from './core/entity-parser.js';
 export * from './core/frontend-updates.js';
 export * from './core/project.js';
+export * from './core/protected-regions.js';
 export * from './templates/manifest.js';
 export * from './templates/template-engine.js';
 export * from './utils/file-system.js';
