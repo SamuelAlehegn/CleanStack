@@ -8,11 +8,11 @@ interface SetupStep {
 }
 
 @Component({
-  selector: 'app-home-page',
-  templateUrl: './home-page.html',
-  styleUrl: './home-page.css',
+  selector: 'app-home',
+  templateUrl: './home.component.html',
+  styleUrl: './home.component.scss',
 })
-export class HomePage {
+export class HomeComponent {
   readonly setupSteps = signal<SetupStep[]>([
     {
       id: 'routes',

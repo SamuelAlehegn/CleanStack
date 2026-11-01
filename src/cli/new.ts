@@ -115,7 +115,7 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
   const uiDirectory = `${kebabCase(project.name)}-ui`;
   if (project.options.frontend) {
     await projectRootFs.createDirectory(uiDirectory);
-    const uiProject = withProjectSuffix(project, 'ui');
+    const uiProject = withProjectSuffix(generationProject, 'ui');
     await renderManifest(
       'angular',
       uiProject,

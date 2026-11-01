@@ -1,0 +1,32 @@
+import { HttpClient } from '@angular/common/http';
+import { Injectable, inject } from '@angular/core';
+import type { Observable } from 'rxjs';
+
+import { environment } from '../../environments/environment';
+import type { {{entity.className}}, {{entity.className}}Input } from '../models/{{entity.variableName}}';
+
+@Injectable({ providedIn: 'root' })
+export class {{entity.className}}Service {
+  private readonly http = inject(HttpClient);
+  private readonly endpoint = `${environment.apiBaseUrl}/{{entity.routeName}}`;
+
+  list(): Observable<{{entity.className}}[]> {
+    return this.http.get<{{entity.className}}[]>(this.endpoint);
+  }
+
+  get(id: string): Observable<{{entity.className}}> {
+    return this.http.get<{{entity.className}}>(`${this.endpoint}/${id}`);
+  }
+
+  create(input: {{entity.className}}Input): Observable<{{entity.className}}> {
+    return this.http.post<{{entity.className}}>(this.endpoint, input);
+  }
+
+  update(id: string, input: {{entity.className}}Input): Observable<{{entity.className}}> {
+    return this.http.put<{{entity.className}}>(`${this.endpoint}/${id}`, input);
+  }
+
+  remove(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.endpoint}/${id}`);
+  }
+}

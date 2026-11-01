@@ -1,0 +1,54 @@
+import { Component, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
+
+import type { {{entity.className}} } from '../../../models/{{entity.variableName}}';
+import { {{entity.className}}Service } from '../../../services/{{entity.variableName}}.service';
+
+@Component({
+  selector: 'app-{{entity.routeName}}-list',
+  imports: [RouterLink],
+  templateUrl: './list.component.html',
+  styleUrl: './list.component.scss',
+})
+export class {{entity.className}}ListComponent {
+  private readonly service = inject({{entity.className}}Service);
+
+  readonly {{entity.pluralVariableName}} = signal<{{entity.className}}[]>([]);
+  readonly loading = signal(true);
+  readonly error = signal<string | null>(null);
+
+  constructor() {
+    this.load();
+  }
+
+  load(): void {
+    this.loading.set(true);
+    this.error.set(null);
+
+    this.service.list().subscribe({
+      next: ({{entity.pluralVariableName}}) => {
+        this.{{entity.pluralVariableName}}.set({{entity.pluralVariableName}});
+        this.loading.set(false);
+      },
+      error: () => {
+        this.error.set('Unable to load {{entity.pluralVariableName}}. Please try again.');
+        this.loading.set(false);
+      },
+    });
+  }
+
+  remove(target: {{entity.className}}): void {
+    if (!confirm('Delete this {{lowercase entity.name}}?')) {
+      return;
+    }
+
+    this.service.remove(target.id).subscribe({
+      next: () =>
+        this.{{entity.pluralVariableName}}.update((items) =>
+          items.filter((existing) => existing.id !== target.id),
+        ),
+      error: () =>
+        this.error.set('Unable to delete this {{lowercase entity.name}}. Please try again.'),
+    });
+  }
+}

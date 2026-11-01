@@ -1,0 +1,140 @@
+import { Component, inject, signal } from '@angular/core';
+import {
+  FormBuilder,
+  ReactiveFormsModule,
+  Validators,
+  type AbstractControl,
+} from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
+
+import { {{entity.className}}Service } from '../../../services/{{entity.variableName}}.service';
+
+@Component({
+  selector: 'app-{{entity.routeName}}-form',
+  imports: [ReactiveFormsModule],
+  templateUrl: './form.component.html',
+  styleUrl: './form.component.scss',
+})
+export class {{entity.className}}FormComponent {
+  private readonly formBuilder = inject(FormBuilder);
+  private readonly service = inject({{entity.className}}Service);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+
+  readonly {{entity.variableName}}Id = this.route.snapshot.paramMap.get('id');
+  readonly isEdit = this.{{entity.variableName}}Id !== null;
+  readonly saving = signal(false);
+  readonly error = signal<string | null>(null);
+
+  readonly form = this.formBuilder.nonNullable.group({
+{{#each entity.fields}}
+{{#unless generated}}
+    {{name}}: [
+      {{#if (eq typescriptType "boolean")}}{{#if default}}true{{else}}false{{/if}}{{else if (eq typescriptType "number")}}{{#if default}}{{default}}{{else}}0{{/if}}{{else}}{{#if default}}'{{default}}'{{else}}''{{/if}}{{/if}},
+      [
+{{#if required}}
+        Validators.required,
+{{/if}}
+{{#each validations}}
+{{#if (eq this "Email")}}
+        Validators.email,
+{{/if}}
+{{/each}}
+{{#if minLength}}
+        Validators.minLength({{minLength}}),
+{{/if}}
+{{#if maxLength}}
+        Validators.maxLength({{maxLength}}),
+{{/if}}
+{{#if min includeZero=true}}
+{{#if (eq typescriptType "number")}}
+        Validators.min({{min}}),
+{{/if}}
+{{/if}}
+{{#if max includeZero=true}}
+{{#if (eq typescriptType "number")}}
+        Validators.max({{max}}),
+{{/if}}
+{{/if}}
+{{#if pattern}}
+        Validators.pattern(/{{pattern}}/),
+{{/if}}
+      ],
+    ],
+{{/unless}}
+{{/each}}
+  });
+
+  constructor() {
+    const id = this.{{entity.variableName}}Id;
+
+    if (id) {
+      this.service.get(id).subscribe({
+        next: ({{entity.variableName}}) => this.form.patchValue({{entity.variableName}}),
+        error: () => this.error.set('Unable to load this {{lowercase entity.name}}.'),
+      });
+    }
+  }
+
+  submit(): void {
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
+
+    this.saving.set(true);
+    this.error.set(null);
+
+    const id = this.{{entity.variableName}}Id;
+    const input = this.form.getRawValue();
+    const request = id
+      ? this.service.update(id, input)
+      : this.service.create(input);
+
+    request.subscribe({
+      next: ({{entity.variableName}}) =>
+        this.router.navigate(['/{{entity.routeName}}', {{entity.variableName}}.id]),
+      error: () => {
+        this.saving.set(false);
+        this.error.set(
+          'Unable to save this {{lowercase entity.name}}. Please check the form and try again.',
+        );
+      },
+    });
+  }
+
+  cancel(): void {
+    const id = this.{{entity.variableName}}Id;
+
+    this.router.navigate(id ? ['/{{entity.routeName}}', id] : ['/{{entity.routeName}}']);
+  }
+
+  errorFor(control: AbstractControl): string {
+    if (control.hasError('required')) {
+      return 'This field is required.';
+    }
+    if (control.hasError('email')) {
+      return 'Enter a valid email address.';
+    }
+    if (control.hasError('minlength')) {
+      const { requiredLength } = control.getError('minlength') as { requiredLength: number };
+      return `Use at least ${requiredLength} characters.`;
+    }
+    if (control.hasError('maxlength')) {
+      const { requiredLength } = control.getError('maxlength') as { requiredLength: number };
+      return `Use at most ${requiredLength} characters.`;
+    }
+    if (control.hasError('min')) {
+      const { min } = control.getError('min') as { min: number };
+      return `The value must be at least ${min}.`;
+    }
+    if (control.hasError('max')) {
+      const { max } = control.getError('max') as { max: number };
+      return `The value must be at most ${max}.`;
+    }
+    if (control.hasError('pattern')) {
+      return 'Use the requested format.';
+    }
+    return 'This value is not valid.';
+  }
+}

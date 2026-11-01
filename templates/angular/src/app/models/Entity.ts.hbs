@@ -1,0 +1,16 @@
+/** A {{entity.className}} as returned by the API. */
+export interface {{entity.className}} {
+  id: string;
+{{#each entity.fields}}
+  {{name}}{{#unless required}}?{{/unless}}: {{typescriptType}};
+{{/each}}
+}
+
+/** The payload accepted when creating or updating a {{entity.className}}. */
+export type {{entity.className}}Input = {
+{{#each entity.fields}}
+{{#unless generated}}
+  {{name}}{{#unless required}}?{{/unless}}: {{typescriptType}};
+{{/unless}}
+{{/each}}
+};

@@ -1,0 +1,65 @@
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">Manage</p>
+    <h1>{{entity.pluralName}}</h1>
+    <p class="page-description">Browse, create, and update {{entity.pluralVariableName}}.</p>
+  </div>
+  <a class="primary-button" routerLink="/{{entity.routeName}}/new">New {{entity.name}}</a>
+</section>
+
+@if (loading()) {
+  <p class="state-message">Loading {{entity.pluralVariableName}}…</p>
+} @else if (error()) {
+  <div class="state-message state-error">
+    <p>\{{ error() }}</p>
+    <button type="button" (click)="load()">Try again</button>
+  </div>
+} @else if ({{entity.pluralVariableName}}().length === 0) {
+  <div class="state-message">
+    <p>No {{entity.pluralVariableName}} yet. Create the first one to get started.</p>
+    <a class="text-link" routerLink="/{{entity.routeName}}/new">Create {{entity.name}}</a>
+  </div>
+} @else {
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+{{#each entity.fields}}
+          <th>{{capitalize name}}</th>
+{{/each}}
+          <th class="actions-heading">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for ({{entity.variableName}} of {{entity.pluralVariableName}}(); track {{entity.variableName}}.id) {
+          <tr>
+            <td><code>\{{ {{entity.variableName}}.id }}</code></td>
+{{#each entity.fields}}
+            <td>
+{{#if (eq typescriptType "boolean")}}
+{{#if required}}
+              \{{ {{../entity.variableName}}.{{name}} ? 'Yes' : 'No' }}
+{{else}}
+              \{{ {{../entity.variableName}}.{{name}} === undefined ? '—' : {{../entity.variableName}}.{{name}} ? 'Yes' : 'No' }}
+{{/if}}
+{{else}}
+{{#if required}}
+              \{{ {{../entity.variableName}}.{{name}} }}
+{{else}}
+              \{{ {{../entity.variableName}}.{{name}} ?? '—' }}
+{{/if}}
+{{/if}}
+            </td>
+{{/each}}
+            <td class="row-actions">
+              <a [routerLink]="['/{{entity.routeName}}', {{entity.variableName}}.id]">View</a>
+              <a [routerLink]="['/{{entity.routeName}}', {{entity.variableName}}.id, 'edit']">Edit</a>
+              <button type="button" (click)="remove({{entity.variableName}})">Delete</button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

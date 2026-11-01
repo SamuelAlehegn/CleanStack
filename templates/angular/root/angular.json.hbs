@@ -11,7 +11,7 @@
       "schematics": {
         "@schematics/angular:component": {
           "standalone": true,
-          "style": "css"
+          "style": "scss"
         }
       },
       "architect": {
@@ -21,7 +21,7 @@
             "browser": "src/main.ts",
             "index": "src/index.html",
             "tsConfig": "tsconfig.app.json",
-            "styles": ["src/styles.css"],
+            "styles": ["src/styles.scss"],
             "outputPath": "dist/{{kebabCase project.name}}/browser"
           },
           "configurations": {
