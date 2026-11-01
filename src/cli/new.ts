@@ -1,26 +1,19 @@
 import { execFileSync } from 'node:child_process';
 import { confirm, input as inputPrompt, select } from '@inquirer/prompts';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { ConfigLoader, CliOptionError, parseCommandLineOptions } from '../core/config-loader.js';
-import type { ProjectConfig } from '../core/config.js';
-import { buildEntityModels } from '../core/entity-model.js';
+import { JAVA_PACKAGE_PATTERN, type ProjectConfig } from '../core/config.js';
 import { EntityParser } from '../core/entity-parser.js';
+import {
+  kebabCase,
+  renderManifest,
+  templateContext,
+  withProjectSuffix,
+} from '../templates/manifest.js';
 import { TemplateEngine } from '../templates/template-engine.js';
 import { FileExistsError, FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
 import { isMissingPath } from '../utils/path-safety.js';
 import type { Logger } from '../utils/logger.js';
-
-interface ManifestEntry {
-  template: string;
-  destination: string;
-  when?: Record<string, unknown>;
-  forEach?: 'entities';
-}
-
-interface TemplateManifest {
-  files: ManifestEntry[];
-}
 
 interface NewCommandOptions {
   cwd?: string;
@@ -35,8 +28,6 @@ const defaults = {
   frontend: true,
   docker: false,
 } as const;
-const JAVA_PACKAGE_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
-
 export async function runNewCommand(args: string[], options: NewCommandOptions): Promise<void> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const { interactive, yes, initializeGit, includeEntities, configArgs } =
@@ -115,7 +106,7 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
   const uiDirectory = `${kebabCase(project.name)}-ui`;
   if (project.options.frontend) {
     await projectRootFs.createDirectory(uiDirectory);
-    const uiProject = withProjectSuffix(project, 'ui');
+    const uiProject = withProjectSuffix(generationProject, 'ui');
     await renderManifest(
       'angular',
       uiProject,
@@ -146,90 +137,6 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
         ]),
   ];
   options.logger.info(`Next steps:\n  ${nextSteps.join('\n  ')}`);
-}
-
-function withProjectSuffix(project: ProjectConfig, suffix: 'backend' | 'ui'): ProjectConfig {
-  return { ...project, name: `${kebabCase(project.name)}-${suffix}` };
-}
-
-function templateContext(project: ProjectConfig): Record<string, unknown> {
-  const entities = buildEntityModels(project.entities).map((entity, index) => ({
-    ...entity,
-    migrationVersion: index + 2,
-  }));
-  return {
-    project: { ...project, entities },
-    ...project,
-    entities,
-    ...templateAliases(project),
-  } as unknown as Record<string, unknown>;
-}
-
-function templateAliases(project: ProjectConfig): Record<string, unknown> {
-  const words = project.name.split(/[^A-Za-z0-9]+/).filter(Boolean);
-  const applicationName = words.map((word) => word[0]!.toUpperCase() + word.slice(1)).join('');
-  return { ApplicationName: applicationName };
-}
-
-function kebabCase(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
-    .join('-')
-    .toLowerCase();
-}
-
-async function renderManifest(
-  templateSet: string,
-  project: ProjectConfig,
-  context: Record<string, unknown>,
-  engine: TemplateEngine,
-  output: FileSystemService,
-  filesystemLogger: FileSystemLogger,
-): Promise<void> {
-  const manifestText = await outputManifestReader(templateSet, filesystemLogger);
-  const manifest = JSON.parse(manifestText) as TemplateManifest;
-  for (const entry of manifest.files) {
-    if (
-      entry.when &&
-      !Object.entries(entry.when).every(([key, value]) => getCondition(project, key) === value)
-    )
-      continue;
-    const items = entry.forEach === 'entities' ? (context.entities as unknown[]) : [undefined];
-    for (const item of items) {
-      const entryContext = item === undefined ? context : { ...context, entity: item };
-      const contents = await engine.render(`${templateSet}/${entry.template}`, entryContext);
-      const destination = entry.destination
-        .replaceAll('{{package}}', project.packageName.replaceAll('.', '/'))
-        .replaceAll('{{ApplicationName}}', String(context.ApplicationName))
-        .replace(/{{entity\.([A-Za-z][A-Za-z0-9]*)}}/g, (_match, key: string) => {
-          const entity = item as Record<string, unknown>;
-          return String(entity[key] ?? '');
-        });
-      const parent = path.posix.dirname(destination);
-      if (parent !== '.') await output.createDirectory(parent);
-      await output.writeFile(destination, contents);
-    }
-  }
-}
-
-async function outputManifestReader(
-  templateSet: string,
-  filesystemLogger: FileSystemLogger,
-): Promise<string> {
-  const fs = new FileSystemService({
-    rootDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../templates'),
-    logger: filesystemLogger,
-  });
-  return fs.readFile(`${templateSet}/manifest.json`);
-}
-
-function getCondition(project: ProjectConfig, key: string): unknown {
-  return key in project.options
-    ? project.options[key as keyof ProjectConfig['options']]
-    : (project as unknown as Record<string, unknown>)[key];
 }
 
 function mapFrontendOption(input: Record<string, unknown>): Record<string, unknown> {

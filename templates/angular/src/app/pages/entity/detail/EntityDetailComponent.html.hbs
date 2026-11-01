@@ -1,0 +1,71 @@
+@if (loading()) {
+  <p class="state-message">Loading {{lowercase entity.name}}…</p>
+} @else if (error()) {
+  <div class="state-message state-error">
+    <p>\{{ error() }}</p>
+    <a class="text-link" routerLink="/{{entity.routeName}}">Back to {{entity.pluralVariableName}}</a>
+  </div>
+} @else {
+  @if (selected(); as {{entity.variableName}}) {
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">{{entity.pluralName}}</p>
+        <h1>{{entity.name}} details</h1>
+        <p class="page-description">Review the stored values for this {{lowercase entity.name}}.</p>
+      </div>
+      <div class="heading-actions">
+        <a class="secondary-button" routerLink="/{{entity.routeName}}">Back</a>
+        <a class="primary-button" [routerLink]="['/{{entity.routeName}}', {{entity.variableName}}.id, 'edit']">Edit</a>
+      </div>
+    </section>
+
+    <section class="detail-card">
+      <dl class="detail-list">
+        <div class="detail-row">
+          <dt>ID</dt>
+          <dd><code>\{{ {{entity.variableName}}.id }}</code></dd>
+        </div>
+{{#each entity.fields}}
+        <div class="detail-row">
+          <dt>{{capitalize name}}</dt>
+          <dd>
+{{#if (eq typescriptType "boolean")}}
+{{#if required}}
+            \{{ {{../entity.variableName}}.{{name}} ? 'Yes' : 'No' }}
+{{else}}
+            \{{ {{../entity.variableName}}.{{name}} === undefined ? '—' : {{../entity.variableName}}.{{name}} ? 'Yes' : 'No' }}
+{{/if}}
+{{else}}
+{{#if required}}
+            \{{ {{../entity.variableName}}.{{name}} }}
+{{else}}
+            \{{ {{../entity.variableName}}.{{name}} ?? '—' }}
+{{/if}}
+{{/if}}
+          </dd>
+        </div>
+{{/each}}
+{{#each entity.relations}}
+        <div class="detail-row">
+          <dt>{{capitalize variableName}}</dt>
+          <dd>
+{{#if collection}}
+            \{{ {{../entity.variableName}}.{{labelField}}.length ? {{../entity.variableName}}.{{labelField}}.join(', ') : '—' }}
+{{else}}
+            \{{ {{../entity.variableName}}.{{labelField}} ?? '—' }}
+{{/if}}
+          </dd>
+        </div>
+{{/each}}
+      </dl>
+    </section>
+
+    <section class="danger-zone">
+      <div>
+        <h2>Delete this {{lowercase entity.name}}</h2>
+        <p>This action cannot be undone.</p>
+      </div>
+      <button type="button" (click)="remove()">Delete {{entity.name}}</button>
+    </section>
+  }
+}

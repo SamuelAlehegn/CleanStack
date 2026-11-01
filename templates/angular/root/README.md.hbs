@@ -1,6 +1,6 @@
 # {{pascalCase project.name}}
 
-A small, standalone Angular application with a feature-first structure, signal-based UI state, and a development proxy for the Spring Boot API.
+A small, standalone Angular application with a page-first structure, signal-based UI state, SCSS styles, and a development proxy for the Spring Boot API.
 
 ## Requirements
 
@@ -28,9 +28,16 @@ The production build is written to `dist/{{kebabCase project.name}}/browser`.
 
 ```text
 src/app/
-  api/                 OpenAPI client placeholder
-  core/                Application-wide services and layout
-  features/            Route-level product features
+  core/                Application-wide providers and infrastructure
+  directives/          Reusable attribute and structural directives
+  guards/              Route guards
+  interceptors/        HTTP interceptors
+  layout/              Application shell and layout components
+  models/              API and domain models
+  pages/               Route-level pages
+  services/            HTTP and application services
+  shared/              Reusable components, pipes, and utilities
+  app.component.ts     Root component
   app.config.ts        Application providers
   app.routes.ts        Lazy-loaded routes
 ```
@@ -39,4 +46,4 @@ Angular components are standalone. The app uses Angular signals and built-in `@i
 
 ## API client
 
-See `src/app/api/README.md` for the planned OpenAPI-generated client location and regeneration command.
+See `src/app/services/api/README.md` for the planned OpenAPI-generated client location and regeneration command.

@@ -1,14 +1,6 @@
 package {{project.packageName}}.domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import java.util.UUID;
-{{#each entity.fields}}
-{{#if (eq javaType "BigDecimal")}}import java.math.BigDecimal;{{/if}}{{#if (eq javaType "BigInteger")}}import java.math.BigInteger;{{/if}}{{#if (eq javaType "Instant")}}import java.time.Instant;{{/if}}{{#if (eq javaType "LocalDate")}}import java.time.LocalDate;{{/if}}{{#if (eq javaType "LocalTime")}}import java.time.LocalTime;{{/if}}{{#if (eq javaType "LocalDateTime")}}import java.time.LocalDateTime;{{/if}}{{#if (eq javaType "OffsetDateTime")}}import java.time.OffsetDateTime;{{/if}}
+{{#each entity.domainImports}}import {{this}};
 {{/each}}
 
 /** JPA entity and domain model for {{entity.className}}. */
@@ -23,15 +15,47 @@ public class {{entity.className}} {
     @Column(name = "{{columnName}}"{{#if required}}, nullable = false{{/if}}{{#if unique}}, unique = true{{/if}}{{#if maxLength}}, length = {{maxLength}}{{/if}})
     private {{javaType}} {{name}};
 {{/each}}
+{{#each entity.relations}}
+{{#if (eq type "many-to-one")}}
+    @ManyToOne{{#if required}}(optional = false){{/if}}
+    @JoinColumn(name = "{{joinColumnName}}"{{#if required}}, nullable = false{{/if}})
+    private {{targetEntity.className}} {{variableName}};
+{{else if (eq type "one-to-one")}}
+{{#if owningSide}}
+    @OneToOne{{#if required}}(optional = false){{/if}}
+    @JoinColumn(name = "{{joinColumnName}}"{{#if required}}, nullable = false{{/if}}, unique = true)
+{{else}}
+    @OneToOne(mappedBy = "{{mappedByField}}")
+{{/if}}
+    private {{targetEntity.className}} {{variableName}};
+{{else if (eq type "one-to-many")}}
+    @OneToMany(mappedBy = "{{mappedByField}}", fetch = FetchType.EAGER)
+    private List<{{targetEntity.className}}> {{variableName}} = new ArrayList<>();
+{{else if (eq type "many-to-many")}}
+{{#if owningSide}}
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "{{joinTableName}}",
+            joinColumns = @JoinColumn(name = "{{joinTableJoinColumn}}"),
+            inverseJoinColumns = @JoinColumn(name = "{{joinTableInverseColumn}}"))
+{{else}}
+    @ManyToMany(mappedBy = "{{mappedByField}}", fetch = FetchType.EAGER)
+{{/if}}
+    private List<{{targetEntity.className}}> {{variableName}} = new ArrayList<>();
+{{/if}}
+{{/each}}
 
     protected {{entity.className}}() {
         // Required by JPA.
     }
 
-    public {{entity.className}}(UUID id{{#each entity.fields}}, {{javaType}} {{name}}{{/each}}) {
+    public {{entity.className}}(UUID id{{#each entity.fields}}, {{javaType}} {{name}}{{/each}}{{#each entity.owningRelations}}, {{javaType}} {{variableName}}{{/each}}) {
         this.id = id;
 {{#each entity.fields}}
         this.{{name}} = {{name}};
+{{/each}}
+{{#each entity.owningRelations}}
+        this.{{variableName}} = {{variableName}};
 {{/each}}
     }
 
@@ -39,6 +63,9 @@ public class {{entity.className}} {
     public void setId(UUID id) { this.id = id; }
 {{#each entity.fields}}
     public {{javaType}} get{{capitalize name}}() { return {{name}}; }
+{{/each}}
+{{#each entity.relations}}
+    public {{javaType}} get{{capitalize variableName}}() { return {{variableName}}; }
 {{/each}}
 
     // <cleanstack:protected id="domain-{{entity.variableName}}">

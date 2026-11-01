@@ -26,6 +26,78 @@ To run the greeting command directly:
 node dist/cli/index.js hello
 ```
 
+## Generating an entity
+
+The `entity` command adds an entity to a project that was already generated with
+`cleanstack new`. Run it from the project root, from the backend or frontend
+directory, or from a directory that contains exactly one generated project.
+
+```sh
+cleanstack entity Product
+cleanstack generate entity Product
+cleanstack g e Product
+```
+
+By default the command reads `entities/Product.yaml` (or `.yml` / `.json`) and
+generates both the Spring Boot and Angular artifacts. It also searches for the
+descriptor in `<project>/entities` and in `entities/` next to the project.
+
+To define an entity without a descriptor, pass one or more `--field` options:
+
+```sh
+cleanstack entity Product \
+  --field 'name:String:required:maxLength=120' \
+  --field 'price:BigDecimal:required:min=0' \
+  --field 'active:boolean:default=true'
+```
+
+Generate only one side with `--backend` or `--frontend`, and skip a side with
+`--no-backend` or `--no-frontend`. Other options:
+
+| Option                    | Meaning                                             |
+| ------------------------- | --------------------------------------------------- |
+| `-d, --descriptor <path>` | Use a specific descriptor file.                     |
+| `--field <spec>`          | Inline field definition; repeatable.                |
+| `--table <name>`          | Table name for an inline entity.                    |
+| `--package <name>`        | Override the detected Java package.                 |
+| `--force`                 | Overwrite existing generated files.                 |
+| `--dry-run`               | Report what would be written without writing files. |
+
+The command refuses to overwrite existing entity files unless `--force` is
+used. It adds the Angular routes and navigation link automatically and picks
+the next Flyway migration version from the existing migrations. See
+[docs/entity-descriptor.md](docs/entity-descriptor.md) for the descriptor
+format and the inline field syntax.
+
+### Relations
+
+Descriptors support `ManyToOne`, `OneToMany`, `ManyToMany` (with a join table),
+and `OneToOne` relations. Generated entities use the matching JPA annotations,
+migrations add foreign keys or join tables, requests accept relation ids, and
+responses include readable labels. Angular forms render selects for the owning
+side of each relation.
+
+```yaml
+name: Product
+fields:
+  - name: name
+    type: String
+    required: true
+relations:
+  - type: ManyToOne
+    target: Category
+    field: category
+    required: true
+  - type: ManyToMany
+    target: Tag
+    field: tags
+```
+
+Related descriptors must be present in `entities/`, and the target entity
+should be generated before the entity that owns the foreign key or join table.
+See [docs/entity-descriptor.md](docs/entity-descriptor.md#relations) for the
+owning and inverse side rules.
+
 ## Development
 
 ```sh

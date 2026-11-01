@@ -1,19 +1,63 @@
 import type { Routes } from '@angular/router';
 
+import { AppLayoutComponent } from './layout/app-layout/app-layout.component';
+
 export const routes: Routes = [
   {
     path: '',
-    title: 'Overview',
-    loadComponent: () =>
-      import('./features/home/pages/home-page').then((module) => module.HomePage),
-  },
-  {
-    path: 'settings',
-    title: 'Settings',
-    loadComponent: () =>
-      import('./features/settings/pages/settings-page').then(
-        (module) => module.SettingsPage,
-      ),
+    component: AppLayoutComponent,
+    children: [
+      {
+        path: '',
+        title: 'Overview',
+        loadComponent: () =>
+          import('./pages/home/home.component').then((module) => module.HomeComponent),
+      },
+      {
+        path: 'settings',
+        title: 'Settings',
+        loadComponent: () =>
+          import('./pages/settings/settings.component').then(
+            (module) => module.SettingsComponent,
+          ),
+      },
+      // <cleanstack:entity-routes>
+{{#each entities}}
+      {
+        path: '{{routeName}}',
+        title: '{{pluralName}}',
+        loadComponent: () =>
+          import('./pages/{{routeName}}/list/list.component').then(
+            (module) => module.{{className}}ListComponent,
+          ),
+      },
+      {
+        path: '{{routeName}}/new',
+        title: 'New {{name}}',
+        loadComponent: () =>
+          import('./pages/{{routeName}}/form/form.component').then(
+            (module) => module.{{className}}FormComponent,
+          ),
+      },
+      {
+        path: '{{routeName}}/:id',
+        title: '{{name}} details',
+        loadComponent: () =>
+          import('./pages/{{routeName}}/detail/detail.component').then(
+            (module) => module.{{className}}DetailComponent,
+          ),
+      },
+      {
+        path: '{{routeName}}/:id/edit',
+        title: 'Edit {{name}}',
+        loadComponent: () =>
+          import('./pages/{{routeName}}/form/form.component').then(
+            (module) => module.{{className}}FormComponent,
+          ),
+      },
+{{/each}}
+      // </cleanstack:entity-routes>
+    ],
   },
   { path: '**', redirectTo: '' },
 ];

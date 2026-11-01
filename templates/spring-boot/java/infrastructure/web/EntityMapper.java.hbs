@@ -1,18 +1,42 @@
 package {{project.packageName}}.web.mapper;
 
 import {{project.packageName}}.domain.{{entity.className}};
-import {{project.packageName}}.web.dto.{{entity.className}}Request;
+{{#each entity.mapperRepositories}}import {{../project.packageName}}.repository.{{className}}Repository;
+{{/each}}{{#if entity.hasOwningCollections}}import java.util.List;
+{{/if}}import {{project.packageName}}.web.dto.{{entity.className}}Request;
 import {{project.packageName}}.web.dto.{{entity.className}}Response;
 import org.springframework.stereotype.Component;
 
 /** Maps HTTP DTOs to and from {{entity.className}}. */
 @Component
 public class {{entity.className}}Mapper {
-    public {{entity.className}} toEntity({{entity.className}}Request request) {
-        return new {{entity.className}}(null{{#each entity.fields}}, request.{{name}}(){{/each}});
+{{#if entity.mapperRepositories}}
+{{#each entity.mapperRepositories}}
+    private final {{className}}Repository {{variableName}};
+{{/each}}
+
+    public {{entity.className}}Mapper({{#each entity.mapperRepositories}}{{className}}Repository {{variableName}}{{#unless @last}}, {{/unless}}{{/each}}) {
+{{#each entity.mapperRepositories}}
+        this.{{variableName}} = {{variableName}};
+{{/each}}
     }
+
+{{/if}}
+    public {{entity.className}} toEntity({{entity.className}}Request request) {
+        return new {{entity.className}}(
+                null{{#each entity.fields}},
+                request.{{name}}(){{/each}}{{#each entity.owningRelations}},
+                {{#if collection}}request.{{idField}}() == null ? List.of() : {{targetEntity.variableName}}Repository.findAllById(request.{{idField}}()){{else if required}}{{targetEntity.variableName}}Repository.getReferenceById(request.{{idField}}()){{else}}request.{{idField}}() == null ? null : {{targetEntity.variableName}}Repository.getReferenceById(request.{{idField}}()){{/if}}{{/each}});
+    }
+
     public {{entity.className}}Response toResponse({{entity.className}} entity) {
-        return new {{entity.className}}Response(entity.getId(){{#each entity.fields}}, entity.get{{capitalize name}}(){{/each}});
+        return new {{entity.className}}Response(
+                entity.getId(){{#each entity.fields}},
+                entity.get{{capitalize name}}(){{/each}}{{#each entity.relations}}{{#if collection}},
+                entity.get{{capitalize variableName}}().stream().map(item -> item.getId()).toList(),
+                entity.get{{capitalize variableName}}().stream().map(item -> {{#if targetEntity.labelGetter}}item.{{targetEntity.labelGetter}}(){{else}}item.getId().toString(){{/if}}).toList(){{else}},
+                entity.get{{capitalize variableName}}() == null ? null : entity.get{{capitalize variableName}}().getId(),
+                entity.get{{capitalize variableName}}() == null ? null : entity.get{{capitalize variableName}}().{{#if targetEntity.labelGetter}}{{targetEntity.labelGetter}}(){{else}}getId().toString(){{/if}}{{/if}}{{/each}});
     }
 
     // <cleanstack:protected id="web-mapper-{{entity.variableName}}">

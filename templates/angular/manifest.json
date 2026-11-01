@@ -1,6 +1,6 @@
 {
   "name": "angular",
-  "description": "A minimal Angular 22 standalone application with signal-driven features and routing.",
+  "description": "A minimal Angular 22 standalone application with a page-first structure, signals, and routing.",
   "files": [
     { "template": "root/package.json.hbs", "destination": "package.json" },
     { "template": "root/angular.json.hbs", "destination": "angular.json" },
@@ -10,7 +10,7 @@
     { "template": "root/README.md.hbs", "destination": "README.md" },
     { "template": "src/index.html.hbs", "destination": "src/index.html" },
     { "template": "src/main.ts.hbs", "destination": "src/main.ts" },
-    { "template": "src/styles.css.hbs", "destination": "src/styles.css" },
+    { "template": "src/styles.scss.hbs", "destination": "src/styles.scss" },
     {
       "template": "src/environments/environment.ts.hbs",
       "destination": "src/environments/environment.ts"
@@ -22,41 +22,136 @@
     { "template": "src/proxy.conf.json.hbs", "destination": "src/proxy.conf.json" },
     { "template": "src/app/app.config.ts.hbs", "destination": "src/app/app.config.ts" },
     { "template": "src/app/app.routes.ts.hbs", "destination": "src/app/app.routes.ts" },
-    { "template": "src/app/app.ts.hbs", "destination": "src/app/app.ts" },
-    { "template": "src/app/app.html.hbs", "destination": "src/app/app.html" },
-    { "template": "src/app/app.css.hbs", "destination": "src/app/app.css" },
     {
-      "template": "src/app/features/home/pages/home-page.ts.hbs",
-      "destination": "src/app/features/home/pages/home-page.ts"
+      "template": "src/app/app.component.ts.hbs",
+      "destination": "src/app/app.component.ts"
     },
     {
-      "template": "src/app/features/home/pages/home-page.html.hbs",
-      "destination": "src/app/features/home/pages/home-page.html"
+      "template": "src/app/app.component.html.hbs",
+      "destination": "src/app/app.component.html"
     },
     {
-      "template": "src/app/features/home/pages/home-page.css.hbs",
-      "destination": "src/app/features/home/pages/home-page.css"
+      "template": "src/app/app.component.scss.hbs",
+      "destination": "src/app/app.component.scss"
     },
     {
-      "template": "src/app/features/settings/pages/settings-page.ts.hbs",
-      "destination": "src/app/features/settings/pages/settings-page.ts"
+      "template": "src/app/app.component.spec.ts.hbs",
+      "destination": "src/app/app.component.spec.ts"
     },
     {
-      "template": "src/app/features/settings/pages/settings-page.html.hbs",
-      "destination": "src/app/features/settings/pages/settings-page.html"
+      "template": "src/app/layout/app-layout/app-layout.component.ts.hbs",
+      "destination": "src/app/layout/app-layout/app-layout.component.ts"
     },
     {
-      "template": "src/app/features/settings/pages/settings-page.css.hbs",
-      "destination": "src/app/features/settings/pages/settings-page.css"
+      "template": "src/app/layout/app-layout/app-layout.component.html.hbs",
+      "destination": "src/app/layout/app-layout/app-layout.component.html"
     },
     {
-      "template": "src/app/core/README.md.hbs",
-      "destination": "src/app/core/README.md"
+      "template": "src/app/layout/app-layout/app-layout.component.scss.hbs",
+      "destination": "src/app/layout/app-layout/app-layout.component.scss"
     },
-    { "template": "src/app/api/README.md.hbs", "destination": "src/app/api/README.md" },
     {
-      "template": "src/app/api/generated/.gitkeep.hbs",
-      "destination": "src/app/api/generated/.gitkeep"
+      "template": "src/app/pages/home/home.component.ts.hbs",
+      "destination": "src/app/pages/home/home.component.ts"
+    },
+    {
+      "template": "src/app/pages/home/home.component.html.hbs",
+      "destination": "src/app/pages/home/home.component.html"
+    },
+    {
+      "template": "src/app/pages/home/home.component.scss.hbs",
+      "destination": "src/app/pages/home/home.component.scss"
+    },
+    {
+      "template": "src/app/pages/settings/settings.component.ts.hbs",
+      "destination": "src/app/pages/settings/settings.component.ts"
+    },
+    {
+      "template": "src/app/pages/settings/settings.component.html.hbs",
+      "destination": "src/app/pages/settings/settings.component.html"
+    },
+    {
+      "template": "src/app/pages/settings/settings.component.scss.hbs",
+      "destination": "src/app/pages/settings/settings.component.scss"
+    },
+    { "template": "src/app/core/README.md.hbs", "destination": "src/app/core/README.md" },
+    {
+      "template": "src/app/directives/README.md.hbs",
+      "destination": "src/app/directives/README.md"
+    },
+    { "template": "src/app/guards/README.md.hbs", "destination": "src/app/guards/README.md" },
+    {
+      "template": "src/app/interceptors/README.md.hbs",
+      "destination": "src/app/interceptors/README.md"
+    },
+    { "template": "src/app/shared/README.md.hbs", "destination": "src/app/shared/README.md" },
+    { "template": "src/app/models/README.md.hbs", "destination": "src/app/models/README.md" },
+    {
+      "template": "src/app/services/README.md.hbs",
+      "destination": "src/app/services/README.md"
+    },
+    {
+      "template": "src/app/services/api/README.md.hbs",
+      "destination": "src/app/services/api/README.md"
+    },
+    {
+      "template": "src/app/services/api/generated/.gitkeep.hbs",
+      "destination": "src/app/services/api/generated/.gitkeep"
+    },
+    {
+      "template": "src/app/models/Entity.ts.hbs",
+      "destination": "src/app/models/{{entity.variableName}}.ts",
+      "forEach": "entities"
+    },
+    {
+      "template": "src/app/services/EntityService.ts.hbs",
+      "destination": "src/app/services/{{entity.variableName}}.service.ts",
+      "forEach": "entities"
+    },
+    {
+      "template": "src/app/pages/entity/list/EntityListComponent.ts.hbs",
+      "destination": "src/app/pages/{{entity.routeName}}/list/list.component.ts",
+      "forEach": "entities"
+    },
+    {
+      "template": "src/app/pages/entity/list/EntityListComponent.html.hbs",
+      "destination": "src/app/pages/{{entity.routeName}}/list/list.component.html",
+      "forEach": "entities"
+    },
+    {
+      "template": "src/app/pages/entity/list/EntityListComponent.scss.hbs",
+      "destination": "src/app/pages/{{entity.routeName}}/list/list.component.scss",
+      "forEach": "entities"
+    },
+    {
+      "template": "src/app/pages/entity/detail/EntityDetailComponent.ts.hbs",
+      "destination": "src/app/pages/{{entity.routeName}}/detail/detail.component.ts",
+      "forEach": "entities"
+    },
+    {
+      "template": "src/app/pages/entity/detail/EntityDetailComponent.html.hbs",
+      "destination": "src/app/pages/{{entity.routeName}}/detail/detail.component.html",
+      "forEach": "entities"
+    },
+    {
+      "template": "src/app/pages/entity/detail/EntityDetailComponent.scss.hbs",
+      "destination": "src/app/pages/{{entity.routeName}}/detail/detail.component.scss",
+      "forEach": "entities"
+    },
+    {
+      "template": "src/app/pages/entity/form/EntityFormComponent.ts.hbs",
+      "destination": "src/app/pages/{{entity.routeName}}/form/form.component.ts",
+      "forEach": "entities"
+    },
+    {
+      "template": "src/app/pages/entity/form/EntityFormComponent.html.hbs",
+      "destination": "src/app/pages/{{entity.routeName}}/form/form.component.html",
+      "forEach": "entities"
+    },
+    {
+      "template": "src/app/pages/entity/form/EntityFormComponent.scss.hbs",
+      "destination": "src/app/pages/{{entity.routeName}}/form/form.component.scss",
+      "forEach": "entities"
     }
   ]
 }

@@ -1,0 +1,474 @@
+import path from 'node:path';
+import { JAVA_PACKAGE_PATTERN, type ProjectConfig } from '../core/config.js';
+import { CliOptionError } from '../core/config-loader.js';
+import type { EntityModel } from '../core/entity-model.js';
+import { buildInlineEntity, findEntityDescriptor } from '../core/entity-input.js';
+import {
+  addEntityNavLink,
+  addEntityRoutes,
+  hasEntityNavLink,
+  hasEntityRoutes,
+} from '../core/frontend-updates.js';
+import { locateGeneratedProject } from '../core/project.js';
+import {
+  planManifest,
+  renderManifest,
+  templateAliases,
+  type ManifestEntry,
+  type ManifestPlanItem,
+} from '../templates/manifest.js';
+import { TemplateEngine } from '../templates/template-engine.js';
+import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
+import type { Logger } from '../utils/logger.js';
+
+export interface EntityCommandOptions {
+  cwd?: string;
+  logger: Logger;
+}
+
+interface EntityCommandArguments {
+  name?: string;
+  descriptor?: string;
+  fields: string[];
+  tableName?: string;
+  packageName?: string;
+  backend?: boolean;
+  frontend?: boolean;
+  force: boolean;
+  dryRun: boolean;
+  help: boolean;
+}
+
+export const ENTITY_USAGE = `Usage: cleanstack entity <name> [options]
+       cleanstack generate entity <name> [options]
+       cleanstack g e <name> [options]
+
+Reads entities/<name>.yaml (or .yml / .json), or builds an entity from --field options.
+
+Options:
+  -d, --descriptor <path>   Use a specific entity descriptor
+  --field <spec>            Inline field: name:type[:required][:maxLength=100]
+                            Repeatable. Use a JSON object for advanced options.
+  --table <name>            Table name for an inline entity
+  --package <name>          Override the detected Java package
+  --backend                 Generate backend artifacts only
+  --no-backend              Skip backend artifacts
+  --frontend                Generate frontend artifacts only
+  --no-frontend             Skip frontend artifacts
+  --force                   Overwrite existing generated files
+  --dry-run                 Show what would be generated without writing
+  -h, --help                Show this help`;
+
+export async function runEntityCommand(
+  args: string[],
+  options: EntityCommandOptions,
+): Promise<void> {
+  const parsed = parseEntityCommandArguments(args);
+  if (parsed.help) {
+    options.logger.info(ENTITY_USAGE);
+    return;
+  }
+
+  const name = parsed.name!;
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  const project = await locateGeneratedProject({ cwd });
+
+  let entity: EntityModel;
+  let source: string;
+  if (parsed.fields.length > 0) {
+    entity = buildInlineEntity(name, parsed.fields, parsed.tableName);
+    source = 'inline options';
+  } else {
+    const descriptor = await findEntityDescriptor({
+      name,
+      cwd,
+      projectRoot: project.rootDir,
+      ...(parsed.descriptor === undefined ? {} : { descriptor: parsed.descriptor }),
+    });
+    if (!descriptor) {
+      throw new CliOptionError(
+        `No descriptor was found for "${name}". Add entities/${name}.yaml or pass --field <name:type>.`,
+      );
+    }
+    entity = descriptor.entity;
+    source = descriptor.descriptorPath;
+  }
+
+  const backendAvailable = project.backend !== undefined;
+  const frontendAvailable = project.frontend !== undefined;
+  const { generateBackend, generateFrontend } = resolveSides(
+    parsed,
+    backendAvailable,
+    frontendAvailable,
+  );
+
+  if (!generateBackend && !generateFrontend) {
+    throw new CliOptionError('Nothing to generate. Enable the backend or frontend with a flag.');
+  }
+  if (generateBackend && !project.backend) {
+    throw new CliOptionError(
+      'No Spring Boot project was found. Remove --backend or run inside a generated backend project.',
+    );
+  }
+  if (generateFrontend && !project.frontend) {
+    throw new CliOptionError(
+      'No Angular project was found. Remove --frontend or run inside a generated frontend project.',
+    );
+  }
+
+  const packageName = parsed.packageName ?? project.backend?.packageName;
+  if (parsed.packageName !== undefined && !JAVA_PACKAGE_PATTERN.test(parsed.packageName)) {
+    throw new CliOptionError(
+      `Option "--package" must be a valid Java package, received "${parsed.packageName}".`,
+    );
+  }
+  if (generateBackend && packageName === undefined) {
+    throw new CliOptionError(
+      'Could not detect the Java package. Pass --package <name> to set it explicitly.',
+    );
+  }
+
+  const projectName = path.basename(project.rootDir);
+  const projectConfig: ProjectConfig = {
+    name: projectName,
+    packageName: packageName ?? 'com.example',
+    entities: [],
+    options: {
+      backend: generateBackend,
+      frontend: generateFrontend,
+      database: 'postgresql',
+      auth: 'none',
+      buildTool: project.backend?.buildTool ?? 'maven',
+      docker: false,
+      dryRun: parsed.dryRun,
+      outputDir: '.',
+    },
+  };
+  const engine = new TemplateEngine({ projectRoot: project.workspaceRoot });
+  const filesystemLogger: FileSystemLogger = {
+    log: (action) =>
+      options.logger.debug(`[filesystem] ${action.operation} ${action.path}: ${action.status}`),
+  };
+
+  const backendFileSystem = project.backend
+    ? new FileSystemService({
+        rootDir: project.backend.directory,
+        logger: filesystemLogger,
+        dryRun: parsed.dryRun,
+      })
+    : undefined;
+  const migrationVersion =
+    backendFileSystem === undefined
+      ? 2
+      : await nextMigrationVersion(backendFileSystem, entity.tableName);
+  const entityContext = { ...entity, migrationVersion };
+  const context = {
+    project: { ...projectConfig, entities: [entityContext] },
+    ...projectConfig,
+    entities: [entityContext],
+    ...templateAliases(projectConfig),
+  } as unknown as Record<string, unknown>;
+  const entityEntries = (entry: ManifestEntry): boolean => entry.forEach === 'entities';
+
+  const backendProject: ProjectConfig | undefined = project.backend
+    ? { ...projectConfig, name: path.basename(project.backend.directory) }
+    : undefined;
+  const frontendProject: ProjectConfig | undefined = project.frontend
+    ? { ...projectConfig, name: path.basename(project.frontend.directory) }
+    : undefined;
+  const frontendFileSystem = project.frontend
+    ? new FileSystemService({
+        rootDir: project.frontend.directory,
+        logger: filesystemLogger,
+        dryRun: parsed.dryRun,
+      })
+    : undefined;
+
+  const backendPlan =
+    generateBackend && backendProject && backendFileSystem
+      ? await planManifest('spring-boot', backendProject, context, filesystemLogger, entityEntries)
+      : undefined;
+  const frontendPlan =
+    generateFrontend && frontendProject && frontendFileSystem
+      ? await planManifest('angular', frontendProject, context, filesystemLogger, entityEntries)
+      : undefined;
+
+  if (backendPlan && backendFileSystem) {
+    await assertNoExistingFiles(backendFileSystem, backendPlan, parsed.force);
+  }
+  if (frontendPlan && frontendFileSystem) {
+    await assertNoExistingFiles(frontendFileSystem, frontendPlan, parsed.force);
+  }
+
+  if (backendPlan && backendProject && backendFileSystem) {
+    await renderManifest(
+      'spring-boot',
+      backendProject,
+      context,
+      engine,
+      backendFileSystem,
+      filesystemLogger,
+      { filter: entityEntries, overwrite: parsed.force },
+    );
+  }
+
+  if (frontendPlan && frontendProject && frontendFileSystem) {
+    await renderManifest(
+      'angular',
+      frontendProject,
+      context,
+      engine,
+      frontendFileSystem,
+      filesystemLogger,
+      { filter: entityEntries, overwrite: parsed.force },
+    );
+    await updateFrontendNavigation(frontendFileSystem, entity, options.logger);
+  }
+
+  const targets = [
+    generateBackend ? project.backend?.relativeDirectory : undefined,
+    generateFrontend ? project.frontend?.relativeDirectory : undefined,
+  ].filter((target): target is string => target !== undefined);
+  options.logger.success(`Generated ${entity.className} in ${targets.join(' and ')}.`);
+  options.logger.info(`Entity source: ${source}`);
+  if (parsed.dryRun) options.logger.info('Dry run: no files were written.');
+}
+
+/** Parses entity-command arguments into a small, testable shape. */
+export function parseEntityCommandArguments(args: string[]): EntityCommandArguments {
+  const result: EntityCommandArguments = {
+    fields: [],
+    force: false,
+    dryRun: false,
+    help: false,
+  };
+  const positionals: string[] = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]!;
+    if (token === '--') {
+      positionals.push(...args.slice(index + 1));
+      break;
+    }
+    if (!token.startsWith('-')) {
+      positionals.push(token);
+      continue;
+    }
+
+    const [flag, inlineValue] = splitOption(token);
+    switch (flag) {
+      case '--help':
+      case '-h':
+        rejectValue(flag, inlineValue);
+        result.help = true;
+        break;
+      case '--verbose':
+      case '-v':
+      case '--quiet':
+      case '-q':
+        break;
+      case '--force':
+        result.force = parseBooleanFlag(flag, inlineValue, true);
+        break;
+      case '--dry-run':
+        result.dryRun = parseBooleanFlag(flag, inlineValue, true);
+        break;
+      case '--backend':
+        setSide(result, 'backend', parseBooleanFlag(flag, inlineValue, true));
+        break;
+      case '--no-backend':
+        rejectValue(flag, inlineValue);
+        setSide(result, 'backend', false);
+        break;
+      case '--frontend':
+        setSide(result, 'frontend', parseBooleanFlag(flag, inlineValue, true));
+        break;
+      case '--no-frontend':
+        rejectValue(flag, inlineValue);
+        setSide(result, 'frontend', false);
+        break;
+      case '--descriptor':
+      case '-d': {
+        const [value, nextIndex] = readValue(flag, inlineValue, args, index);
+        result.descriptor = value;
+        index = nextIndex;
+        break;
+      }
+      case '--field': {
+        const [value, nextIndex] = readValue(flag, inlineValue, args, index);
+        result.fields.push(value);
+        index = nextIndex;
+        break;
+      }
+      case '--table':
+      case '--table-name': {
+        const [value, nextIndex] = readValue(flag, inlineValue, args, index);
+        result.tableName = value;
+        index = nextIndex;
+        break;
+      }
+      case '--package': {
+        const [value, nextIndex] = readValue(flag, inlineValue, args, index);
+        result.packageName = value;
+        index = nextIndex;
+        break;
+      }
+      default:
+        throw new CliOptionError(`Unknown option "${flag}" for the entity command.`);
+    }
+  }
+
+  if (positionals.length > 1) {
+    throw new CliOptionError(`Unexpected argument "${positionals[1]}".`);
+  }
+  if (positionals[0] !== undefined) result.name = positionals[0];
+
+  if (result.help) return result;
+  if (result.name === undefined || result.name.trim() === '') {
+    throw new CliOptionError(
+      'An entity name is required. Usage: cleanstack entity <name> [options]',
+    );
+  }
+  if (result.descriptor !== undefined && result.fields.length > 0) {
+    throw new CliOptionError('Use either --descriptor or --field options, not both.');
+  }
+  if (result.tableName !== undefined && result.fields.length === 0) {
+    throw new CliOptionError('Option "--table" requires at least one --field.');
+  }
+
+  return result;
+}
+
+async function updateFrontendNavigation(
+  fileSystem: FileSystemService,
+  entity: EntityModel,
+  logger: Logger,
+): Promise<void> {
+  const routesPath = 'src/app/app.routes.ts';
+  if (await fileSystem.exists(routesPath)) {
+    const routes = await fileSystem.readFile(routesPath);
+    if (hasEntityRoutes(routes, entity)) {
+      logger.debug(`Route for ${entity.routeName} already exists.`);
+    } else {
+      await fileSystem.writeFile(routesPath, addEntityRoutes(routes, entity), { overwrite: true });
+    }
+  } else {
+    logger.warn(`Could not find ${routesPath}; add the ${entity.routeName} route manually.`);
+  }
+
+  const layoutPath = 'src/app/layout/app-layout/app-layout.component.html';
+  if (await fileSystem.exists(layoutPath)) {
+    const layout = await fileSystem.readFile(layoutPath);
+    if (hasEntityNavLink(layout, entity)) {
+      logger.debug(`Navigation link for ${entity.routeName} already exists.`);
+    } else {
+      await fileSystem.writeFile(layoutPath, addEntityNavLink(layout, entity), {
+        overwrite: true,
+      });
+    }
+  } else {
+    logger.warn(
+      `Could not find ${layoutPath}; add the ${entity.routeName} navigation link manually.`,
+    );
+  }
+}
+
+async function assertNoExistingFiles(
+  fileSystem: FileSystemService,
+  plan: ManifestPlanItem[],
+  force: boolean,
+): Promise<void> {
+  if (force) return;
+
+  const existing: string[] = [];
+  for (const item of plan) {
+    if (await fileSystem.exists(item.destination)) existing.push(item.destination);
+  }
+  if (existing.length === 0) return;
+
+  throw new CliOptionError(
+    `Refusing to overwrite existing files:\n  ${existing.join('\n  ')}\nUse --force to regenerate them.`,
+  );
+}
+
+async function nextMigrationVersion(
+  fileSystem: FileSystemService,
+  tableName: string,
+): Promise<number> {
+  const directory = 'src/main/resources/db/migration';
+  if (!(await fileSystem.exists(directory))) return 1;
+
+  const files = await fileSystem.listFiles(directory, { recursive: false });
+  let maximum = 0;
+  for (const file of files) {
+    const name = path.posix.basename(file);
+    const match = /^V(\d+)__/.exec(name);
+    if (match) maximum = Math.max(maximum, Number(match[1]));
+    if (name.endsWith(`__create_${tableName}_table.sql`) && match) return Number(match[1]);
+  }
+  return maximum + 1;
+}
+
+function resolveSides(
+  parsed: EntityCommandArguments,
+  backendAvailable: boolean,
+  frontendAvailable: boolean,
+): { generateBackend: boolean; generateFrontend: boolean } {
+  const wantsBackend = parsed.backend === true;
+  const wantsFrontend = parsed.frontend === true;
+
+  if (wantsBackend || wantsFrontend) {
+    return { generateBackend: wantsBackend, generateFrontend: wantsFrontend };
+  }
+
+  return {
+    generateBackend: parsed.backend === false ? false : backendAvailable,
+    generateFrontend: parsed.frontend === false ? false : frontendAvailable,
+  };
+}
+
+function setSide(
+  result: EntityCommandArguments,
+  side: 'backend' | 'frontend',
+  value: boolean,
+): void {
+  const current = result[side];
+  if (current !== undefined && current !== value) {
+    throw new CliOptionError(`Options "--${side}" and "--no-${side}" cannot be combined.`);
+  }
+  result[side] = value;
+}
+
+function readValue(
+  flag: string,
+  inlineValue: string | undefined,
+  args: string[],
+  index: number,
+): [string, number] {
+  if (inlineValue !== undefined) return [inlineValue, index];
+
+  const next = args[index + 1];
+  if (next === undefined || next.startsWith('-')) {
+    throw new CliOptionError(`Option "${flag}" requires a value.`);
+  }
+  return [next, index + 1];
+}
+
+function splitOption(token: string): [string, string | undefined] {
+  const separator = token.indexOf('=');
+  if (separator === -1) return [token, undefined];
+  return [token.slice(0, separator), token.slice(separator + 1)];
+}
+
+function parseBooleanFlag(flag: string, value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) return fallback;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new CliOptionError(`Option "${flag}" expects "true" or "false", received "${value}".`);
+}
+
+function rejectValue(flag: string, value: string | undefined): void {
+  if (value !== undefined) {
+    throw new CliOptionError(`Option "${flag}" does not accept a value.`);
+  }
+}

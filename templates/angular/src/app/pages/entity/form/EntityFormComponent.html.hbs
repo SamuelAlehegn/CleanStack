@@ -1,0 +1,118 @@
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">{{entity.pluralName}}</p>
+    <h1>\{{ isEdit ? 'Edit {{entity.name}}' : 'New {{entity.name}}' }}</h1>
+    <p class="page-description">
+      \{{ isEdit ? 'Update the fields below and save your changes.' : 'Fill in the fields below to create a {{lowercase entity.name}}.' }}
+    </p>
+  </div>
+</section>
+
+<form class="form-card" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+{{#each entity.fields}}
+{{#unless generated}}
+{{#if (eq typescriptType "boolean")}}
+  <label class="field checkbox-field">
+    <input type="checkbox" formControlName="{{name}}" />
+    <span>{{capitalize name}}</span>
+  </label>
+{{else}}
+  <label class="field">
+    <span class="field-label">
+      {{capitalize name}}
+{{#if required}}
+      <span class="required" aria-hidden="true">*</span>
+{{/if}}
+    </span>
+{{#if (eq javaType "BigDecimal")}}
+    <input type="text" inputmode="decimal" formControlName="{{name}}" autocomplete="off" />
+{{else if (eq javaType "BigInteger")}}
+    <input type="text" inputmode="numeric" formControlName="{{name}}" autocomplete="off" />
+{{else if (eq typescriptType "number")}}
+    <input
+      type="number"
+      formControlName="{{name}}"
+      step="{{#if (eq javaType "float")}}any{{else if (eq javaType "double")}}any{{else if (eq javaType "Float")}}any{{else if (eq javaType "Double")}}any{{else}}1{{/if}}"
+{{#if min includeZero=true}}
+      min="{{min}}"
+{{/if}}
+{{#if max includeZero=true}}
+      max="{{max}}"
+{{/if}}
+    />
+{{else if (eq javaType "LocalDate")}}
+    <input type="date" formControlName="{{name}}" />
+{{else if (eq javaType "LocalTime")}}
+    <input type="time" formControlName="{{name}}" />
+{{else if (eq javaType "LocalDateTime")}}
+    <input type="datetime-local" formControlName="{{name}}" />
+{{else if (eq javaType "Instant")}}
+    <input type="text" formControlName="{{name}}" placeholder="2026-01-31T12:00:00Z" autocomplete="off" />
+{{else if (eq javaType "OffsetDateTime")}}
+    <input type="text" formControlName="{{name}}" placeholder="2026-01-31T12:00:00+00:00" autocomplete="off" />
+{{else}}
+    <input
+      type="text"
+      formControlName="{{name}}"
+      autocomplete="off"
+{{#if minLength}}
+      minlength="{{minLength}}"
+{{/if}}
+{{#if maxLength}}
+      maxlength="{{maxLength}}"
+{{/if}}
+    />
+{{/if}}
+    @if (form.controls.{{name}}.invalid && form.controls.{{name}}.touched) {
+      <small class="field-error">\{{ errorFor(form.controls.{{name}}) }}</small>
+    }
+  </label>
+{{/if}}
+{{/unless}}
+{{/each}}
+{{#each entity.owningRelations}}
+{{#if collection}}
+  <label class="field">
+    <span class="field-label">{{capitalize variableName}}</span>
+    <select multiple formControlName="{{idField}}" size="4">
+      @for (option of {{optionsSignalName}}(); track option.id) {
+        <option [value]="option.id">\{{ option.label }}</option>
+      }
+    </select>
+    <small class="field-hint">Hold Ctrl or Cmd to select multiple {{lowercase targetEntity.pluralName}}.</small>
+    @if (form.controls.{{idField}}.invalid && form.controls.{{idField}}.touched) {
+      <small class="field-error">\{{ errorFor(form.controls.{{idField}}) }}</small>
+    }
+  </label>
+{{else}}
+  <label class="field">
+    <span class="field-label">
+      {{capitalize variableName}}
+{{#if required}}
+      <span class="required" aria-hidden="true">*</span>
+{{/if}}
+    </span>
+    <select formControlName="{{idField}}">
+      <option value="">Select {{targetEntity.name}}</option>
+      @for (option of {{optionsSignalName}}(); track option.id) {
+        <option [value]="option.id">\{{ option.label }}</option>
+      }
+    </select>
+    @if (form.controls.{{idField}}.invalid && form.controls.{{idField}}.touched) {
+      <small class="field-error">\{{ errorFor(form.controls.{{idField}}) }}</small>
+    }
+  </label>
+{{/if}}
+{{/each}}
+
+  @if (error()) {
+    <p class="form-error">\{{ error() }}</p>
+  }
+
+  <div class="form-actions">
+    <button class="primary-button" type="submit" [disabled]="saving()">
+      \{{ saving() ? 'Saving…' : 'Save {{entity.name}}' }}
+    </button>
+    <button class="secondary-button" type="button" (click)="cancel()">Cancel</button>
+  </div>
+</form>

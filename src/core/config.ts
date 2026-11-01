@@ -3,6 +3,9 @@ import { z } from 'zod';
 const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const PACKAGE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 
+/** Pattern for a dotted Java package name. */
+export const JAVA_PACKAGE_PATTERN = PACKAGE_NAME_PATTERN;
+
 export const FIELD_TYPES = [
   'String',
   'boolean',
@@ -128,11 +131,14 @@ export const FieldConfigSchema = z
       });
     }
   })
-  .transform((field) => ({
-    ...field,
-    required: field.required ?? (field.nullable === undefined ? false : !field.nullable),
-    nullable: field.required === undefined ? (field.nullable ?? false) : !field.required,
-  }));
+  .transform((field) => {
+    const required = field.required ?? (field.nullable === undefined ? false : !field.nullable);
+    return {
+      ...field,
+      required,
+      nullable: !required,
+    };
+  });
 
 const RELATION_TYPES = [
   'OneToOne',

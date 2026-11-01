@@ -1,17 +1,13 @@
 import { Component, signal } from '@angular/core';
-import {
-  RouterLink,
-  RouterLinkActive,
-  RouterOutlet,
-} from '@angular/router';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 @Component({
-  selector: 'app-root',
+  selector: 'app-layout',
   imports: [RouterLink, RouterLinkActive, RouterOutlet],
-  templateUrl: './app.html',
-  styleUrl: './app.css',
+  templateUrl: './app-layout.component.html',
+  styleUrl: './app-layout.component.scss',
 })
-export class AppComponent {
+export class AppLayoutComponent {
   readonly menuOpen = signal(false);
 
   closeMenu(): void {

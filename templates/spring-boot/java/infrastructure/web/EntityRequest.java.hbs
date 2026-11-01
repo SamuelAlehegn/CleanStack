@@ -1,14 +1,16 @@
 package {{project.packageName}}.web.dto;
 
 import jakarta.validation.constraints.*;
-{{#each entity.fields}}
-{{#if (eq javaType "BigDecimal")}}import java.math.BigDecimal;{{/if}}{{#if (eq javaType "BigInteger")}}import java.math.BigInteger;{{/if}}{{#if (eq javaType "UUID")}}import java.util.UUID;{{/if}}{{#if (eq javaType "Instant")}}import java.time.Instant;{{/if}}{{#if (eq javaType "LocalDate")}}import java.time.LocalDate;{{/if}}{{#if (eq javaType "LocalTime")}}import java.time.LocalTime;{{/if}}{{#if (eq javaType "LocalDateTime")}}import java.time.LocalDateTime;{{/if}}{{#if (eq javaType "OffsetDateTime")}}import java.time.OffsetDateTime;{{/if}}
+{{#each entity.requestImports}}import {{this}};
 {{/each}}
 
 /** Validated HTTP input for creating or replacing a {{entity.className}}. */
 public record {{entity.className}}Request(
 {{#each entity.fields}}
-        {{#each validationAnnotations}}{{this}} {{/each}}{{javaType}} {{name}}{{#unless @last}},{{/unless}}
+        {{#each validationAnnotations}}{{this}} {{/each}}{{javaType}} {{name}}{{#if @last}}{{#if ../entity.owningRelations}},{{/if}}{{else}},{{/if}}
+{{/each}}
+{{#each entity.owningRelations}}
+        {{#if collection}}List<UUID> {{idField}}{{else}}{{#if required}}@NotNull {{/if}}UUID {{idField}}{{/if}}{{#unless @last}},{{/unless}}
 {{/each}}
 ) {
     // <cleanstack:protected id="request-{{entity.variableName}}">

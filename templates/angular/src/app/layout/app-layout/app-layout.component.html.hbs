@@ -15,6 +15,14 @@
         <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="3"/><path d="M16.2 11.8a6.7 6.7 0 0 0 0-3.6l1.2-1-1.5-2.6-1.5.5a6.5 6.5 0 0 0-3.1-1.8L11 1.8H8l-.3 1.5a6.5 6.5 0 0 0-3.1 1.8l-1.5-.5-1.5 2.6 1.2 1a6.7 6.7 0 0 0 0 3.6l-1.2 1 1.5 2.6 1.5-.5a6.5 6.5 0 0 0 3.1 1.8l.3 1.5h3l.3-1.5a6.5 6.5 0 0 0 3.1-1.8l1.5.5 1.5-2.6-1.2-1Z"/></svg>
         <span>Settings</span>
       </a>
+      <!-- <cleanstack:entity-nav> -->
+{{#each entities}}
+      <a routerLink="/{{routeName}}" routerLinkActive="nav-link-active" (click)="closeMenu()">
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 5.5h12M4 10h12M4 14.5h8"/></svg>
+        <span>{{pluralName}}</span>
+      </a>
+{{/each}}
+      <!-- </cleanstack:entity-nav> -->
     </nav>
 
     <div class="sidebar-bottom">
