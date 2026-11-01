@@ -1,0 +1,53 @@
+package {{project.packageName}}.controller;
+
+import {{project.packageName}}.service.{{entity.className}}Service;
+import {{project.packageName}}.web.dto.{{entity.className}}Request;
+import {{project.packageName}}.web.dto.{{entity.className}}Response;
+import {{project.packageName}}.web.mapper.{{entity.className}}Mapper;
+import java.net.URI;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
+
+/** HTTP adapter for {{entity.className}} use cases. */
+@RestController
+@RequestMapping("/api/{{entity.routeName}}")
+public final class {{entity.className}}Controller {
+    private final {{entity.className}}Service service;
+    private final {{entity.className}}Mapper mapper;
+
+    public {{entity.className}}Controller({{entity.className}}Service service, {{entity.className}}Mapper mapper) {
+        this.service = service;
+        this.mapper = mapper;
+    }
+
+    @GetMapping public List<{{entity.className}}Response> findAll() {
+        return service.findAll().stream().map(mapper::toResponse).toList();
+    }
+    @GetMapping("/{id}") public {{entity.className}}Response findById(@PathVariable UUID id) {
+        return mapper.toResponse(service.get(id));
+    }
+    @PostMapping public ResponseEntity<{{entity.className}}Response> create(@Valid @RequestBody {{entity.className}}Request request) {
+        var created = service.create(mapper.toEntity(request));
+        return ResponseEntity.created(URI.create("/api/{{entity.routeName}}/" + created.getId())).body(mapper.toResponse(created));
+    }
+    @PutMapping("/{id}") public {{entity.className}}Response update(@PathVariable UUID id, @Valid @RequestBody {{entity.className}}Request request) {
+        return mapper.toResponse(service.update(id, mapper.toEntity(request)));
+    }
+    @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // <cleanstack:protected id="controller-{{entity.variableName}}">
+    // </cleanstack:protected>
+}

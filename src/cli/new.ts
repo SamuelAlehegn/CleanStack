@@ -4,14 +4,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ConfigLoader, CliOptionError, parseCommandLineOptions } from '../core/config-loader.js';
 import type { ProjectConfig } from '../core/config.js';
+import { buildEntityModels } from '../core/entity-model.js';
+import { EntityParser } from '../core/entity-parser.js';
 import { TemplateEngine } from '../templates/template-engine.js';
 import { FileExistsError, FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
+import { isMissingPath } from '../utils/path-safety.js';
 import type { Logger } from '../utils/logger.js';
 
 interface ManifestEntry {
   template: string;
   destination: string;
   when?: Record<string, unknown>;
+  forEach?: 'entities';
 }
 
 interface TemplateManifest {
@@ -35,13 +39,49 @@ const JAVA_PACKAGE_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*
 
 export async function runNewCommand(args: string[], options: NewCommandOptions): Promise<void> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
-  const { interactive, yes, initializeGit, configArgs } = extractControlFlags(args);
+  const { interactive, yes, initializeGit, includeEntities, configArgs } =
+    extractControlFlags(args);
   let cliOptions = mapFrontendOption(parseCommandLineOptions(configArgs));
   if (!yes && (interactive || hasMissingSettings(cliOptions))) {
     cliOptions = await collectInteractiveOptions(cliOptions);
   }
   validateProjectName(cliOptions.name);
   const project = await new ConfigLoader().load({ cwd, cliOptions });
+  const inputFs = new FileSystemService({ rootDir: cwd, logger: { log: () => {} } });
+  let entityDescriptorFiles: string[] = [];
+  if (await inputFs.exists('entities')) {
+    try {
+      entityDescriptorFiles = (await inputFs.listFiles('entities')).filter((file) =>
+        /\.(yaml|yml|json)$/i.test(file),
+      );
+    } catch (error) {
+      if (!isMissingPath(error)) throw error;
+    }
+  }
+  const hasEntityDefinitions = project.entities.length > 0 || entityDescriptorFiles.length > 0;
+  const shouldIncludeEntities =
+    includeEntities ??
+    (yes
+      ? hasEntityDefinitions
+      : await confirm({
+          message: 'Include entities from the project configuration or entities/ directory?',
+          default: hasEntityDefinitions,
+        }));
+  let generationProject = { ...project, entities: [] as ProjectConfig['entities'] };
+  if (shouldIncludeEntities) {
+    const entities =
+      project.entities.length > 0
+        ? project.entities
+        : entityDescriptorFiles.length > 0
+          ? await new EntityParser({ rootDir: cwd }).parseDirectory('entities')
+          : [];
+    if (entities.length === 0) {
+      options.logger.warn(
+        'No entity definitions found. Add entities to cleanstack.config.json or place YAML/JSON descriptors in entities/.',
+      );
+    }
+    generationProject = { ...project, entities };
+  }
   const targetRelative = path.posix.join(project.options.outputDir, project.name);
   const filesystemLogger: FileSystemLogger = {
     log: (action) =>
@@ -56,7 +96,7 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
     logger: filesystemLogger,
   });
   const engine = new TemplateEngine();
-  const backendProject = withProjectSuffix(project, 'backend');
+  const backendProject = withProjectSuffix(generationProject, 'backend');
   const backendDirectory = `${kebabCase(project.name)}-backend`;
   await projectRootFs.createDirectory(backendDirectory);
   const backendFs = new FileSystemService({
@@ -113,7 +153,16 @@ function withProjectSuffix(project: ProjectConfig, suffix: 'backend' | 'ui'): Pr
 }
 
 function templateContext(project: ProjectConfig): Record<string, unknown> {
-  return { project, ...project, ...templateAliases(project) } as unknown as Record<string, unknown>;
+  const entities = buildEntityModels(project.entities).map((entity, index) => ({
+    ...entity,
+    migrationVersion: index + 2,
+  }));
+  return {
+    project: { ...project, entities },
+    ...project,
+    entities,
+    ...templateAliases(project),
+  } as unknown as Record<string, unknown>;
 }
 
 function templateAliases(project: ProjectConfig): Record<string, unknown> {
@@ -148,13 +197,21 @@ async function renderManifest(
       !Object.entries(entry.when).every(([key, value]) => getCondition(project, key) === value)
     )
       continue;
-    const contents = await engine.render(`${templateSet}/${entry.template}`, context);
-    const destination = entry.destination
-      .replaceAll('{{package}}', project.packageName.replaceAll('.', '/'))
-      .replaceAll('{{ApplicationName}}', String(context.ApplicationName));
-    const parent = path.posix.dirname(destination);
-    if (parent !== '.') await output.createDirectory(parent);
-    await output.writeFile(destination, contents);
+    const items = entry.forEach === 'entities' ? (context.entities as unknown[]) : [undefined];
+    for (const item of items) {
+      const entryContext = item === undefined ? context : { ...context, entity: item };
+      const contents = await engine.render(`${templateSet}/${entry.template}`, entryContext);
+      const destination = entry.destination
+        .replaceAll('{{package}}', project.packageName.replaceAll('.', '/'))
+        .replaceAll('{{ApplicationName}}', String(context.ApplicationName))
+        .replace(/{{entity\.([A-Za-z][A-Za-z0-9]*)}}/g, (_match, key: string) => {
+          const entity = item as Record<string, unknown>;
+          return String(entity[key] ?? '');
+        });
+      const parent = path.posix.dirname(destination);
+      if (parent !== '.') await output.createDirectory(parent);
+      await output.writeFile(destination, contents);
+    }
   }
 }
 
@@ -190,16 +247,20 @@ function extractControlFlags(args: string[]): {
   interactive: boolean;
   yes: boolean;
   initializeGit: boolean;
+  includeEntities: boolean | undefined;
   configArgs: string[];
 } {
   let interactive = false;
   let yes = false;
   let initializeGit = false;
+  let includeEntities: boolean | undefined;
   const configArgs: string[] = [];
   for (const arg of args) {
     if (arg === '--interactive') interactive = true;
     else if (arg === '--yes' || arg === '-y') yes = true;
     else if (arg === '--git') initializeGit = true;
+    else if (arg === '--entities') includeEntities = true;
+    else if (arg === '--no-entities') includeEntities = false;
     else if (arg.startsWith('--frontend=')) {
       const value = arg.slice('--frontend='.length);
       if (value !== 'angular' && value !== 'none')
@@ -215,7 +276,7 @@ function extractControlFlags(args: string[]): {
     if (value === 'angular' || value === 'none')
       configArgs[frontIndex + 1] = String(value === 'angular');
   }
-  return { interactive, yes, initializeGit, configArgs };
+  return { interactive, yes, initializeGit, includeEntities, configArgs };
 }
 
 function hasMissingSettings(input: Record<string, unknown>): boolean {

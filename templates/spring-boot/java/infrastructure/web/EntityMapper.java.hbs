@@ -1,0 +1,20 @@
+package {{project.packageName}}.web.mapper;
+
+import {{project.packageName}}.domain.{{entity.className}};
+import {{project.packageName}}.web.dto.{{entity.className}}Request;
+import {{project.packageName}}.web.dto.{{entity.className}}Response;
+import org.springframework.stereotype.Component;
+
+/** Maps HTTP DTOs to and from {{entity.className}}. */
+@Component
+public class {{entity.className}}Mapper {
+    public {{entity.className}} toEntity({{entity.className}}Request request) {
+        return new {{entity.className}}(null{{#each entity.fields}}, request.{{name}}(){{/each}});
+    }
+    public {{entity.className}}Response toResponse({{entity.className}} entity) {
+        return new {{entity.className}}Response(entity.getId(){{#each entity.fields}}, entity.get{{capitalize name}}(){{/each}});
+    }
+
+    // <cleanstack:protected id="web-mapper-{{entity.variableName}}">
+    // </cleanstack:protected>
+}

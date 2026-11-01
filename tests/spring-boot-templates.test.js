@@ -3,18 +3,23 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { buildEntityModels } from '../dist/core/entity-model.js';
 import { TemplateEngine } from '../dist/templates/template-engine.js';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const templateRoot = path.join(repositoryRoot, 'templates', 'spring-boot');
 const manifest = JSON.parse(await readFile(path.join(templateRoot, 'manifest.json'), 'utf8'));
 
-function createContext(options) {
+function createContext(options, configuredEntities = []) {
+  const entities = buildEntityModels(configuredEntities).map((entity, index) => ({
+    ...entity,
+    migrationVersion: index + 2,
+  }));
   return {
     project: {
       name: 'demo-shop',
       packageName: 'com.acme.shop',
-      entities: [],
+      entities,
       options: {
         backend: true,
         frontend: false,
@@ -27,7 +32,7 @@ function createContext(options) {
         ...options,
       },
     },
-    entities: [],
+    entities,
   };
 }
 
@@ -42,7 +47,7 @@ function applies(entry, options) {
 }
 
 async function renderProject(options) {
-  const context = createContext(options);
+  const context = createContext(options, options.entities ?? []);
   const engine = new TemplateEngine({
     projectRoot: path.join(repositoryRoot, 'tests', '.render'),
     userTemplatesDir: path.join(repositoryRoot, 'tests', '.render', 'user'),
@@ -52,7 +57,15 @@ async function renderProject(options) {
   const files = new Map();
   for (const entry of manifest.files) {
     if (!applies(entry, context.project.options)) continue;
-    files.set(destinationFor(entry), await engine.render(entry.template, context));
+    const items = entry.forEach === 'entities' ? context.entities : [undefined];
+    for (const entity of items) {
+      const entryContext = entity ? { ...context, entity } : context;
+      const destination = destinationFor(entry).replace(
+        /{{entity\.([A-Za-z][A-Za-z0-9]*)}}/g,
+        (_match, key) => String(entity?.[key] ?? ''),
+      );
+      files.set(destination, await engine.render(entry.template, entryContext));
+    }
   }
   return files;
 }
@@ -68,7 +81,16 @@ test('renders a complete Maven, PostgreSQL, Docker project', async () => {
   assert.ok(files.has('Dockerfile'));
   assert.ok(files.has('docker-compose.yml'));
   assert.ok(files.has('src/main/java/com/acme/shop/DemoShopApplication.java'));
-  assert.ok(files.has('src/main/java/com/acme/shop/infrastructure/security/package-info.java'));
+  assert.ok(files.has('src/main/java/com/acme/shop/security/package-info.java'));
+  assert.ok(files.has('src/main/java/com/acme/shop/config/ApplicationConfig.java'));
+  assert.ok(files.has('src/main/java/com/acme/shop/controller/GreetingController.java'));
+  assert.ok(files.has('src/main/java/com/acme/shop/service/GreetingService.java'));
+  assert.equal(
+    [...files.keys()].some((destination) =>
+      /\/((application)|(infrastructure))\//.test(destination),
+    ),
+    false,
+  );
 
   assert.match(files.get('pom.xml'), /<artifactId>spring-boot-starter-webmvc<\/artifactId>/);
   assert.match(files.get('pom.xml'), /<artifactId>postgresql<\/artifactId>/);
@@ -77,7 +99,7 @@ test('renders a complete Maven, PostgreSQL, Docker project', async () => {
     /package com\.acme\.shop;/,
   );
   assert.match(
-    files.get('src/main/java/com/acme/shop/application/GreetingService.java'),
+    files.get('src/main/java/com/acme/shop/service/GreetingService.java'),
     /public GreetingService\(Clock clock\)/,
   );
   assert.match(files.get('README.md'), /src\/main\/java\/com\/acme\/shop\//);
@@ -118,9 +140,7 @@ test('renders JWT and Keycloak resource-server configuration only when selected'
   ]) {
     const files = await renderProject({ auth, buildTool });
     const buildFile = buildTool === 'maven' ? files.get('pom.xml') : files.get('build.gradle.kts');
-    const securityConfig = files.get(
-      'src/main/java/com/acme/shop/infrastructure/security/SecurityConfig.java',
-    );
+    const securityConfig = files.get('src/main/java/com/acme/shop/security/SecurityConfig.java');
 
     assert.ok(securityConfig);
     assert.match(buildFile, /spring-boot-starter-oauth2-resource-server/);
@@ -131,10 +151,73 @@ test('renders JWT and Keycloak resource-server configuration only when selected'
 
   const unauthenticated = await renderProject({ auth: 'none' });
   assert.equal(
-    unauthenticated.has('src/main/java/com/acme/shop/infrastructure/security/SecurityConfig.java'),
+    unauthenticated.has('src/main/java/com/acme/shop/security/SecurityConfig.java'),
     false,
   );
   assert.doesNotMatch(unauthenticated.get('pom.xml'), /spring-boot-starter-oauth2-resource-server/);
+});
+
+test('renders entity artifacts and a Flyway migration for configured entities', async () => {
+  const files = await renderProject({
+    entities: [
+      {
+        name: 'Product',
+        relations: [],
+        fields: [
+          { name: 'name', type: 'String', required: true, maxLength: 120, validations: [] },
+          { name: 'price', type: 'BigDecimal', required: true, min: 0, validations: [] },
+          { name: 'createdAt', type: 'Instant', required: true, validations: [] },
+        ],
+      },
+    ],
+  });
+
+  assert.match(files.get('src/main/java/com/acme/shop/domain/Product.java'), /class Product/);
+  assert.match(
+    files.get('src/main/java/com/acme/shop/domain/Product.java'),
+    /@Entity[\s\S]*@Table\(name = "products"\)/,
+  );
+  assert.match(
+    files.get('src/main/java/com/acme/shop/controller/ProductController.java'),
+    /@RequestMapping\("\/api\/products"\)/,
+  );
+  assert.match(
+    files.get('src/main/resources/db/migration/V2__create_products_table.sql'),
+    /CREATE TABLE products[\s\S]*name VARCHAR\(120\) NOT NULL/,
+  );
+  assert.match(
+    files.get('src/main/resources/db/migration/V2__create_products_table.sql'),
+    /created_at TIMESTAMP WITH TIME ZONE NOT NULL/,
+  );
+  assert.match(
+    files.get('src/main/java/com/acme/shop/web/dto/ProductRequest.java'),
+    /import java\.math\.BigDecimal;/,
+  );
+  assert.match(
+    files.get('src/main/java/com/acme/shop/web/dto/ProductRequest.java'),
+    /import java\.time\.Instant;/,
+  );
+  assert.match(
+    files.get('src/main/java/com/acme/shop/web/dto/ProductResponse.java'),
+    /import java\.math\.BigDecimal;/,
+  );
+  assert.match(
+    files.get('src/main/java/com/acme/shop/service/ProductService.java'),
+    /entity\.setId\(id\)/,
+  );
+  assert.match(
+    files.get('src/main/java/com/acme/shop/config/ApplicationConfig.java'),
+    /package com\.acme\.shop\.config;/,
+  );
+  assert.ok(files.has('src/main/java/com/acme/shop/repository/ProductRepository.java'));
+  assert.ok(files.has('src/main/java/com/acme/shop/exception/ProductNotFoundException.java'));
+  assert.ok(files.has('src/main/java/com/acme/shop/web/mapper/ProductMapper.java'));
+  assert.equal(
+    [...files.keys()].some((destination) =>
+      /\/((application)|(infrastructure))\//.test(destination),
+    ),
+    false,
+  );
 });
 
 test('every built-in template is referenced by the manifest', async () => {
