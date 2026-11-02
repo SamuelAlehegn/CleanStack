@@ -58,6 +58,42 @@ test('falls back from project to user and built-in templates', async () => {
   }
 });
 
+test('partial override replaces one file and leaves siblings on the built-in root', async () => {
+  const fixture = await createFixture();
+  try {
+    await fixture.write(fixture.builtInTemplatesDir, 'one.hbs', 'built-in one');
+    await fixture.write(fixture.builtInTemplatesDir, 'two.hbs', 'built-in two');
+    // Override only "one"; "two" is untouched.
+    await fixture.write(fixture.projectTemplatesDir, 'one.hbs', 'project one');
+
+    const engine = fixture.engine();
+    assert.equal(await engine.render('one', {}), 'project one');
+    assert.equal(await engine.render('two', {}), 'built-in two');
+
+    const one = await engine.resolve('one');
+    assert.equal(one.location, 'project');
+    const two = await engine.resolve('two');
+    assert.equal(two.location, 'built-in');
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('resolve reports each location exactly once without rendering', async () => {
+  const fixture = await createFixture();
+  try {
+    await fixture.write(fixture.userTemplatesDir, 'from-user.hbs', 'user');
+    const engine = fixture.engine();
+
+    const user = await engine.resolve('from-user');
+    assert.equal(user.location, 'user');
+    assert.equal(path.basename(user.rootDir), 'templates');
+    assert.equal(user.filePath, path.join(fixture.userTemplatesDir, 'from-user.hbs'));
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test('loads partials and applies the same location priority', async () => {
   const fixture = await createFixture();
   try {

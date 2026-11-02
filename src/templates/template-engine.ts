@@ -36,6 +36,17 @@ interface ResolvedTemplate {
   root: string;
 }
 
+export type TemplateOverrideLocation = 'project' | 'user' | 'built-in';
+
+export interface ResolvedTemplateLocation {
+  /** Absolute file path of the template that will be rendered. */
+  filePath: string;
+  /** Which override level the template was found at, in precedence order. */
+  location: TemplateOverrideLocation;
+  /** The override root directory that supplied the template. */
+  rootDir: string;
+}
+
 const DEFAULT_EXTENSION = '.hbs';
 const BUILT_IN_TEMPLATE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -85,6 +96,23 @@ export class TemplateEngine {
         },
       );
     }
+  }
+
+  /**
+   * Finds the file that would back a single template and reports where it came
+   * from, without rendering it. Callers use this for discovery, diffing, and
+   * diagnostics on top of the override chain.
+   */
+  async resolve(templateName: string): Promise<ResolvedTemplateLocation> {
+    const resolved = await this.resolveTemplate(templateName);
+    const index = this.roots.indexOf(resolved.root);
+    const location: TemplateOverrideLocation =
+      index === 0 ? 'project' : index === 1 ? 'user' : 'built-in';
+    return {
+      filePath: resolved.filePath,
+      location,
+      rootDir: resolved.root,
+    };
   }
 
   private async resolveTemplate(templateName: string): Promise<ResolvedTemplate> {

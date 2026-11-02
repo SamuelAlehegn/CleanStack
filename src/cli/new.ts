@@ -92,7 +92,8 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
     logger: filesystemLogger,
     dryRun,
   });
-  const engine = new TemplateEngine();
+  // Project-level template overrides resolve from the directory the command runs in.
+  const engine = new TemplateEngine({ projectRoot: cwd });
   const generatedFiles: GeneratedFileResult[] = [];
   const collect =
     (prefix: string) =>

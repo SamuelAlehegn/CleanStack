@@ -144,6 +144,45 @@ should be generated before the entity that owns the foreign key or join table.
 See [docs/entity-descriptor.md](docs/entity-descriptor.md#relations) for the
 owning and inverse side rules.
 
+## Template overrides
+
+Every generated file comes from a Handlebars template. Templates resolve through
+a three-level priority chain:
+
+1. `.cleanstack/templates/` in the project (or the workspace root for
+   `cleanstack new`)
+2. `~/.cleanstack/templates/` in your home directory
+3. Built-in templates shipped with CleanStack
+
+The chain mirrors the template directory layout: to override a single file, copy
+only that file and keep its relative path. For example, to replace the backend
+README of the Spring Boot templates:
+
+```text
+.cleanstack/templates/spring-boot/root/README.md.hbs
+```
+
+A partial override affects just that file. Everything not overridden continues
+to render from the built-in templates, so you never copy a whole template pack
+to change one file. A template can also replace a template set's file list: put
+a `manifest.json` with a `files` array in an override directory, and it fully
+controls which files that set writes (built-in files you leave out are not
+generated).
+
+Which project level applies depends on the command:
+
+| Command                           | Project override location                              |
+| --------------------------------- | ------------------------------------------------------ |
+| `cleanstack new`                  | `.cleanstack/templates/` next to the generated project |
+| `cleanstack entity`, `regenerate` | `.cleanstack/templates/` inside the generated project  |
+
+Keep override templates safe to regenerate: include the
+`<cleanstack:user-code ...>` region markers where the built-in template has
+them. Without a matching region the safe writer preserves the existing file on
+reruns (see [Safe regeneration](#safe-regeneration)); `--force` overwrites.
+`manifest.json` itself participates in the chain, and a manifest override must
+declare a `files` array.
+
 ## Development
 
 ```sh
