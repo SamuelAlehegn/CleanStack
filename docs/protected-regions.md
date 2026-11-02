@@ -32,7 +32,8 @@ Non-goals:
 A region has a start marker and an end marker, each on its own line, wrapped in
 the comment syntax of the file. The canonical tag is `cleanstack:user-code`.
 `cleanstack:protected` is accepted as an alias for files generated before the
-tag was standardized.
+tag was standardized. Regeneration writes the canonical tag, so alias markers are
+upgraded on the next successful write.
 
 ```text
 <comment> <cleanstack:user-code id="REGION_ID" checksum="sha256:HEX"> <comment-end>
@@ -218,7 +219,9 @@ a convenience for detecting drift, not an access control mechanism.
 
 ## Regeneration rules
 
-The merge engine will be implemented next, but the behavior is fixed here.
+`ProtectedRegionManager` implements the following rules. It is pure: callers pass
+the existing and newly generated content, and the manager returns the merged
+content plus a decision log.
 
 ### Decision table
 
@@ -228,6 +231,7 @@ The merge engine will be implemented next, but the behavior is fixed here.
 | present  | `U = B`  | `T ≠ B`      | Template changed only: write new template body. Checksum becomes `T`. |
 | present  | `U ≠ B`  | `T = B`      | User changed only: preserve user body. Checksum stays `B` (`= T`).    |
 | present  | `U ≠ B`  | `T ≠ B`      | Conflict. Apply the selected merge strategy.                          |
+| present  | `U = T`  | `T ≠ B`      | Converged: both sides made the same edit. Write `T`, no conflict.     |
 | missing  | unknown  | any          | Preserve user body and report it as unverified.                       |
 | any      | any      | region gone  | Orphaned region: conflict, never dropped silently.                    |
 | absent   | n/a      | region added | Insert the new region with the template body and checksum `T`.        |
@@ -244,23 +248,31 @@ The merge engine will be implemented next, but the behavior is fixed here.
 - `--force`: overwrite generated files completely, including protected regions.
   This is the explicit escape hatch and is never the default.
 
+Strategies can be set on the manager, per merge, or per region id. Per-region
+overrides win over the merge default, which wins over the manager default.
+
 `--dry-run` reports the same decisions without writing anything.
 
 ### Orphaned and new regions
 
 - A region in the existing file that no longer exists in the template is
   orphaned. Its body may contain user code, so it is never deleted silently. It
-  is a conflict. `keep-user` may re-insert it, but the default `manual` strategy
-  leaves the file untouched and reports the id.
+  is a conflict.
+  - `manual` leaves the file untouched and reports the id.
+  - `keep-user` appends the orphaned region to the end of the regenerated file
+    and preserves its original checksum. Appending is safe for the file's bytes
+    but may not compile in every language; review the reported region.
+  - `keep-template` drops the orphaned region because the template explicitly no
+    longer owns it.
 - A region in the template that is absent from the existing file is inserted
   normally with the template body and its checksum.
 - Region order follows the template. Matching is by id, not by position, so
   reordering regions is safe.
 
-### Format errors
+### Error and diagnostic codes
 
-The following are hard errors for the affected file. The engine must not write a
-partially merged file:
+Marker and file-shape problems throw `ProtectedRegionFormatError` with one of
+these codes. The engine never writes a partially merged file:
 
 | Code                            | Meaning                                             |
 | ------------------------------- | --------------------------------------------------- |
@@ -271,9 +283,14 @@ partially merged file:
 | `PROTECTED_REGION_TAG_MISMATCH` | Start and end tags differ.                          |
 | `PROTECTED_REGION_DUPLICATE_ID` | The same id appears more than once in one file.     |
 | `PROTECTED_REGION_UNKNOWN_TYPE` | The file extension has no supported comment syntax. |
-| `PROTECTED_REGION_CONFLICT`     | User and template both changed a region.            |
-| `PROTECTED_REGION_ORPHANED`     | A user region no longer exists in the template.     |
-| `PROTECTED_REGION_UNVERIFIED`   | A region has no checksum; preserved but reported.   |
+
+Merge outcomes are reported in the result instead of thrown:
+
+| Code                          | Meaning                                                 |
+| ----------------------------- | ------------------------------------------------------- |
+| `PROTECTED_REGION_CONFLICT`   | User and template both changed a region.                |
+| `PROTECTED_REGION_ORPHANED`   | A user region no longer exists in the template.         |
+| `PROTECTED_REGION_UNVERIFIED` | A region has no checksum; it is preserved and reported. |
 
 ### File handling
 
@@ -286,17 +303,48 @@ partially merged file:
 - Prefer writing to a temporary file and renaming it into place, so a failed
   merge never leaves a truncated source file.
 
+## Using the manager
+
+```ts
+import { ProtectedRegionManager } from 'cleanstack-generator/protected-region-manager';
+
+const manager = new ProtectedRegionManager({ strategy: 'manual' });
+
+const parsed = manager.parse(existingSource, { filePath: 'ProductService.java' });
+const result = manager.merge(existingSource, generatedSource, {
+  filePath: 'ProductService.java',
+  strategies: { 'service.product.archive': 'keep-user' },
+});
+
+if (result.writable) {
+  await fileSystem.writeFile('ProductService.java', result.content, { overwrite: true });
+}
+```
+
+`merge` returns:
+
+- `content`: merged text, or the existing source unchanged when `writable` is
+  false.
+- `writable`: false when any conflict or orphan is left to `manual`.
+- `decisions`: one entry per region with a status such as `unchanged`,
+  `template-updated`, `user-preserved`, `converged`, `added`, `unverified`,
+  `conflict-kept-user`, `conflict-kept-template`, `conflict-manual`,
+  `orphaned-kept`, `orphaned-dropped`, or `orphaned-manual`.
+- `conflicts`: both-modified and orphaned conflicts, including whether the
+  selected strategy resolved them.
+- `warnings`: unverified regions that were preserved but could not be checked.
+
+Format problems throw `ProtectedRegionFormatError` with a `code` from the table
+above. Invalid strategy values throw `ProtectedRegionMergeError`.
+
 ## Template authoring rules
 
 Templates emit raw markers. They do not emit checksums; the generator computes
 and writes those after rendering.
 
-```hbs
-
-//
-<cleanstack:user-code id='service.{{entity.variableName}}.create'>
-  //
-</cleanstack:user-code>
+```text
+    // <cleanstack:user-code id="service.{{entity.variableName}}.create">
+    // </cleanstack:user-code>
 ```
 
 Rules:
@@ -348,13 +396,15 @@ chooses `keep-user`, `keep-template`, or resolves it manually.
 
 ## Implementation status
 
-This prompt delivers the design plus the line-level primitives:
+The protected-region system is implemented:
 
-- language and comment-syntax lookup by file extension
-- region id and checksum validation
-- marker rendering and line parsing
-- checksum computation, normalization, and verification
+- `src/core/protected-regions.ts` provides language and comment-syntax lookup,
+  region id and checksum validation, marker rendering and parsing, and checksum
+  computation and verification.
+- `src/core/protected-region-manager.ts` provides file parsing, merge decisions,
+  conflict detection, merge strategies, orphan handling, and line-ending
+  preservation.
+- `tests/protected-region-manager.test.js` covers parsing, every decision-table
+  branch, strategies, orphans, checksum drift, and line endings.
 
-The next step is the file-level `ProtectedRegionManager`: extracting regions,
-re-injecting bodies, applying the decision table, and reporting conflicts.
-Generators will adopt it after that, together with `--force` and `--dry-run`.
+Generators will adopt the manager next, together with `--force` and `--dry-run`.

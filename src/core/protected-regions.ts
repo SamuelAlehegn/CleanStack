@@ -64,10 +64,25 @@ export interface RenderProtectedRegionOptions {
   checksum?: string | null;
 }
 
+export type ProtectedRegionErrorCode =
+  | 'PROTECTED_REGION_MALFORMED'
+  | 'PROTECTED_REGION_UNCLOSED'
+  | 'PROTECTED_REGION_STRAY_END'
+  | 'PROTECTED_REGION_NESTED'
+  | 'PROTECTED_REGION_TAG_MISMATCH'
+  | 'PROTECTED_REGION_DUPLICATE_ID'
+  | 'PROTECTED_REGION_UNKNOWN_TYPE'
+  | 'PROTECTED_REGION_CONFLICT'
+  | 'PROTECTED_REGION_ORPHANED'
+  | 'PROTECTED_REGION_UNVERIFIED';
+
 export class ProtectedRegionFormatError extends Error {
-  constructor(message: string) {
+  readonly code: ProtectedRegionErrorCode;
+
+  constructor(message: string, code: ProtectedRegionErrorCode = 'PROTECTED_REGION_MALFORMED') {
     super(message);
     this.name = 'ProtectedRegionFormatError';
+    this.code = code;
   }
 }
 
@@ -148,6 +163,45 @@ export function languageForFile(filePath: string): ProtectedRegionLanguage | und
   const fileName = path.basename(filePath).toLowerCase();
   if (fileName === '.env') return 'properties';
   return LANGUAGE_BY_EXTENSION.get(path.extname(fileName));
+}
+
+export interface ProtectedRegionLanguageOptions {
+  /** Path used to detect the comment syntax. */
+  filePath?: string;
+  /** Explicit language, which takes precedence over filePath. */
+  language?: ProtectedRegionLanguage;
+}
+
+/**
+ * Resolves the language for a protected-region operation and throws a readable
+ * error when neither a supported file path nor a valid language is available.
+ */
+export function resolveProtectedRegionLanguage(
+  options: ProtectedRegionLanguageOptions,
+): ProtectedRegionLanguage {
+  if (options.language !== undefined) {
+    if (!Object.hasOwn(PROTECTED_REGION_LANGUAGES, options.language)) {
+      throw new ProtectedRegionFormatError(
+        `Unsupported protected region language "${String(options.language)}".`,
+        'PROTECTED_REGION_UNKNOWN_TYPE',
+      );
+    }
+    return options.language;
+  }
+
+  if (options.filePath !== undefined) {
+    const language = languageForFile(options.filePath);
+    if (language !== undefined) return language;
+    throw new ProtectedRegionFormatError(
+      `Cannot parse protected regions in "${options.filePath}": the file type is not supported.`,
+      'PROTECTED_REGION_UNKNOWN_TYPE',
+    );
+  }
+
+  throw new ProtectedRegionFormatError(
+    'Protected region parsing requires a file path or an explicit language.',
+    'PROTECTED_REGION_UNKNOWN_TYPE',
+  );
 }
 
 /** Returns the comment style used to wrap markers in a language. */
