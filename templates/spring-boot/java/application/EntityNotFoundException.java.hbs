@@ -10,4 +10,7 @@ public final class {{entity.className}}NotFoundException extends RuntimeExceptio
     public {{entity.className}}NotFoundException(UUID id) {
         super("{{entity.className}} not found: " + id);
     }
+
+    // <cleanstack:user-code id="exception.{{entity.variableName}}.custom">
+    // </cleanstack:user-code>
 }

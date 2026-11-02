@@ -1,4 +1,5 @@
-export type CommandName = 'new' | 'entity' | 'hello' | 'help' | 'version' | 'unknown';
+export type CommandName =
+  'new' | 'entity' | 'regenerate' | 'hello' | 'help' | 'version' | 'unknown';
 
 export interface ResolvedCommand {
   name: CommandName;
@@ -23,6 +24,7 @@ export function resolveCommand(args: string[]): ResolvedCommand {
 
   if (command === 'new') return { name: 'new', args: rest };
   if (command === 'entity') return { name: 'entity', args: rest };
+  if (command === 'regenerate' || command === 'r') return { name: 'regenerate', args: rest };
   if (command === 'hello') return { name: 'hello', args: rest };
 
   if (command === 'generate' || command === 'g') {

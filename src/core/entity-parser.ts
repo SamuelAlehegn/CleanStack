@@ -61,25 +61,33 @@ export class EntityParser {
 
   /** Reads every supported descriptor under a directory and returns normalized entity models. */
   async parseDirectory(directory = 'entities'): Promise<EntityModel[]> {
+    return buildEntityModels(await this.parseDirectoryConfigs(directory));
+  }
+
+  /** Reads every supported descriptor under a directory as validated configs. */
+  async parseDirectoryConfigs(directory = 'entities'): Promise<EntityConfig[]> {
     const supportedFiles = (await this.fileSystem.listFiles(directory))
       .filter((filePath) =>
         ['.yaml', '.yml', '.json'].includes(path.extname(filePath).toLowerCase()),
       )
       .map((filePath) => path.posix.join(directory, filePath));
-    return this.parseFiles(supportedFiles);
+    return this.parseFileConfigs(supportedFiles);
   }
 
   /** Parses a descriptor set together so duplicate names and relation targets can be checked. */
   async parseFiles(filePaths: string[]): Promise<EntityModel[]> {
+    return buildEntityModels(await this.parseFileConfigs(filePaths));
+  }
+
+  /** Parses and validates a descriptor set without building template models. */
+  async parseFileConfigs(filePaths: string[]): Promise<EntityConfig[]> {
     const entities = await Promise.all(filePaths.map((filePath) => this.parseFile(filePath)));
-    let validated: EntityConfig[];
     try {
-      validated = ProjectConfigSchema.parse({ name: 'entity-descriptors', entities }).entities;
+      return ProjectConfigSchema.parse({ name: 'entity-descriptors', entities }).entities;
     } catch (error) {
       if (!(error instanceof z.ZodError)) throw error;
       throw new EntityParserError('entity descriptors', formatZodError(error), error);
     }
-    return buildEntityModels(validated);
   }
 }
 

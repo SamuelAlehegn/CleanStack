@@ -155,3 +155,54 @@ test('--entities handles a missing entities directory when no config entities ex
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+test('rerunning new preserves user code in protected regions', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-new-safe-'));
+  try {
+    await createProject(cwd, ['demo', '--yes', '--no-entities']);
+    const servicePath = path.join(
+      cwd,
+      'demo',
+      'demo-backend',
+      'src/main/java/com/example/service/GreetingService.java',
+    );
+    const service = await readFile(servicePath, 'utf8');
+    await writeFile(
+      servicePath,
+      service.replace(
+        /(\r?\n)(\s*)\/\/ <\/cleanstack:user-code>/,
+        '$1    public String customHook() { return "kept"; }$1$2// </cleanstack:user-code>',
+      ),
+    );
+
+    await createProject(cwd, ['demo', '--yes', '--no-entities']);
+    assert.match(await readFile(servicePath, 'utf8'), /customHook/);
+
+    await createProject(cwd, ['demo', '--yes', '--no-entities', '--force']);
+    assert.doesNotMatch(await readFile(servicePath, 'utf8'), /customHook/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('--dry-run reports changes without writing generated files', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-new-dry-run-'));
+  try {
+    await createProject(cwd, ['demo', '--yes', '--no-entities']);
+    const servicePath = path.join(
+      cwd,
+      'demo',
+      'demo-backend',
+      'src/main/java/com/example/service/GreetingService.java',
+    );
+    const before = await readFile(servicePath, 'utf8');
+
+    await createProject(cwd, ['demo', '--yes', '--no-entities', '--force', '--dry-run']);
+    assert.equal(await readFile(servicePath, 'utf8'), before);
+
+    await runNewCommand(['ghost', '--yes', '--no-entities', '--dry-run'], { cwd, logger });
+    await assert.rejects(readFile(path.join(cwd, 'ghost')), { code: 'ENOENT' });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});

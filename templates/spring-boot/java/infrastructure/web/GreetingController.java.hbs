@@ -22,4 +22,7 @@ public class GreetingController {
     public GreetingResponse greet(@RequestParam(defaultValue = "world") String name) {
         return GreetingResponse.from(greetUseCase.greet(name));
     }
+
+    // <cleanstack:user-code id="controller.greeting.custom">
+    // </cleanstack:user-code>
 }

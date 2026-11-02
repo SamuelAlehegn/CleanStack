@@ -2,6 +2,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildEntityModels, type EntityModel } from '../core/entity-model.js';
 import type { ProjectConfig } from '../core/config.js';
+import {
+  writeGeneratedFile,
+  type GeneratedFileResult,
+} from '../core/generated-file.js';
 import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
 import type { TemplateEngine } from './template-engine.js';
 
@@ -22,8 +26,10 @@ export interface TemplateManifest {
 export interface RenderManifestOptions {
   /** Only render entries accepted by this predicate. */
   filter?: (entry: ManifestEntry) => boolean;
-  /** Replace existing files instead of failing. Defaults to false. */
-  overwrite?: boolean;
+  /** Replace existing files completely, including protected regions. */
+  force?: boolean;
+  /** Called once per planned file with the merge outcome. */
+  onFile?: (result: GeneratedFileResult) => void;
 }
 
 export interface ManifestPlanItem {
@@ -56,12 +62,19 @@ export function templateAliases(project: ProjectConfig): Record<string, unknown>
 }
 
 /** Builds the Handlebars context shared by project and entity templates. */
-export function templateContext(project: ProjectConfig): Record<string, unknown> {
+export function templateContext(
+  project: ProjectConfig,
+  migrationVersionOverrides?: ReadonlyMap<string, number>,
+): Record<string, unknown> {
   const models = buildEntityModels(project.entities);
   const versions = migrationVersions(models);
   const entities = models.map((entity) => ({
     ...entity,
-    migrationVersion: versions.get(entity.name.toLowerCase()) ?? 2,
+    migrationVersion:
+      migrationVersionOverrides?.get(entity.tableName.toLowerCase()) ??
+      migrationVersionOverrides?.get(entity.name.toLowerCase()) ??
+      versions.get(entity.name.toLowerCase()) ??
+      2,
   }));
   return {
     project: { ...project, entities },
@@ -163,9 +176,15 @@ export async function renderManifest(
   for (const item of plan) {
     const contents = await engine.render(`${templateSet}/${item.entry.template}`, item.context);
     const parent = path.posix.dirname(item.destination);
-    if (parent !== '.') await output.createDirectory(parent);
-    await output.writeFile(item.destination, contents, { overwrite: options.overwrite ?? false });
-    written.push(item.destination);
+    if (!output.dryRun && parent !== '.') await output.createDirectory(parent);
+    const result = await writeGeneratedFile(output, item.destination, contents, {
+      force: options.force ?? false,
+      dryRun: output.dryRun,
+    });
+    options.onFile?.(result);
+    if (result.status !== 'conflict' && result.status !== 'preserved') {
+      written.push(item.destination);
+    }
   }
 
   return written;

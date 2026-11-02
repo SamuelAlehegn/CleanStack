@@ -74,8 +74,8 @@ cleanstack entity Product \
 | `--no-backend`            | Skip backend artifacts.                              |
 | `--frontend`              | Generate frontend artifacts only.                    |
 | `--no-frontend`           | Skip frontend artifacts.                             |
-| `--force`                 | Overwrite existing generated files.                  |
-| `--dry-run`               | Report what would be written without writing.        |
+| `--force`                 | Overwrite generated files completely.                |
+| `--dry-run`               | Report what would change without writing.            |
 
 Without a side flag, the command generates both sides when both projects are
 present. The Java package is detected from the backend's `*Application.java`
@@ -98,9 +98,17 @@ and form pages, then adds the entity routes to `app.routes.ts` and a link to
 built-in templates. If those markers are missing, the command falls back to the
 route array and the `<nav>` element.
 
-Existing entity files are not overwritten unless `--force` is passed. Repeated
-route and navigation updates are skipped when the entity is already present, so
-`--force` remains safe to re-run.
+Repeated runs merge the newly rendered files with the protected regions in the
+existing files, so code inside a region is kept. Region conflicts leave the file
+untouched and are reported with their region ids. `--force` replaces generated
+files completely, including protected regions. `--dry-run` reports the same
+create, update, preserve, overwrite, and conflict decisions without writing.
+Repeated route and navigation updates are skipped when the entity is already
+present.
+
+Every generated entity is recorded in `.cleanstack/project.json`, so entities
+built from `--field` options without a descriptor can still be rebuilt later
+with `cleanstack regenerate entity <name>` or `cleanstack regenerate --all`.
 
 ```yaml
 name: Product

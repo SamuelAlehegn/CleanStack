@@ -7,8 +7,9 @@ again must never silently delete hand-written code.
 
 This document defines the marker format, the checksum metadata, and the
 regeneration rules. The line-level primitives live in
-[`src/core/protected-regions.ts`](../src/core/protected-regions.ts). The
-file-level merge engine is the next implementation step.
+[`src/core/protected-regions.ts`](../src/core/protected-regions.ts) and the
+file-level merge engine lives in
+[`src/core/protected-region-manager.ts`](../src/core/protected-region-manager.ts).
 
 ## Goals
 
@@ -106,6 +107,7 @@ $product-accent: #2563eb;
 | Language   | Extensions                    | Marker comment |
 | ---------- | ----------------------------- | -------------- |
 | Java       | `.java`                       | `//`           |
+| Kotlin     | `.kt`, `.kts`                 | `//`           |
 | TypeScript | `.ts`, `.tsx`, `.mts`, `.cts` | `//`           |
 | JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | `//`           |
 | SQL        | `.sql`                        | `--`           |
@@ -116,10 +118,12 @@ $product-accent: #2563eb;
 | YAML       | `.yml`, `.yaml`               | `#`            |
 | Properties | `.properties`, `.env`         | `#`            |
 | Markdown   | `.md`, `.markdown`            | `<!-- -->`     |
+| Dockerfile | `Dockerfile`                  | `#`            |
 
-Only files with a supported extension can contain protected regions. If a
-template emits a region in an unsupported file type, generation fails with the
-file path instead of writing an unparseable file.
+`.gitignore` and `.dockerignore` use the properties comment syntax. Files with
+JSON content cannot carry comments, so the generator preserves them unless
+`--force` is passed. If a template emits a region in an unsupported file type,
+generation fails with the file path instead of writing an unparseable file.
 
 ## Region ids
 
@@ -407,4 +411,15 @@ The protected-region system is implemented:
 - `tests/protected-region-manager.test.js` covers parsing, every decision-table
   branch, strategies, orphans, checksum drift, and line endings.
 
-Generators will adopt the manager next, together with `--force` and `--dry-run`.
+Generators use the manager through `src/core/generated-file.ts`:
+
+- `cleanstack new` and `cleanstack entity` compute checksums for every region
+  on first generation.
+- Repeated runs merge existing files with the newly rendered template.
+- `cleanstack regenerate` re-runs generation for the project skeleton, one
+  entity, or everything (`--all`) on top of the same merge behavior.
+- `--force` replaces generated files completely, including protected regions.
+- `--dry-run` reports create, update, overwrite, preserve, and conflict
+  decisions without writing.
+- Files whose type cannot carry markers, and files whose existing content has no
+  protected regions, are preserved unless `--force` is passed.
