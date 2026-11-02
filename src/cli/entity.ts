@@ -1,15 +1,16 @@
 import path from 'node:path';
-import { JAVA_PACKAGE_PATTERN, type ProjectConfig } from '../core/config.js';
+import { JAVA_PACKAGE_PATTERN, type EntityConfig, type ProjectConfig } from '../core/config.js';
 import { CliOptionError } from '../core/config-loader.js';
-import type { EntityModel } from '../core/entity-model.js';
-import { buildInlineEntity, findEntityDescriptor } from '../core/entity-input.js';
+import { buildEntityModels, type EntityModel } from '../core/entity-model.js';
+import { buildInlineEntityConfig, findEntityDescriptor } from '../core/entity-input.js';
 import {
   addEntityNavLink,
   addEntityRoutes,
   hasEntityNavLink,
   hasEntityRoutes,
 } from '../core/frontend-updates.js';
-import { locateGeneratedProject } from '../core/project.js';
+import { resolveProjectConfig, updateProjectMetadataEntity } from '../core/project-metadata.js';
+import { locateGeneratedProject, type GeneratedProject } from '../core/project.js';
 import type { GeneratedFileResult } from '../core/generated-file.js';
 import { renderManifest, templateAliases, type ManifestEntry } from '../templates/manifest.js';
 import { TemplateEngine } from '../templates/template-engine.js';
@@ -55,45 +56,44 @@ Options:
   --dry-run                 Show what would change without writing files
   -h, --help                Show this help`;
 
-export async function runEntityCommand(
-  args: string[],
-  options: EntityCommandOptions,
-): Promise<void> {
-  const parsed = parseEntityCommandArguments(args);
-  if (parsed.help) {
-    options.logger.info(ENTITY_USAGE);
-    return;
-  }
+export interface EntityGenerationOptions {
+  project: GeneratedProject;
+  entity: EntityModel;
+  /** Raw configuration recorded in the project metadata for future regenerations. */
+  entityConfig: EntityConfig;
+  cwd: string;
+  logger: Logger;
+  backend?: boolean | undefined;
+  frontend?: boolean | undefined;
+  force?: boolean | undefined;
+  dryRun?: boolean | undefined;
+  /** Overrides the detected Java package. */
+  packageName?: string | undefined;
+  /** Already resolved project config; inferred when omitted. */
+  metadataConfig?: ProjectConfig | undefined;
+  /** Verb for success logs, e.g. "Generated" or "Regenerated". */
+  action?: string | undefined;
+}
 
-  const name = parsed.name!;
-  const cwd = path.resolve(options.cwd ?? process.cwd());
-  const project = await locateGeneratedProject({ cwd });
+export interface EntityGenerationResult {
+  targets: string[];
+}
 
-  let entity: EntityModel;
-  let source: string;
-  if (parsed.fields.length > 0) {
-    entity = buildInlineEntity(name, parsed.fields, parsed.tableName);
-    source = 'inline options';
-  } else {
-    const descriptor = await findEntityDescriptor({
-      name,
-      cwd,
-      projectRoot: project.rootDir,
-      ...(parsed.descriptor === undefined ? {} : { descriptor: parsed.descriptor }),
-    });
-    if (!descriptor) {
-      throw new CliOptionError(
-        `No descriptor was found for "${name}". Add entities/${name}.yaml or pass --field <name:type>.`,
-      );
-    }
-    entity = descriptor.entity;
-    source = descriptor.descriptorPath;
-  }
+/**
+ * Renders the artifacts for one entity into an existing generated project.
+ * Shared by `cleanstack entity` and `cleanstack regenerate`.
+ */
+export async function generateEntityInProject(
+  options: EntityGenerationOptions,
+): Promise<EntityGenerationResult> {
+  const { project, entity, cwd, logger } = options;
+  const force = options.force ?? false;
+  const dryRun = options.dryRun ?? false;
 
   const backendAvailable = project.backend !== undefined;
   const frontendAvailable = project.frontend !== undefined;
   const { generateBackend, generateFrontend } = resolveSides(
-    parsed,
+    { backend: options.backend, frontend: options.frontend },
     backendAvailable,
     frontendAvailable,
   );
@@ -112,45 +112,47 @@ export async function runEntityCommand(
     );
   }
 
-  const packageName = parsed.packageName ?? project.backend?.packageName;
-  if (parsed.packageName !== undefined && !JAVA_PACKAGE_PATTERN.test(parsed.packageName)) {
+  if (options.packageName !== undefined && !JAVA_PACKAGE_PATTERN.test(options.packageName)) {
     throw new CliOptionError(
-      `Option "--package" must be a valid Java package, received "${parsed.packageName}".`,
+      `Option "--package" must be a valid Java package, received "${options.packageName}".`,
     );
   }
+  const packageName = options.packageName ?? project.backend?.packageName;
   if (generateBackend && packageName === undefined) {
     throw new CliOptionError(
       'Could not detect the Java package. Pass --package <name> to set it explicitly.',
     );
   }
 
+  const filesystemLogger: FileSystemLogger = {
+    log: (action) =>
+      logger.debug(`[filesystem] ${action.operation} ${action.path}: ${action.status}`),
+  };
+  const metadataConfig =
+    options.metadataConfig ??
+    (await resolveProjectConfig(project, { cwd, logger: filesystemLogger }));
+
   const projectName = path.basename(project.rootDir);
   const projectConfig: ProjectConfig = {
     name: projectName,
-    packageName: packageName ?? 'com.example',
+    packageName: packageName ?? metadataConfig.packageName ?? 'com.example',
     entities: [],
     options: {
+      ...metadataConfig.options,
       backend: generateBackend,
       frontend: generateFrontend,
-      database: 'postgresql',
-      auth: 'none',
-      buildTool: project.backend?.buildTool ?? 'maven',
-      docker: false,
-      dryRun: parsed.dryRun,
+      buildTool: project.backend?.buildTool ?? metadataConfig.options.buildTool ?? 'maven',
+      dryRun,
       outputDir: '.',
     },
   };
   const engine = new TemplateEngine({ projectRoot: project.workspaceRoot });
-  const filesystemLogger: FileSystemLogger = {
-    log: (action) =>
-      options.logger.debug(`[filesystem] ${action.operation} ${action.path}: ${action.status}`),
-  };
 
   const backendFileSystem = project.backend
     ? new FileSystemService({
         rootDir: project.backend.directory,
         logger: filesystemLogger,
-        dryRun: parsed.dryRun,
+        dryRun,
       })
     : undefined;
   const migrationVersion =
@@ -176,7 +178,7 @@ export async function runEntityCommand(
     ? new FileSystemService({
         rootDir: project.frontend.directory,
         logger: filesystemLogger,
-        dryRun: parsed.dryRun,
+        dryRun,
       })
     : undefined;
 
@@ -193,7 +195,7 @@ export async function runEntityCommand(
       engine,
       backendFileSystem,
       filesystemLogger,
-      { filter: entityEntries, force: parsed.force, onFile },
+      { filter: entityEntries, force, onFile },
     );
   }
 
@@ -205,34 +207,97 @@ export async function runEntityCommand(
       engine,
       frontendFileSystem,
       filesystemLogger,
-      { filter: entityEntries, force: parsed.force, onFile },
+      { filter: entityEntries, force, onFile },
     );
-    if (!parsed.dryRun) {
-      await updateFrontendNavigation(frontendFileSystem, entity, options.logger);
+    if (!dryRun) {
+      await updateFrontendNavigation(frontendFileSystem, entity, logger);
     }
   }
 
-  reportGeneratedFiles(options.logger, generatedFiles, {
-    dryRun: parsed.dryRun,
-    force: parsed.force,
-  });
+  reportGeneratedFiles(logger, generatedFiles, { dryRun, force });
   if (conflictingFiles(generatedFiles).length > 0) {
     throw new CliOptionError(
       `Regeneration stopped because ${conflictingFiles(generatedFiles).length} file(s) contain protected region conflicts. Resolve them and run the command again, or use --force to replace the files completely.`,
     );
   }
 
+  const metadataOutput = new FileSystemService({
+    rootDir: project.rootDir,
+    logger: filesystemLogger,
+    dryRun,
+  });
+  await updateProjectMetadataEntity(metadataOutput, metadataConfig, options.entityConfig);
+
   const targets = [
     generateBackend ? project.backend?.relativeDirectory : undefined,
     generateFrontend ? project.frontend?.relativeDirectory : undefined,
   ].filter((target): target is string => target !== undefined);
-  if (parsed.dryRun) {
-    options.logger.info(
-      `Dry run: ${entity.className} was not written to ${targets.join(' and ')}.`,
-    );
+  const action = options.action ?? 'Generated';
+  if (dryRun) {
+    if (action === 'Regenerated') {
+      logger.info(`Dry run: ${entity.className} in ${targets.join(' and ')} would be regenerated.`);
+    } else {
+      logger.info(`Dry run: ${entity.className} was not written to ${targets.join(' and ')}.`);
+    }
   } else {
-    options.logger.success(`Generated ${entity.className} in ${targets.join(' and ')}.`);
+    logger.success(`${action} ${entity.className} in ${targets.join(' and ')}.`);
   }
+
+  return { targets };
+}
+
+export async function runEntityCommand(
+  args: string[],
+  options: EntityCommandOptions,
+): Promise<void> {
+  const parsed = parseEntityCommandArguments(args);
+  if (parsed.help) {
+    options.logger.info(ENTITY_USAGE);
+    return;
+  }
+
+  const name = parsed.name!;
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  const project = await locateGeneratedProject({ cwd });
+
+  let entity: EntityModel;
+  let entityConfig: EntityConfig;
+  let source: string;
+  if (parsed.fields.length > 0) {
+    entityConfig = buildInlineEntityConfig(name, parsed.fields, parsed.tableName);
+    const [model] = buildEntityModels([entityConfig]);
+    entity = model!;
+    source = 'inline options';
+  } else {
+    const descriptor = await findEntityDescriptor({
+      name,
+      cwd,
+      projectRoot: project.rootDir,
+      ...(parsed.descriptor === undefined ? {} : { descriptor: parsed.descriptor }),
+    });
+    if (!descriptor) {
+      throw new CliOptionError(
+        `No descriptor was found for "${name}". Add entities/${name}.yaml or pass --field <name:type>.`,
+      );
+    }
+    entity = descriptor.entity;
+    entityConfig = descriptor.config;
+    source = descriptor.descriptorPath;
+  }
+
+  await generateEntityInProject({
+    project,
+    entity,
+    entityConfig,
+    cwd,
+    logger: options.logger,
+    ...(parsed.backend === undefined ? {} : { backend: parsed.backend }),
+    ...(parsed.frontend === undefined ? {} : { frontend: parsed.frontend }),
+    ...(parsed.packageName === undefined ? {} : { packageName: parsed.packageName }),
+    force: parsed.force,
+    dryRun: parsed.dryRun,
+  });
+
   options.logger.info(`Entity source: ${source}`);
 }
 
@@ -394,20 +459,20 @@ async function nextMigrationVersion(
 }
 
 function resolveSides(
-  parsed: EntityCommandArguments,
+  sides: { backend?: boolean | undefined; frontend?: boolean | undefined },
   backendAvailable: boolean,
   frontendAvailable: boolean,
 ): { generateBackend: boolean; generateFrontend: boolean } {
-  const wantsBackend = parsed.backend === true;
-  const wantsFrontend = parsed.frontend === true;
+  const wantsBackend = sides.backend === true;
+  const wantsFrontend = sides.frontend === true;
 
   if (wantsBackend || wantsFrontend) {
     return { generateBackend: wantsBackend, generateFrontend: wantsFrontend };
   }
 
   return {
-    generateBackend: parsed.backend === false ? false : backendAvailable,
-    generateFrontend: parsed.frontend === false ? false : frontendAvailable,
+    generateBackend: sides.backend === false ? false : backendAvailable,
+    generateFrontend: sides.frontend === false ? false : frontendAvailable,
   };
 }
 

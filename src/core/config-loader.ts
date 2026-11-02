@@ -241,7 +241,8 @@ function assignOption(
   target[spec.key] = value;
 }
 
-async function findConfigFile(cwd: string): Promise<string | undefined> {
+/** Returns the first supported configuration file in a directory, if any. */
+export async function findConfigFile(cwd: string): Promise<string | undefined> {
   for (const candidate of CONFIG_CANDIDATES) {
     const filePath = path.join(cwd, candidate);
     try {
@@ -249,6 +250,26 @@ async function findConfigFile(cwd: string): Promise<string | undefined> {
     } catch {
       // Try the next supported filename.
     }
+  }
+  return undefined;
+}
+
+/**
+ * Searches a directory and its parents for a configuration file. The depth is
+ * bounded so a stray configuration file in a user's home directory cannot
+ * silently control a generated project.
+ */
+export async function findConfigFileInAncestors(
+  startDir: string,
+  maxDepth = 4,
+): Promise<string | undefined> {
+  let current = path.resolve(startDir);
+  for (let depth = 0; depth <= maxDepth; depth += 1) {
+    const found = await findConfigFile(current);
+    if (found !== undefined) return found;
+    const parent = path.dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
   }
   return undefined;
 }

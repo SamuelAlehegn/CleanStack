@@ -416,6 +416,8 @@ Generators use the manager through `src/core/generated-file.ts`:
 - `cleanstack new` and `cleanstack entity` compute checksums for every region
   on first generation.
 - Repeated runs merge existing files with the newly rendered template.
+- `cleanstack regenerate` re-runs generation for the project skeleton, one
+  entity, or everything (`--all`) on top of the same merge behavior.
 - `--force` replaces generated files completely, including protected regions.
 - `--dry-run` reports create, update, overwrite, preserve, and conflict
   decisions without writing.

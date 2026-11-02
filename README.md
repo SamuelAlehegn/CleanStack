@@ -41,6 +41,36 @@ cleanstack new demo --yes --force     # replace files, including protected regio
 `--force` is the explicit escape hatch: it overwrites generated files completely.
 `--dry-run` performs the same merge decisions and reports them without writing.
 
+## Regenerating
+
+The `regenerate` command re-runs generation on an existing project without
+touching code inside protected regions:
+
+```sh
+cleanstack regenerate                    # project skeleton only
+cleanstack regenerate entity Product     # one entity
+cleanstack regenerate --all              # skeleton and every known entity
+```
+
+It decides what to regenerate from the generation metadata stored in
+`.cleanstack/project.json` (written by `cleanstack new`), the configuration file
+searched next to the generated project, and every descriptor in `entities/`.
+When metadata is missing, options are recovered from the configuration file or
+detected from the generated files themselves.
+
+Options:
+
+| Option                       | Meaning                                         |
+| ---------------------------- | ----------------------------------------------- |
+| `--all`                      | Regenerate the skeleton and all known entities. |
+| `--backend / --no-backend`   | Regenerate or skip backend artifacts.           |
+| `--frontend / --no-frontend` | Regenerate or skip frontend artifacts.          |
+| `--force`                    | Overwrite generated files completely.           |
+| `--dry-run`                  | Report what would change without writing files. |
+
+Existing migrations keep their `V<n>` numbers during `--all`; only files that
+changed are rewritten, and conflicts are reported with their region ids.
+
 ## Generating an entity
 
 The `entity` command adds an entity to a project that was already generated with

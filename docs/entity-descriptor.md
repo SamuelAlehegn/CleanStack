@@ -106,6 +106,10 @@ create, update, preserve, overwrite, and conflict decisions without writing.
 Repeated route and navigation updates are skipped when the entity is already
 present.
 
+Every generated entity is recorded in `.cleanstack/project.json`, so entities
+built from `--field` options without a descriptor can still be rebuilt later
+with `cleanstack regenerate entity <name>` or `cleanstack regenerate --all`.
+
 ```yaml
 name: Product
 tableName: products # optional; defaults can be derived from the entity name

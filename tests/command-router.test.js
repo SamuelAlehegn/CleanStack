@@ -24,10 +24,27 @@ test('resolves new, hello, and empty invocations', () => {
   assert.deepEqual(resolveCommand(['--verbose']), { name: 'help', args: [] });
 });
 
+test('resolves the regenerate command and its "r" alias', () => {
+  assert.deepEqual(resolveCommand(['regenerate']), { name: 'regenerate', args: [] });
+  assert.deepEqual(resolveCommand(['r']), { name: 'regenerate', args: [] });
+  assert.deepEqual(resolveCommand(['regenerate', 'entity', 'Product']), {
+    name: 'regenerate',
+    args: ['entity', 'Product'],
+  });
+  assert.deepEqual(resolveCommand(['r', '--all']), {
+    name: 'regenerate',
+    args: ['--all'],
+  });
+});
+
 test('removes global verbosity flags from command arguments', () => {
   assert.deepEqual(resolveCommand(['--verbose', 'entity', 'Product', '--quiet']), {
     name: 'entity',
     args: ['Product'],
+  });
+  assert.deepEqual(resolveCommand(['-v', 'regenerate', '--all']), {
+    name: 'regenerate',
+    args: ['--all'],
   });
 });
 

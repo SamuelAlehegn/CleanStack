@@ -1,13 +1,15 @@
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { CliOptionError } from './config-loader.js';
-import { EntityConfigSchema } from './config.js';
+import { EntityConfigSchema, type EntityConfig } from './config.js';
 import { buildEntityModels, type EntityModel } from './entity-model.js';
 import { EntityParser, formatZodError } from './entity-parser.js';
 import { FileSystemService } from '../utils/file-system.js';
 
 export interface DescriptorResult {
   entity: EntityModel;
+  /** Validated entity configuration as written in the descriptor. */
+  config: EntityConfig;
   descriptorPath: string;
 }
 
@@ -67,12 +69,12 @@ export async function findEntityDescriptor(
   return undefined;
 }
 
-/** Builds an entity model from --field options. */
-export function buildInlineEntity(
+/** Builds an entity config from --field options. */
+export function buildInlineEntityConfig(
   name: string,
   fieldSpecs: string[],
   tableName?: string,
-): EntityModel {
+): EntityConfig {
   if (fieldSpecs.length === 0) {
     throw new CliOptionError(
       `No descriptor was found for "${name}" and no fields were provided. Add entities/${name}.yaml or pass --field <name:type>.`,
@@ -88,8 +90,16 @@ export function buildInlineEntity(
   if (!result.success) {
     throw new CliOptionError(`Invalid entity definition: ${formatZodError(result.error)}`);
   }
+  return result.data;
+}
 
-  const [entity] = buildEntityModels([result.data]);
+/** Builds an entity model from --field options. */
+export function buildInlineEntity(
+  name: string,
+  fieldSpecs: string[],
+  tableName?: string,
+): EntityModel {
+  const [entity] = buildEntityModels([buildInlineEntityConfig(name, fieldSpecs, tableName)]);
   return entity!;
 }
 
@@ -169,7 +179,7 @@ type FieldConfigInput = Record<string, unknown>;
 
 async function readEntityDescriptor(
   descriptorPath: string,
-): Promise<{ entity: EntityModel; descriptorPath: string }> {
+): Promise<{ entity: EntityModel; config: EntityConfig; descriptorPath: string }> {
   const directory = path.dirname(descriptorPath);
   const fileSystem = new FileSystemService({
     rootDir: directory,
@@ -181,7 +191,7 @@ async function readEntityDescriptor(
 
   if (raw.relations.length === 0) {
     const [entity] = buildEntityModels([raw]);
-    return { entity: entity!, descriptorPath };
+    return { entity: entity!, config: raw, descriptorPath };
   }
 
   const files = (await listDescriptorFiles(directory)).map((file) =>
@@ -192,7 +202,7 @@ async function readEntityDescriptor(
   if (!entity) {
     throw new CliOptionError(`Could not load entity "${raw.name}" from "${descriptorPath}".`);
   }
-  return { entity, descriptorPath };
+  return { entity, config: raw, descriptorPath };
 }
 
 async function resolveDescriptorPath(options: DescriptorSearchOptions): Promise<string> {

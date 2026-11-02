@@ -4,6 +4,7 @@ import path from 'node:path';
 import { ConfigLoader, CliOptionError, parseCommandLineOptions } from '../core/config-loader.js';
 import { JAVA_PACKAGE_PATTERN, type ProjectConfig } from '../core/config.js';
 import { EntityParser } from '../core/entity-parser.js';
+import { writeProjectMetadata } from '../core/project-metadata.js';
 import {
   kebabCase,
   renderManifest,
@@ -66,7 +67,7 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
       project.entities.length > 0
         ? project.entities
         : entityDescriptorFiles.length > 0
-          ? await new EntityParser({ rootDir: cwd }).parseDirectory('entities')
+          ? await new EntityParser({ rootDir: cwd }).parseDirectoryConfigs('entities')
           : [];
     if (entities.length === 0) {
       options.logger.warn(
@@ -142,6 +143,8 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
       `Regeneration stopped because ${conflictingFiles(generatedFiles).length} file(s) contain protected region conflicts. Resolve them and run the command again, or use --force to replace the files completely.`,
     );
   }
+
+  await writeProjectMetadata(projectRootFs, generationProject);
 
   if (initializeGit && !dryRun) {
     execFileSync('git', ['init'], { cwd: projectRootFs.rootDir, stdio: 'ignore' });

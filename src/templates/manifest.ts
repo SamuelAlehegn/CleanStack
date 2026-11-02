@@ -62,12 +62,19 @@ export function templateAliases(project: ProjectConfig): Record<string, unknown>
 }
 
 /** Builds the Handlebars context shared by project and entity templates. */
-export function templateContext(project: ProjectConfig): Record<string, unknown> {
+export function templateContext(
+  project: ProjectConfig,
+  migrationVersionOverrides?: ReadonlyMap<string, number>,
+): Record<string, unknown> {
   const models = buildEntityModels(project.entities);
   const versions = migrationVersions(models);
   const entities = models.map((entity) => ({
     ...entity,
-    migrationVersion: versions.get(entity.name.toLowerCase()) ?? 2,
+    migrationVersion:
+      migrationVersionOverrides?.get(entity.tableName.toLowerCase()) ??
+      migrationVersionOverrides?.get(entity.name.toLowerCase()) ??
+      versions.get(entity.name.toLowerCase()) ??
+      2,
   }));
   return {
     project: { ...project, entities },
