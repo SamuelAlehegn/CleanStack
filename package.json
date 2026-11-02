@@ -45,6 +45,14 @@
       "types": "./dist/utils/path-safety.d.ts",
       "default": "./dist/utils/path-safety.js"
     },
+    "./protected-regions": {
+      "types": "./dist/core/protected-regions.d.ts",
+      "default": "./dist/core/protected-regions.js"
+    },
+    "./protected-region-manager": {
+      "types": "./dist/core/protected-region-manager.d.ts",
+      "default": "./dist/core/protected-region-manager.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
