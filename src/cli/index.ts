@@ -7,6 +7,7 @@ import { resolveCommand } from './command-router.js';
 import { ENTITY_USAGE, runEntityCommand } from './entity.js';
 import { runNewCommand } from './new.js';
 import { REGENERATE_USAGE, runRegenerateCommand } from './regenerate.js';
+import { runTemplatesCommand, TEMPLATES_USAGE } from './templates.js';
 
 interface PackageMetadata {
   version: string;
@@ -35,6 +36,10 @@ Commands:
   regenerate entity <name> Re-generate a single entity
   regenerate --all         Re-generate the skeleton and all known entities
   r                        Alias for "regenerate"
+  templates list           List templates and where each resolves from
+  templates init           Copy built-in templates into the project
+  templates diff           Show differences between overrides and built-in
+  templates reset <name>   Remove an override and fall back to built-in
   hello                    Print a welcome message
 
 New options:
@@ -66,6 +71,13 @@ Regenerate options:
   --force                   Overwrite generated files completely, including protected regions
   --dry-run                 Show what would change without writing files
 
+Templates options:
+  list [pack]               List templates and their override source
+  init [--force] [--dry-run]
+                            Copy built-in templates into .cleanstack/templates
+  diff [pack]               Diff override files against the built-in templates
+  reset <name> [--dry-run]  Remove an override so the built-in template applies
+
 Options:
   -v, --verbose    Show debug output
   -q, --quiet      Suppress non-error output
@@ -81,6 +93,8 @@ if (wantsHelp) {
     logger.info(ENTITY_USAGE);
   } else if (resolved.name === 'regenerate') {
     logger.info(REGENERATE_USAGE);
+  } else if (resolved.name === 'templates') {
+    logger.info(TEMPLATES_USAGE);
   } else {
     logger.info(usage);
   }
@@ -102,6 +116,11 @@ if (wantsHelp) {
   });
 } else if (resolved.name === 'regenerate') {
   runRegenerateCommand(resolved.args, { logger }).catch((error: unknown) => {
+    logger.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+} else if (resolved.name === 'templates') {
+  runTemplatesCommand(resolved.args, { logger }).catch((error: unknown) => {
     logger.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });

@@ -183,6 +183,36 @@ reruns (see [Safe regeneration](#safe-regeneration)); `--force` overwrites.
 `manifest.json` itself participates in the chain, and a manifest override must
 declare a `files` array.
 
+## Managing templates
+
+The `templates` command inspects and manages the override directory of the
+current project (`.cleanstack/templates`):
+
+```sh
+cleanstack templates list            # every template and where it resolves from
+cleanstack templates init            # copy built-in templates into the project
+cleanstack templates diff            # show differences from the built-in
+cleanstack templates reset <name>    # remove one override, fall back to built-in
+```
+
+`list` annotates each template with its source (`project`, `user`, or
+`built-in`) and flags override-only files. A pack name can narrow the output:
+`cleanstack templates list spring-boot`.
+
+`init` copies the built-in templates so you can edit them locally. Existing
+override files are kept unless you pass `--force`; `--dry-run` reports what
+would be copied without writing.
+
+`diff` compares every override file with its built-in counterpart and prints
+line differences (context collapsed around changes). Files that exist only in
+an override are reported as added.
+
+`reset` deletes an override file so the built-in template applies again. The
+name is the pack-qualified template path (with or without the `.hbs`
+extension), for example `spring-boot/root/README.md`. Without a project or user
+override the command reports that nothing needs resetting; `--dry-run` only
+reports what it would delete.
+
 ## Development
 
 ```sh

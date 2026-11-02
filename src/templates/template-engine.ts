@@ -48,7 +48,8 @@ export interface ResolvedTemplateLocation {
 }
 
 const DEFAULT_EXTENSION = '.hbs';
-const BUILT_IN_TEMPLATE_ROOT = path.resolve(
+/** Shipped template packs, used as the final fallback of the override chain. */
+export const BUILT_IN_TEMPLATE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../templates',
 );
