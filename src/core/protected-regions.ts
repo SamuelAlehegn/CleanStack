@@ -17,6 +17,7 @@ export const PROTECTED_REGION_CHECKSUM_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
 export type ProtectedRegionLanguage =
   | 'java'
+  | 'kotlin'
   | 'typescript'
   | 'javascript'
   | 'sql'
@@ -26,7 +27,8 @@ export type ProtectedRegionLanguage =
   | 'scss'
   | 'yaml'
   | 'properties'
-  | 'markdown';
+  | 'markdown'
+  | 'dockerfile';
 
 export type ProtectedRegionCommentStyle =
   { kind: 'line'; prefix: string } | { kind: 'block'; open: string; close: string };
@@ -94,6 +96,11 @@ export const PROTECTED_REGION_LANGUAGES: Readonly<
     extensions: ['.java'],
     comment: { kind: 'line', prefix: '//' },
   },
+  kotlin: {
+    name: 'Kotlin',
+    extensions: ['.kt', '.kts'],
+    comment: { kind: 'line', prefix: '//' },
+  },
   typescript: {
     name: 'TypeScript',
     extensions: ['.ts', '.tsx', '.mts', '.cts'],
@@ -144,6 +151,11 @@ export const PROTECTED_REGION_LANGUAGES: Readonly<
     extensions: ['.md', '.markdown'],
     comment: { kind: 'block', open: '<!--', close: '-->' },
   },
+  dockerfile: {
+    name: 'Dockerfile',
+    extensions: [],
+    comment: { kind: 'line', prefix: '#' },
+  },
 };
 
 const LANGUAGE_BY_EXTENSION = new Map<string, ProtectedRegionLanguage>();
@@ -161,7 +173,10 @@ const ATTRIBUTE_PATTERN = /([a-zA-Z][a-zA-Z0-9-]*)="([^"]*)"/g;
 /** Returns the protected-region language for a path, or undefined when unsupported. */
 export function languageForFile(filePath: string): ProtectedRegionLanguage | undefined {
   const fileName = path.basename(filePath).toLowerCase();
-  if (fileName === '.env') return 'properties';
+  if (fileName === '.env' || fileName === '.dockerignore' || fileName === '.gitignore') {
+    return 'properties';
+  }
+  if (fileName === 'dockerfile') return 'dockerfile';
   return LANGUAGE_BY_EXTENSION.get(path.extname(fileName));
 }
 
@@ -281,6 +296,14 @@ export function parseProtectedRegionMarker(
   if (inner === undefined) return undefined;
 
   if (inner.startsWith('</cleanstack:')) {
+    // Other tools may use cleanstack-prefixed comments (for example the
+    // generator's route markers). Only the protected-region tags are ours.
+    if (
+      !inner.startsWith(`</${PROTECTED_REGION_TAG}`) &&
+      !inner.startsWith(`</${PROTECTED_REGION_TAG_ALIAS}`)
+    ) {
+      return undefined;
+    }
     const end = END_TAG_PATTERN.exec(inner);
     if (!end) {
       throw new ProtectedRegionFormatError(`Malformed protected region end marker: ${line.trim()}`);
@@ -289,6 +312,12 @@ export function parseProtectedRegionMarker(
   }
 
   if (!inner.startsWith('<cleanstack:')) return undefined;
+  if (
+    !inner.startsWith(`<${PROTECTED_REGION_TAG}`) &&
+    !inner.startsWith(`<${PROTECTED_REGION_TAG_ALIAS}`)
+  ) {
+    return undefined;
+  }
 
   const start = START_TAG_PATTERN.exec(inner);
   if (!start) {

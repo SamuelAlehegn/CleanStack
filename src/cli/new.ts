@@ -11,9 +11,11 @@ import {
   withProjectSuffix,
 } from '../templates/manifest.js';
 import { TemplateEngine } from '../templates/template-engine.js';
-import { FileExistsError, FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
+import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
 import { isMissingPath } from '../utils/path-safety.js';
 import type { Logger } from '../utils/logger.js';
+import { conflictingFiles, reportGeneratedFiles } from './file-report.js';
+import type { GeneratedFileResult } from '../core/generated-file.js';
 
 interface NewCommandOptions {
   cwd?: string;
@@ -30,7 +32,7 @@ const defaults = {
 } as const;
 export async function runNewCommand(args: string[], options: NewCommandOptions): Promise<void> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
-  const { interactive, yes, initializeGit, includeEntities, configArgs } =
+  const { interactive, yes, initializeGit, includeEntities, force, dryRun, configArgs } =
     extractControlFlags(args);
   let cliOptions = mapFrontendOption(parseCommandLineOptions(configArgs));
   if (!yes && (interactive || hasMissingSettings(cliOptions))) {
@@ -78,21 +80,32 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
     log: (action) =>
       options.logger.debug(`[filesystem] ${action.operation} ${action.path}: ${action.status}`),
   };
-  const targetFs = new FileSystemService({ rootDir: cwd, logger: filesystemLogger });
-  if (await targetFs.exists(targetRelative)) throw new FileExistsError(targetRelative);
-
+  const targetFs = new FileSystemService({
+    rootDir: cwd,
+    logger: filesystemLogger,
+    dryRun,
+  });
   await targetFs.createDirectory(targetRelative);
   const projectRootFs = new FileSystemService({
     rootDir: path.resolve(cwd, targetRelative),
     logger: filesystemLogger,
+    dryRun,
   });
   const engine = new TemplateEngine();
+  const generatedFiles: GeneratedFileResult[] = [];
+  const collect =
+    (prefix: string) =>
+    (result: GeneratedFileResult): void => {
+      generatedFiles.push({ ...result, path: `${prefix}/${result.path}` });
+    };
+
   const backendProject = withProjectSuffix(generationProject, 'backend');
   const backendDirectory = `${kebabCase(project.name)}-backend`;
   await projectRootFs.createDirectory(backendDirectory);
   const backendFs = new FileSystemService({
     rootDir: path.join(projectRootFs.rootDir, backendDirectory),
     logger: filesystemLogger,
+    dryRun,
   });
   await renderManifest(
     'spring-boot',
@@ -101,6 +114,7 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
     engine,
     backendFs,
     filesystemLogger,
+    { force, onFile: collect(backendDirectory) },
   );
 
   const uiDirectory = `${kebabCase(project.name)}-ui`;
@@ -115,16 +129,32 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
       new FileSystemService({
         rootDir: path.join(projectRootFs.rootDir, uiDirectory),
         logger: filesystemLogger,
+        dryRun,
       }),
       filesystemLogger,
+      { force, onFile: collect(uiDirectory) },
     );
   }
 
-  if (initializeGit) {
+  reportGeneratedFiles(options.logger, generatedFiles, { dryRun, force });
+  if (conflictingFiles(generatedFiles).length > 0) {
+    throw new CliOptionError(
+      `Regeneration stopped because ${conflictingFiles(generatedFiles).length} file(s) contain protected region conflicts. Resolve them and run the command again, or use --force to replace the files completely.`,
+    );
+  }
+
+  if (initializeGit && !dryRun) {
     execFileSync('git', ['init'], { cwd: projectRootFs.rootDir, stdio: 'ignore' });
     options.logger.success('Initialized git repository.');
   }
-  options.logger.success(`Created ${project.name} in ${path.resolve(cwd, targetRelative)}.`);
+  if (dryRun) {
+    options.logger.info(
+      `Dry run: ${project.name} was not written to ${path.resolve(cwd, targetRelative)}.`,
+    );
+    return;
+  }
+
+  options.logger.success(`Generated ${project.name} in ${path.resolve(cwd, targetRelative)}.`);
   const nextSteps = [
     `cd ${targetRelative}`,
     ...(project.options.frontend ? [`(cd ${uiDirectory} && npm install && npm start)`] : []),
@@ -155,12 +185,16 @@ function extractControlFlags(args: string[]): {
   yes: boolean;
   initializeGit: boolean;
   includeEntities: boolean | undefined;
+  force: boolean;
+  dryRun: boolean;
   configArgs: string[];
 } {
   let interactive = false;
   let yes = false;
   let initializeGit = false;
   let includeEntities: boolean | undefined;
+  let force = false;
+  let dryRun = false;
   const configArgs: string[] = [];
   for (const arg of args) {
     if (arg === '--interactive') interactive = true;
@@ -168,6 +202,8 @@ function extractControlFlags(args: string[]): {
     else if (arg === '--git') initializeGit = true;
     else if (arg === '--entities') includeEntities = true;
     else if (arg === '--no-entities') includeEntities = false;
+    else if (arg === '--force') force = true;
+    else if (arg === '--dry-run') dryRun = true;
     else if (arg.startsWith('--frontend=')) {
       const value = arg.slice('--frontend='.length);
       if (value !== 'angular' && value !== 'none')
@@ -183,7 +219,7 @@ function extractControlFlags(args: string[]): {
     if (value === 'angular' || value === 'none')
       configArgs[frontIndex + 1] = String(value === 'angular');
   }
-  return { interactive, yes, initializeGit, includeEntities, configArgs };
+  return { interactive, yes, initializeGit, includeEntities, force, dryRun, configArgs };
 }
 
 function hasMissingSettings(input: Record<string, unknown>): boolean {

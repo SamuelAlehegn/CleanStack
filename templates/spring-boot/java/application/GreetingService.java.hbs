@@ -24,4 +24,7 @@ public final class GreetingService implements GreetUseCase {
         var time = TIME_FORMAT.format(LocalTime.now(clock));
         return new Greeting("Hello, %s! The time is %s.".formatted(recipient, time));
     }
+
+    // <cleanstack:user-code id="service.greeting.custom">
+    // </cleanstack:user-code>
 }

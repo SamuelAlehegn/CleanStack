@@ -26,6 +26,21 @@ To run the greeting command directly:
 node dist/cli/index.js hello
 ```
 
+## Safe regeneration
+
+Generated files that are meant to be customized contain protected regions. Run the
+same command again to update the generated code without losing anything you wrote
+inside those regions. The generator reports every region it updated or preserved.
+
+```sh
+cleanstack new demo --yes
+cleanstack new demo --yes --dry-run   # show what would change
+cleanstack new demo --yes --force     # replace files, including protected regions
+```
+
+`--force` is the explicit escape hatch: it overwrites generated files completely.
+`--dry-run` performs the same merge decisions and reports them without writing.
+
 ## Generating an entity
 
 The `entity` command adds an entity to a project that was already generated with
@@ -54,18 +69,19 @@ cleanstack entity Product \
 Generate only one side with `--backend` or `--frontend`, and skip a side with
 `--no-backend` or `--no-frontend`. Other options:
 
-| Option                    | Meaning                                             |
-| ------------------------- | --------------------------------------------------- |
-| `-d, --descriptor <path>` | Use a specific descriptor file.                     |
-| `--field <spec>`          | Inline field definition; repeatable.                |
-| `--table <name>`          | Table name for an inline entity.                    |
-| `--package <name>`        | Override the detected Java package.                 |
-| `--force`                 | Overwrite existing generated files.                 |
-| `--dry-run`               | Report what would be written without writing files. |
+| Option                    | Meaning                                         |
+| ------------------------- | ----------------------------------------------- |
+| `-d, --descriptor <path>` | Use a specific descriptor file.                 |
+| `--field <spec>`          | Inline field definition; repeatable.            |
+| `--table <name>`          | Table name for an inline entity.                |
+| `--package <name>`        | Override the detected Java package.             |
+| `--force`                 | Overwrite generated files completely.           |
+| `--dry-run`               | Report what would change without writing files. |
 
-The command refuses to overwrite existing entity files unless `--force` is
-used. It adds the Angular routes and navigation link automatically and picks
-the next Flyway migration version from the existing migrations. See
+Running the command again merges the generated code with the protected regions
+in the existing files, so custom code survives. It adds the Angular routes and
+navigation link automatically and picks the next Flyway migration version from
+the existing migrations. See
 [docs/entity-descriptor.md](docs/entity-descriptor.md) for the descriptor
 format and the inline field syntax.
 

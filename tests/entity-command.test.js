@@ -114,12 +114,16 @@ test('generates backend and frontend artifacts from an entities/ descriptor', as
     assert.match(layout, /routerLink="\/products"/);
     assert.match(layout, /<span>Products<\/span>/);
 
-    await assert.rejects(
-      runEntityCommand(['Product'], { cwd: projectRoot, logger }),
-      /Refusing to overwrite existing files/,
+    const servicePath = 'demo-backend/src/main/java/com/example/service/ProductService.java';
+    const customizedService = (await readProjectFile(projectRoot, servicePath)).replace(
+      /(\r?\n)(\s*)\/\/ <\/cleanstack:user-code>/,
+      '$1    public void customProductHook() {}$1$2// </cleanstack:user-code>',
     );
+    await writeFile(path.join(projectRoot, servicePath), customizedService);
 
-    await runEntityCommand(['Product', '--force'], { cwd: projectRoot, logger });
+    await runEntityCommand(['Product'], { cwd: projectRoot, logger });
+    assert.match(await readProjectFile(projectRoot, servicePath), /customProductHook/);
+
     const updatedRoutes = await readProjectFile(projectRoot, 'demo-ui/src/app/app.routes.ts');
     assert.equal(updatedRoutes.match(/path: 'products'/g)?.length, 1);
     const updatedLayout = await readProjectFile(
@@ -127,6 +131,9 @@ test('generates backend and frontend artifacts from an entities/ descriptor', as
       'demo-ui/src/app/layout/app-layout/app-layout.component.html',
     );
     assert.equal(updatedLayout.match(/routerLink="\/products"/g)?.length, 1);
+
+    await runEntityCommand(['Product', '--force'], { cwd: projectRoot, logger });
+    assert.doesNotMatch(await readProjectFile(projectRoot, servicePath), /customProductHook/);
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
@@ -222,6 +229,29 @@ test('accepts an explicit descriptor outside the generated project', async () =>
       ),
       /class Product/,
     );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('--dry-run reports entity changes without writing files', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-entity-dry-run-'));
+  try {
+    const projectRoot = await generateProject(cwd);
+    await mkdir(path.join(projectRoot, 'entities'), { recursive: true });
+    await writeFile(
+      path.join(projectRoot, 'entities', 'Product.yaml'),
+      ['name: Product', 'fields:', '  - name: name', '    type: String', ''].join('\n'),
+    );
+
+    const domainPath = 'demo-backend/src/main/java/com/example/domain/Product.java';
+    await runEntityCommand(['Product', '--dry-run'], { cwd: projectRoot, logger });
+    await assert.rejects(readProjectFile(projectRoot, domainPath), { code: 'ENOENT' });
+
+    await runEntityCommand(['Product'], { cwd: projectRoot, logger });
+    const before = await readProjectFile(projectRoot, domainPath);
+    await runEntityCommand(['Product', '--force', '--dry-run'], { cwd: projectRoot, logger });
+    assert.equal(await readProjectFile(projectRoot, domainPath), before);
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

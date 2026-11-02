@@ -8,4 +8,7 @@ public record GreetingResponse(String message) {
     public static GreetingResponse from(Greeting greeting) {
         return new GreetingResponse(greeting.message());
     }
+
+    // <cleanstack:user-code id="web.greeting-response.custom">
+    // </cleanstack:user-code>
 }

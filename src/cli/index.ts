@@ -39,7 +39,9 @@ New options:
   --no-entities       Skip configured entities
   --interactive       Prompt for any missing settings
   -y, --yes           Skip prompts and use defaults for missing settings
-  --git             Initialize a git repository in the generated project
+  --git               Initialize a git repository in the generated project
+  --force             Overwrite generated files completely, including protected regions
+  --dry-run           Show what would change without writing files
 
 Entity options:
   -d, --descriptor <path>   Use a specific entity descriptor
@@ -48,8 +50,8 @@ Entity options:
   --package <name>          Override the detected Java package
   --backend / --no-backend  Generate or skip backend artifacts
   --frontend / --no-frontend Generate or skip frontend artifacts
-  --force                   Overwrite existing generated files
-  --dry-run                 Show what would be generated without writing
+  --force                   Overwrite generated files completely, including protected regions
+  --dry-run                 Show what would change without writing files
 
 Options:
   -v, --verbose    Show debug output

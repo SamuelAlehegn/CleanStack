@@ -10,16 +10,12 @@ import {
   hasEntityRoutes,
 } from '../core/frontend-updates.js';
 import { locateGeneratedProject } from '../core/project.js';
-import {
-  planManifest,
-  renderManifest,
-  templateAliases,
-  type ManifestEntry,
-  type ManifestPlanItem,
-} from '../templates/manifest.js';
+import type { GeneratedFileResult } from '../core/generated-file.js';
+import { renderManifest, templateAliases, type ManifestEntry } from '../templates/manifest.js';
 import { TemplateEngine } from '../templates/template-engine.js';
 import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
 import type { Logger } from '../utils/logger.js';
+import { conflictingFiles, reportGeneratedFiles } from './file-report.js';
 
 export interface EntityCommandOptions {
   cwd?: string;
@@ -55,8 +51,8 @@ Options:
   --no-backend              Skip backend artifacts
   --frontend                Generate frontend artifacts only
   --no-frontend             Skip frontend artifacts
-  --force                   Overwrite existing generated files
-  --dry-run                 Show what would be generated without writing
+  --force                   Overwrite generated files completely, including protected regions
+  --dry-run                 Show what would change without writing files
   -h, --help                Show this help`;
 
 export async function runEntityCommand(
@@ -184,23 +180,12 @@ export async function runEntityCommand(
       })
     : undefined;
 
-  const backendPlan =
-    generateBackend && backendProject && backendFileSystem
-      ? await planManifest('spring-boot', backendProject, context, filesystemLogger, entityEntries)
-      : undefined;
-  const frontendPlan =
-    generateFrontend && frontendProject && frontendFileSystem
-      ? await planManifest('angular', frontendProject, context, filesystemLogger, entityEntries)
-      : undefined;
+  const generatedFiles: GeneratedFileResult[] = [];
+  const onFile = (result: GeneratedFileResult): void => {
+    generatedFiles.push(result);
+  };
 
-  if (backendPlan && backendFileSystem) {
-    await assertNoExistingFiles(backendFileSystem, backendPlan, parsed.force);
-  }
-  if (frontendPlan && frontendFileSystem) {
-    await assertNoExistingFiles(frontendFileSystem, frontendPlan, parsed.force);
-  }
-
-  if (backendPlan && backendProject && backendFileSystem) {
+  if (generateBackend && backendProject && backendFileSystem) {
     await renderManifest(
       'spring-boot',
       backendProject,
@@ -208,11 +193,11 @@ export async function runEntityCommand(
       engine,
       backendFileSystem,
       filesystemLogger,
-      { filter: entityEntries, overwrite: parsed.force },
+      { filter: entityEntries, force: parsed.force, onFile },
     );
   }
 
-  if (frontendPlan && frontendProject && frontendFileSystem) {
+  if (generateFrontend && frontendProject && frontendFileSystem) {
     await renderManifest(
       'angular',
       frontendProject,
@@ -220,18 +205,35 @@ export async function runEntityCommand(
       engine,
       frontendFileSystem,
       filesystemLogger,
-      { filter: entityEntries, overwrite: parsed.force },
+      { filter: entityEntries, force: parsed.force, onFile },
     );
-    await updateFrontendNavigation(frontendFileSystem, entity, options.logger);
+    if (!parsed.dryRun) {
+      await updateFrontendNavigation(frontendFileSystem, entity, options.logger);
+    }
+  }
+
+  reportGeneratedFiles(options.logger, generatedFiles, {
+    dryRun: parsed.dryRun,
+    force: parsed.force,
+  });
+  if (conflictingFiles(generatedFiles).length > 0) {
+    throw new CliOptionError(
+      `Regeneration stopped because ${conflictingFiles(generatedFiles).length} file(s) contain protected region conflicts. Resolve them and run the command again, or use --force to replace the files completely.`,
+    );
   }
 
   const targets = [
     generateBackend ? project.backend?.relativeDirectory : undefined,
     generateFrontend ? project.frontend?.relativeDirectory : undefined,
   ].filter((target): target is string => target !== undefined);
-  options.logger.success(`Generated ${entity.className} in ${targets.join(' and ')}.`);
+  if (parsed.dryRun) {
+    options.logger.info(
+      `Dry run: ${entity.className} was not written to ${targets.join(' and ')}.`,
+    );
+  } else {
+    options.logger.success(`Generated ${entity.className} in ${targets.join(' and ')}.`);
+  }
   options.logger.info(`Entity source: ${source}`);
-  if (parsed.dryRun) options.logger.info('Dry run: no files were written.');
 }
 
 /** Parses entity-command arguments into a small, testable shape. */
@@ -371,24 +373,6 @@ async function updateFrontendNavigation(
       `Could not find ${layoutPath}; add the ${entity.routeName} navigation link manually.`,
     );
   }
-}
-
-async function assertNoExistingFiles(
-  fileSystem: FileSystemService,
-  plan: ManifestPlanItem[],
-  force: boolean,
-): Promise<void> {
-  if (force) return;
-
-  const existing: string[] = [];
-  for (const item of plan) {
-    if (await fileSystem.exists(item.destination)) existing.push(item.destination);
-  }
-  if (existing.length === 0) return;
-
-  throw new CliOptionError(
-    `Refusing to overwrite existing files:\n  ${existing.join('\n  ')}\nUse --force to regenerate them.`,
-  );
 }
 
 async function nextMigrationVersion(

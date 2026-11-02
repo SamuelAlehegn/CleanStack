@@ -18,6 +18,9 @@ const CHECKSUM = computeProtectedRegionChecksum('');
 
 test('detects the protected-region language from a file extension', () => {
   assert.equal(languageForFile('src/main/java/Product.java'), 'java');
+  assert.equal(languageForFile('build.gradle.kts'), 'kotlin');
+  assert.equal(languageForFile('Dockerfile'), 'dockerfile');
+  assert.equal(languageForFile('.gitignore'), 'properties');
   assert.equal(languageForFile('src/app/product.ts'), 'typescript');
   assert.equal(languageForFile('src/app/product.spec.tsx'), 'typescript');
   assert.equal(languageForFile('src/app/product.js'), 'javascript');
