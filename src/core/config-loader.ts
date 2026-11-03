@@ -2,7 +2,13 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
-import { ProjectConfigSchema, type ProjectConfig } from './config.js';
+import { parse as parseYaml } from 'yaml';
+import {
+  ProjectConfigSchema,
+  ProjectDefaultsSchema,
+  type ProjectConfig,
+  type ProjectDefaults,
+} from './config.js';
 
 export type ConfigInput = Record<string, unknown>;
 
@@ -11,6 +17,8 @@ export interface ConfigLoaderOptions {
   args?: string[];
   cliOptions?: ConfigInput;
   configPath?: string;
+  /** Environment variables to read. Defaults to process.env. */
+  env?: Record<string, string | undefined>;
   /** Reserved for a future interactive prompt adapter. */
   prompt?: (current: ConfigInput) => Promise<ConfigInput>;
 }
@@ -29,8 +37,12 @@ const CONFIG_CANDIDATES = [
   'cleanstack.config.js',
   'cleanstack.config.mjs',
   'cleanstack.config.json',
+  'cleanstack.config.yml',
+  'cleanstack.config.yaml',
   '.cleanstackrc',
   '.cleanstackrc.json',
+  '.cleanstackrc.yml',
+  '.cleanstackrc.yaml',
 ] as const;
 
 /** Tokens that select a CLI command rather than a positional value. */
@@ -73,23 +85,70 @@ const OPTION_SPECS: Record<string, OptionSpec> = {
   outputDir: { key: 'outputDir', kind: 'string', scope: 'options' },
 };
 
+/**
+ * Environment variables that provide defaults for the same settings as the
+ * configuration file. Variables are prefixed with `CLEANSTACK_`.
+ */
+const ENVIRONMENT_SPECS: Record<string, OptionSpec> = {
+  NAME: { key: 'name', kind: 'string', scope: 'project' },
+  PACKAGE: { key: 'packageName', kind: 'string', scope: 'project' },
+  PACKAGE_NAME: { key: 'packageName', kind: 'string', scope: 'project' },
+  BACKEND: { key: 'backend', kind: 'boolean', scope: 'options' },
+  FRONTEND: { key: 'frontend', kind: 'boolean', scope: 'options' },
+  DATABASE: { key: 'database', kind: 'string', scope: 'options' },
+  DB: { key: 'database', kind: 'string', scope: 'options' },
+  AUTH: { key: 'auth', kind: 'string', scope: 'options' },
+  BUILD: { key: 'buildTool', kind: 'string', scope: 'options' },
+  BUILD_TOOL: { key: 'buildTool', kind: 'string', scope: 'options' },
+  DOCKER: { key: 'docker', kind: 'boolean', scope: 'options' },
+  DRY_RUN: { key: 'dryRun', kind: 'boolean', scope: 'options' },
+  OUTPUT_DIR: { key: 'outputDir', kind: 'string', scope: 'options' },
+};
+
+export interface EnvironmentOptions {
+  config: ConfigInput;
+  /** Explicit configuration file selected by `CLEANSTACK_CONFIG`. */
+  configPath?: string;
+}
+
 /** Loads and validates project configuration from a file and CLI arguments. */
 export class ConfigLoader {
   async load(options: ConfigLoaderOptions = {}): Promise<ProjectConfig> {
-    const cwd = path.resolve(options.cwd ?? process.cwd());
-    const config = await this.loadConfigFile(cwd, options.configPath);
-    const cli = options.cliOptions ?? parseCommandLineOptions(options.args ?? []);
-    const merged = mergeConfig(config, cli);
-    const withPrompt = options.prompt ? await options.prompt(merged) : merged;
+    return ProjectConfigSchema.parse(await this.resolve(options));
+  }
 
-    return ProjectConfigSchema.parse(withPrompt);
+  /**
+   * Loads a configuration that may omit the project name. This is the shape of
+   * a team defaults file, which `cleanstack new <name>` completes.
+   */
+  async loadDefaults(options: ConfigLoaderOptions = {}): Promise<ProjectDefaults> {
+    return ProjectDefaultsSchema.parse(await this.resolve(options));
+  }
+
+  /**
+   * Merges configuration sources without applying schema defaults or requiring
+   * a project name. Callers use this to see which settings were actually
+   * provided before prompting for the rest.
+   */
+  async resolve(options: ConfigLoaderOptions = {}): Promise<ConfigInput> {
+    const cwd = path.resolve(options.cwd ?? process.cwd());
+    const environment = parseEnvironmentOptions(options.env ?? process.env);
+    const config = await this.loadConfigFile(cwd, options.configPath ?? environment.configPath);
+    const cli = options.cliOptions ?? parseCommandLineOptions(options.args ?? []);
+    // Precedence: CLI > environment > configuration file > schema defaults.
+    const merged = mergeConfig(mergeConfig(config, environment.config), cli);
+    return options.prompt ? options.prompt(merged) : merged;
   }
 
   private async loadConfigFile(cwd: string, configPath?: string): Promise<ConfigInput> {
-    const filePath = configPath ? path.resolve(cwd, configPath) : await findConfigFile(cwd);
+    const filePath = await resolveConfigFile(cwd, configPath);
     if (!filePath) return {};
 
-    if (path.basename(filePath) === '.cleanstackrc' || path.extname(filePath) === '.json') {
+    const extension = path.extname(filePath).toLowerCase();
+    if (extension === '.yml' || extension === '.yaml') {
+      return readYamlConfig(filePath);
+    }
+    if (path.basename(filePath) === '.cleanstackrc' || extension === '.json') {
       return readJsonConfig(filePath);
     }
 
@@ -208,6 +267,56 @@ export function parseCommandLineOptions(args: string[]): ConfigInput {
   return result;
 }
 
+/**
+ * Reads `CLEANSTACK_*` environment variables into the same shape as the
+ * configuration file. Empty values are ignored so an unset shell variable does
+ * not accidentally override a file.
+ */
+export function parseEnvironmentOptions(
+  env: Record<string, string | undefined> = process.env,
+): EnvironmentOptions {
+  const config: ConfigInput = {};
+  const optionValues: ConfigInput = {};
+  const seen = new Map<string, string>();
+
+  for (const [name, spec] of Object.entries(ENVIRONMENT_SPECS)) {
+    const variable = `CLEANSTACK_${name}`;
+    const raw = env[variable];
+    if (raw === undefined) continue;
+    const value = raw.trim();
+    if (value === '') continue;
+
+    const previous = seen.get(spec.key);
+    if (previous !== undefined) {
+      throw new CliOptionError(
+        `Environment variables ${previous} and ${variable} both set "${spec.key}". Use only one.`,
+      );
+    }
+    seen.set(spec.key, variable);
+
+    const target = spec.scope === 'project' ? config : optionValues;
+    target[spec.key] = spec.kind === 'boolean' ? parseEnvironmentBoolean(variable, value) : value;
+  }
+
+  if (Object.keys(optionValues).length > 0) config.options = optionValues;
+
+  const configPath = env.CLEANSTACK_CONFIG?.trim();
+  return configPath === undefined || configPath === '' ? { config } : { config, configPath };
+}
+
+function parseEnvironmentBoolean(variable: string, value: string): boolean {
+  const normalized = value.toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') {
+    return false;
+  }
+  throw new CliOptionError(
+    `Environment variable ${variable} expects a boolean (true or false), received "${value}".`,
+  );
+}
+
 function splitOption(option: string): [string, string | undefined] {
   const separatorIndex = option.indexOf('=');
   if (separatorIndex === -1) return [option, undefined];
@@ -238,6 +347,28 @@ function assignOption(
     throw new CliOptionError(`Option "--${spec.key}" was provided more than once.`);
   }
   target[spec.key] = value;
+}
+
+/**
+ * Resolves the configuration file to load. An explicit path (from a command
+ * option or `CLEANSTACK_CONFIG`) wins; otherwise the current directory and up
+ * to four parents are searched so a repository-level team config is found from
+ * any subdirectory.
+ */
+export async function resolveConfigFile(
+  cwd: string,
+  explicitPath?: string,
+): Promise<string | undefined> {
+  if (explicitPath !== undefined && explicitPath.trim() !== '') {
+    const resolved = path.resolve(cwd, explicitPath);
+    try {
+      if ((await stat(resolved)).isFile()) return resolved;
+    } catch {
+      // Report the same clear error for missing and non-file paths below.
+    }
+    throw new CliOptionError(`Configuration file "${resolved}" does not exist.`);
+  }
+  return findConfigFileInAncestors(cwd);
 }
 
 /** Returns the first supported configuration file in a directory, if any. */
@@ -281,6 +412,22 @@ async function readJsonConfig(filePath: string): Promise<ConfigInput> {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`Unable to read configuration from ${filePath}: ${detail}`, { cause: error });
   }
+  if (!isRecord(parsed)) {
+    throw new TypeError(`Configuration in ${filePath} must be an object.`);
+  }
+  return parsed;
+}
+
+async function readYamlConfig(filePath: string): Promise<ConfigInput> {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(await readFile(filePath, 'utf8'));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Unable to read configuration from ${filePath}: ${detail}`, { cause: error });
+  }
+  // An empty YAML document is a valid file that contributes no defaults.
+  if (parsed === null || parsed === undefined) return {};
   if (!isRecord(parsed)) {
     throw new TypeError(`Configuration in ${filePath} must be an object.`);
   }

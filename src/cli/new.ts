@@ -60,11 +60,16 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
     return;
   }
   let cliOptions = mapFrontendOption(parseCommandLineOptions(configArgs));
-  if (!yes && (interactive || hasMissingSettings(cliOptions))) {
-    cliOptions = await collectInteractiveOptions(cliOptions);
+  const loader = new ConfigLoader();
+  // File and environment defaults count as provided values, so `new` only
+  // prompts for settings that are still missing.
+  let provided = await loader.resolve({ cwd, cliOptions });
+  if (!yes && (interactive || hasMissingSettings(provided))) {
+    cliOptions = await collectInteractiveOptions(provided);
+    provided = await loader.resolve({ cwd, cliOptions });
   }
-  validateProjectName(cliOptions.name);
-  const project = await new ConfigLoader().load({ cwd, cliOptions });
+  validateProjectName(provided.name);
+  const project = await loader.load({ cwd, cliOptions });
   const inputFs = new FileSystemService({ rootDir: cwd, logger: { log: () => {} } });
   let entityDescriptorFiles: string[] = [];
   if (await inputFs.exists('entities')) {
@@ -95,7 +100,7 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
           : [];
     if (entities.length === 0) {
       options.logger.warn(
-        'No entity definitions found. Add entities to cleanstack.config.json or place YAML/JSON descriptors in entities/.',
+        'No entity definitions found. Add entities to the project configuration or place YAML/JSON descriptors in entities/.',
       );
     }
     generationProject = { ...project, entities };

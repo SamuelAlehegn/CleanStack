@@ -144,10 +144,108 @@ test('config reports when no configuration file exists', async () => {
   try {
     for (const args of [[], ['path'], ['validate']]) {
       await assert.rejects(
-        runConfigCommand(args, { cwd: root, logger: recordingLogger() }),
+        runConfigCommand(args, { cwd: root, logger: recordingLogger(), env: {} }),
         /No CleanStack configuration file was found/,
       );
     }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Team defaults, YAML, and environment variables
+// ---------------------------------------------------------------------------
+
+test('config show reads team defaults from .cleanstackrc.yml', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    await writeFile(
+      path.join(root, '.cleanstackrc.yml'),
+      'packageName: com.team\noptions:\n  database: h2\n  auth: none\n',
+    );
+    const logger = recordingLogger();
+    await runConfigCommand(['show'], { cwd: root, logger, env: {} });
+    const output = logger.messages.join('\n');
+    assert.match(output, /Name=\(not set\)/);
+    assert.match(output, /Package=com\.team/);
+    assert.match(output, /Database=h2/);
+    assert.match(output, /Auth=none/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('config validate accepts team defaults without a project name', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    await writeFile(
+      path.join(root, '.cleanstackrc.yml'),
+      'options:\n  database: h2\nentities:\n  - name: Product\n    fields: []\n',
+    );
+    const logger = recordingLogger();
+    await runConfigCommand(['validate'], { cwd: root, logger, env: {} });
+    const output = logger.messages.join('\n');
+    assert.match(output, /Configuration is valid/);
+    assert.match(output, /Team defaults without a project name, with 1 entity/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('environment variables override file values in config show', async () => {
+  const root = await createWorkspace();
+  try {
+    const logger = recordingLogger();
+    await runConfigCommand(['show'], {
+      cwd: root,
+      logger,
+      env: {
+        CLEANSTACK_DATABASE: 'mysql',
+        CLEANSTACK_PACKAGE: 'com.env',
+        CLEANSTACK_DOCKER: 'true',
+      },
+    });
+    const output = logger.messages.join('\n');
+    assert.match(output, /Package=com\.env/);
+    assert.match(output, /Database=mysql/);
+    assert.match(output, /Docker=yes/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('CLEANSTACK_CONFIG selects the configuration file', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    const configDir = path.join(root, 'configs');
+    await mkdir(configDir);
+    const configPath = path.join(configDir, 'team.yml');
+    await writeFile(configPath, 'name: from-env-config\noptions:\n  auth: none\n');
+
+    const logger = recordingLogger();
+    await runConfigCommand(['path'], {
+      cwd: root,
+      logger,
+      env: { CLEANSTACK_CONFIG: path.join('configs', 'team.yml') },
+    });
+    assert.equal(logger.messages.join('\n'), `info: ${configPath}`);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('CLEANSTACK_CONFIG reports a missing file', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    await assert.rejects(
+      runConfigCommand(['path'], {
+        cwd: root,
+        logger: recordingLogger(),
+        env: { CLEANSTACK_CONFIG: 'missing.yml' },
+      }),
+      /Configuration file .*missing\.yml" does not exist/,
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -1,19 +1,26 @@
 import path from 'node:path';
 import { ZodError } from 'zod';
-import { CliOptionError, ConfigLoader, findConfigFileInAncestors } from '../core/config-loader.js';
+import {
+  CliOptionError,
+  ConfigLoader,
+  parseEnvironmentOptions,
+  resolveConfigFile,
+} from '../core/config-loader.js';
 import { formatZodError } from '../core/entity-parser.js';
 import type { Logger } from '../utils/logger.js';
 
 export interface ConfigCommandOptions {
   cwd?: string;
   logger: Logger;
+  /** Environment variables to read. Defaults to process.env. */
+  env?: Record<string, string | undefined>;
 }
 
 export const CONFIG_USAGE = `Usage: cleanstack config [subcommand] [options]
 
 Inspect the CleanStack configuration resolved for the current directory.
 The configuration file is searched in the current directory and up to four
-parent directories.
+parent directories. Set CLEANSTACK_CONFIG to use a specific file.
 
 Subcommands:
   show       Print the effective configuration (default)
@@ -41,11 +48,14 @@ export async function runConfigCommand(
   }
 
   const cwd = path.resolve(options.cwd ?? process.cwd());
-  const configPath = await findConfigFileInAncestors(cwd);
+  const env = options.env ?? process.env;
+  const environment = parseEnvironmentOptions(env);
+  const configPath = await resolveConfigFile(cwd, environment.configPath);
   if (configPath === undefined) {
     throw new CliOptionError(
       `No CleanStack configuration file was found in "${cwd}" or its parent directories. ` +
-        'Looked for cleanstack.config.{ts,mts,js,mjs,json} and .cleanstackrc[.json].',
+        'Looked for cleanstack.config.{ts,mts,js,mjs,json,yml,yaml} and ' +
+        '.cleanstackrc[.json][.yml][.yaml]. Set CLEANSTACK_CONFIG to use a specific file.',
     );
   }
 
@@ -54,12 +64,15 @@ export async function runConfigCommand(
     return;
   }
 
-  const config = await loadConfig(cwd, configPath);
+  const config = await loadConfig(cwd, configPath, env);
   if (parsed.subcommand === 'validate') {
     const entityCount = config.entities.length;
+    const entityLabel = `${entityCount} ${entityCount === 1 ? 'entity' : 'entities'}`;
     options.logger.success(`Configuration is valid: ${configPath}`);
     options.logger.info(
-      `Project "${config.name}" with ${entityCount} ${entityCount === 1 ? 'entity' : 'entities'}.`,
+      config.name === undefined
+        ? `Team defaults without a project name, with ${entityLabel}.`
+        : `Project "${config.name}" with ${entityLabel}.`,
     );
     return;
   }
@@ -76,7 +89,7 @@ export async function runConfigCommand(
       { key: 'value', header: 'Value' },
     ],
     [
-      { setting: 'Name', value: config.name },
+      { setting: 'Name', value: config.name ?? '(not set)' },
       { setting: 'Package', value: config.packageName },
       { setting: 'Backend', value: config.options.backend ? 'yes' : 'no' },
       { setting: 'Frontend', value: config.options.frontend ? 'yes' : 'no' },
@@ -93,9 +106,13 @@ export async function runConfigCommand(
   );
 }
 
-async function loadConfig(cwd: string, configPath: string) {
+async function loadConfig(
+  cwd: string,
+  configPath: string,
+  env: Record<string, string | undefined>,
+) {
   try {
-    return await new ConfigLoader().load({ cwd, configPath });
+    return await new ConfigLoader().loadDefaults({ cwd, configPath, env });
   } catch (error) {
     if (error instanceof ZodError) {
       throw new CliOptionError(`Invalid configuration in ${configPath}: ${formatZodError(error)}`);

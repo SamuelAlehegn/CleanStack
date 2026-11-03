@@ -119,8 +119,9 @@ export async function resolveProjectConfig(
 
   const configPath = await findConfigFileInAncestors(options.cwd ?? project.rootDir);
   if (configPath !== undefined) {
-    const loaded = await new ConfigLoader().load({
+    const loaded = await new ConfigLoader().loadDefaults({
       cwd: path.dirname(configPath),
+      configPath,
     });
     return normalizeConfig({
       ...loaded,

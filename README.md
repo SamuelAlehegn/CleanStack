@@ -47,10 +47,78 @@ Global flags may appear before or after a command, so `cleanstack new demo
 
 ## Configuration
 
-Configuration lives in `cleanstack.config.{ts,mts,js,mjs,json}` or
-`.cleanstackrc[.json]`, in the current directory or up to four parent
-directories. The `config` command reports the configuration resolved for the
-current directory:
+CleanStack reads defaults from the first supported configuration file in the
+current directory or up to four parent directories:
+
+- `cleanstack.config.ts`, `.mts`, `.js`, `.mjs`
+- `cleanstack.config.json`, `.yml`, `.yaml`
+- `.cleanstackrc`, `.cleanstackrc.json`, `.cleanstackrc.yml`, `.cleanstackrc.yaml`
+
+TypeScript and JavaScript files default-export an object; JSON and YAML files
+contain the same object. A file checked into the repository root acts as
+team-wide defaults, so `cleanstack new demo` picks it up from any subdirectory.
+
+```ts
+// cleanstack.config.ts
+export default {
+  packageName: 'com.acme',
+  options: {
+    database: 'postgresql',
+    auth: 'jwt',
+    buildTool: 'maven',
+    docker: false,
+  },
+};
+```
+
+```yaml
+# .cleanstackrc.yml
+packageName: com.acme
+options:
+  database: postgresql
+  auth: jwt
+  buildTool: maven
+```
+
+A team defaults file may omit `name`; the name passed to `cleanstack new` (or
+`--name`) supplies it. Files may also list `entities` using the same format as a
+generated project configuration.
+
+### Environment variables
+
+Every setting can also be supplied through a `CLEANSTACK_` environment
+variable. Precedence, highest first:
+
+1. Command-line options
+2. Environment variables
+3. Configuration file
+4. Built-in defaults
+
+| Variable                                        | Setting                            |
+| ----------------------------------------------- | ---------------------------------- |
+| `CLEANSTACK_NAME`                               | Project name                       |
+| `CLEANSTACK_PACKAGE`, `CLEANSTACK_PACKAGE_NAME` | Java package                       |
+| `CLEANSTACK_BACKEND`                            | Generate backend files             |
+| `CLEANSTACK_FRONTEND`                           | Generate frontend files            |
+| `CLEANSTACK_DATABASE`, `CLEANSTACK_DB`          | `postgresql`, `mysql`, or `h2`     |
+| `CLEANSTACK_AUTH`                               | `jwt`, `none`, or `keycloak`       |
+| `CLEANSTACK_BUILD`, `CLEANSTACK_BUILD_TOOL`     | `maven` or `gradle`                |
+| `CLEANSTACK_DOCKER`                             | Emit Docker files                  |
+| `CLEANSTACK_DRY_RUN`                            | Report changes without writing     |
+| `CLEANSTACK_OUTPUT_DIR`                         | Output directory                   |
+| `CLEANSTACK_CONFIG`                             | Explicit configuration file to use |
+
+Boolean variables accept `true`/`false`, `1`/`0`, `yes`/`no`, and `on`/`off`.
+Empty variables are ignored, and setting two aliases for the same option (for
+example both `CLEANSTACK_DB` and `CLEANSTACK_DATABASE`) is an error.
+
+```sh
+CLEANSTACK_DATABASE=h2 cleanstack new demo
+CLEANSTACK_CONFIG=./ci/team.yml cleanstack config validate
+```
+
+The `config` command reports the effective values for the discovered file,
+including environment overrides:
 
 ```sh
 cleanstack config             # print the effective configuration (alias: show)

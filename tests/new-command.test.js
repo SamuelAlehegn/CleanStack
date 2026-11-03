@@ -72,6 +72,41 @@ test('--no-entities skips configured entities', async () => {
   }
 });
 
+test('team defaults suppress prompts for provided settings', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-new-team-defaults-'));
+  try {
+    await writeFile(
+      path.join(cwd, '.cleanstackrc.yml'),
+      [
+        'packageName: com.team',
+        'options:',
+        '  database: h2',
+        '  auth: none',
+        '  buildTool: maven',
+        '  frontend: false',
+        '  docker: false',
+        '',
+      ].join('\n'),
+    );
+
+    // No --yes: the command must not prompt for settings the team file provides.
+    await runNewCommand(['demo', '--no-entities'], { cwd, logger });
+
+    const application = path.join(
+      cwd,
+      'demo',
+      'demo-backend',
+      'src/main/resources/application.yml',
+    );
+    assert.match(await readFile(application, 'utf8'), /jdbc:h2/);
+    await assert.rejects(readFile(path.join(cwd, 'demo', 'demo-ui', 'package.json'), 'utf8'), {
+      code: 'ENOENT',
+    });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test('generates Angular CRUD pages and routes for configured entities', async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-new-angular-entities-'));
   try {
