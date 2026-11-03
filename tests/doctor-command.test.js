@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -42,6 +42,24 @@ async function createWorkspace(config) {
     path.join(root, '.cleanstackrc.yml'),
     config ?? 'name: demo\noptions:\n  database: h2\n',
   );
+  return root;
+}
+
+/** Creates the minimum files project detection needs for an Angular frontend. */
+async function createFrontend(root, name = 'demo-ui') {
+  const directory = path.join(root, name);
+  await mkdir(path.join(directory, 'src', 'app'), { recursive: true });
+  await writeFile(path.join(directory, 'angular.json'), '{}\n');
+  return directory;
+}
+
+async function createTemplateRoot(manifests) {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-templates-'));
+  for (const [pack, manifest] of Object.entries(manifests)) {
+    const packRoot = path.join(root, pack);
+    await mkdir(packRoot, { recursive: true });
+    await writeFile(path.join(packRoot, 'manifest.json'), manifest);
+  }
   return root;
 }
 
@@ -133,6 +151,129 @@ test('warns when Java, Git, and build tools are missing without blocking', async
     assert.ok(report.warnings >= 3);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('warns when Angular CLI is missing for a generated frontend and accepts a local install', async () => {
+  const root = await createWorkspace();
+  try {
+    const frontend = await createFrontend(root);
+    const missing = await collectDoctorReport({
+      cwd: root,
+      env: {},
+      nodeVersion: '22.5.1',
+      commandRunner: runnerFrom(healthyOutputs),
+      templateRoot: path.resolve('templates'),
+      freeDiskBytes: 10 * 1024 ** 3,
+    });
+
+    const angular = check(missing, 'Angular CLI');
+    assert.equal(angular.status, 'warn');
+    assert.match(angular.detail, /demo-ui/);
+    assert.ok(angular.suggestions.some((suggestion) => /npm install/.test(suggestion)));
+
+    await mkdir(path.join(frontend, 'node_modules', '@angular', 'cli'), { recursive: true });
+    const local = await collectDoctorReport({
+      cwd: root,
+      env: {},
+      nodeVersion: '22.5.1',
+      commandRunner: runnerFrom(healthyOutputs),
+      templateRoot: path.resolve('templates'),
+      freeDiskBytes: 10 * 1024 ** 3,
+    });
+
+    assert.equal(check(local, 'Angular CLI').status, 'ok');
+    assert.match(check(local, 'Angular CLI').detail, /installed locally in demo-ui/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('fails on critically low disk space and warns when space is limited', async () => {
+  const root = await createWorkspace();
+  try {
+    const collect = (freeDiskBytes) =>
+      collectDoctorReport({
+        cwd: root,
+        env: {},
+        nodeVersion: '22.5.1',
+        commandRunner: runnerFrom(healthyOutputs),
+        templateRoot: path.resolve('templates'),
+        freeDiskBytes,
+      });
+
+    const critical = check(await collect(100 * 1024 * 1024), 'Disk space');
+    assert.equal(critical.status, 'fail');
+    assert.match(critical.detail, /100 MB free/);
+    assert.ok(critical.suggestions.some((suggestion) => /Free disk space/.test(suggestion)));
+
+    const limited = check(await collect(500 * 1024 * 1024), 'Disk space');
+    assert.equal(limited.status, 'warn');
+    assert.match(limited.detail, /500 MB free/);
+
+    const healthy = check(await collect(10 * 1024 ** 3), 'Disk space');
+    assert.equal(healthy.status, 'ok');
+    assert.match(healthy.detail, /10 GB free/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('reports broken template manifests and missing template files', async () => {
+  const root = await createWorkspace();
+  const templateRoot = await createTemplateRoot({
+    'spring-boot': JSON.stringify({
+      files: [{ template: 'present.hbs', destination: 'present.txt' }],
+    }),
+    angular: JSON.stringify({
+      files: [{ template: 'missing.hbs', destination: 'missing.txt' }],
+    }),
+  });
+  try {
+    await writeFile(path.join(templateRoot, 'spring-boot', 'present.hbs'), 'content\n');
+
+    const report = await collectDoctorReport({
+      cwd: root,
+      env: {},
+      nodeVersion: '22.5.1',
+      commandRunner: runnerFrom(healthyOutputs),
+      templateRoot,
+      freeDiskBytes: 10 * 1024 ** 3,
+    });
+
+    const templates = check(report, 'Templates');
+    assert.equal(templates.status, 'fail');
+    assert.match(templates.detail, /angular\/missing\.hbs/);
+    assert.ok(templates.suggestions.some((suggestion) => /Reinstall CleanStack/.test(suggestion)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(templateRoot, { recursive: true, force: true });
+  }
+});
+
+test('reports invalid template manifest JSON', async () => {
+  const root = await createWorkspace();
+  const templateRoot = await createTemplateRoot({
+    'spring-boot': '{ not json',
+    angular: JSON.stringify({ files: [] }),
+  });
+  try {
+    const report = await collectDoctorReport({
+      cwd: root,
+      env: {},
+      nodeVersion: '22.5.1',
+      commandRunner: runnerFrom(healthyOutputs),
+      templateRoot,
+      freeDiskBytes: 10 * 1024 ** 3,
+    });
+
+    const templates = check(report, 'Templates');
+    assert.equal(templates.status, 'fail');
+    assert.match(templates.detail, /spring-boot: manifest\.json is not valid JSON/);
+    assert.match(templates.detail, /angular: manifest declares no files/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(templateRoot, { recursive: true, force: true });
   }
 });
 

@@ -136,9 +136,11 @@ projects and prints a suggested fix for anything that is missing or outdated:
 - Node.js 22+
 - Java 21+
 - Maven or Gradle, matching the detected project
+- Angular CLI (optional, only needed for frontend work)
 - Git
+- Free disk space
 - Configuration file validity
-- Built-in template integrity
+- Built-in template integrity (manifests and referenced template files)
 
 ```sh
 cleanstack doctor
