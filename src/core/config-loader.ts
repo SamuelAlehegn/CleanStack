@@ -46,7 +46,6 @@ const CLI_COMMANDS = new Set([
   'config',
   'doctor',
   'ui',
-  'hello',
 ]);
 
 type OptionKind = 'string' | 'boolean';

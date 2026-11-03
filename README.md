@@ -20,10 +20,43 @@ npm run build
 npm start
 ```
 
-To run the greeting command directly:
+Run the built CLI with `node dist/cli/index.js <command>`, or install it globally
+with `npm link` and use `cleanstack`.
+
+## Commands
+
+```text
+cleanstack
+  new                        Create a new project skeleton
+  entity                     Generate an entity in an existing project
+    generate entity          Alias for `entity`
+    g e                      Alias for `entity`
+  regenerate | r             Re-generate files, preserving protected regions
+  templates                  List, copy, diff, and reset template overrides
+  config                     Inspect the resolved configuration
+  ui                         Open the web UI (not available yet)
+  --version, -V              Print the version
+  --help, -h                 Show help
+  --verbose, -v              Show debug output
+  --quiet, -q                Suppress non-error output
+```
+
+Global flags may appear before or after a command, so `cleanstack new demo
+--verbose` and `cleanstack --verbose new demo` are equivalent. Run
+`cleanstack <command> --help` for the full option list of any command.
+
+## Configuration
+
+Configuration lives in `cleanstack.config.{ts,mts,js,mjs,json}` or
+`.cleanstackrc[.json]`, in the current directory or up to four parent
+directories. The `config` command reports the configuration resolved for the
+current directory:
 
 ```sh
-node dist/cli/index.js hello
+cleanstack config             # print the effective configuration (alias: show)
+cleanstack config show --json # print it as JSON
+cleanstack config path        # print the configuration file path
+cleanstack config validate    # validate the configuration and report problems
 ```
 
 ## Safe regeneration
