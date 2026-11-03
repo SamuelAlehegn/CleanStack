@@ -9,6 +9,7 @@ import {
   type ProjectConfig,
   type ProjectDefaults,
 } from './config.js';
+import { CleanStackError } from '../utils/errors.js';
 
 export type ConfigInput = Record<string, unknown>;
 
@@ -24,9 +25,9 @@ export interface ConfigLoaderOptions {
 }
 
 /** Raised when command-line arguments cannot be mapped onto configuration. */
-export class CliOptionError extends Error {
-  constructor(message: string) {
-    super(message);
+export class CliOptionError extends CleanStackError {
+  constructor(message: string, suggestions: string[] = []) {
+    super(message, { suggestions });
     this.name = 'CliOptionError';
   }
 }
@@ -164,7 +165,11 @@ export class ConfigLoader {
         value = value.default;
       }
       if (!isRecord(value)) {
-        throw new TypeError(`Configuration in ${filePath} must export an object.`);
+        throw new CleanStackError(`Configuration in ${filePath} must export an object.`, {
+          suggestions: [
+            'Default-export a plain object, for example "export default { name: \'app\' }".',
+          ],
+        });
       }
       return value;
     } finally {
@@ -366,7 +371,10 @@ export async function resolveConfigFile(
     } catch {
       // Report the same clear error for missing and non-file paths below.
     }
-    throw new CliOptionError(`Configuration file "${resolved}" does not exist.`);
+    throw new CliOptionError(`Configuration file "${resolved}" does not exist.`, [
+      'Check the path in CLEANSTACK_CONFIG.',
+      'Run "cleanstack config path" to see which file would be loaded.',
+    ]);
   }
   return findConfigFileInAncestors(cwd);
 }
@@ -410,10 +418,15 @@ async function readJsonConfig(filePath: string): Promise<ConfigInput> {
     parsed = JSON.parse(await readFile(filePath, 'utf8'));
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Unable to read configuration from ${filePath}: ${detail}`, { cause: error });
+    throw new CleanStackError(`Unable to read configuration from ${filePath}: ${detail}`, {
+      cause: error,
+      suggestions: ['Check the JSON syntax near the position reported above.'],
+    });
   }
   if (!isRecord(parsed)) {
-    throw new TypeError(`Configuration in ${filePath} must be an object.`);
+    throw new CleanStackError(`Configuration in ${filePath} must be an object.`, {
+      suggestions: ['Wrap the settings in an object: { "name": "app", "options": { ... } }.'],
+    });
   }
   return parsed;
 }
@@ -424,12 +437,19 @@ async function readYamlConfig(filePath: string): Promise<ConfigInput> {
     parsed = parseYaml(await readFile(filePath, 'utf8'));
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Unable to read configuration from ${filePath}: ${detail}`, { cause: error });
+    throw new CleanStackError(`Unable to read configuration from ${filePath}: ${detail}`, {
+      cause: error,
+      suggestions: ['Check the YAML indentation and use "key: value" syntax.'],
+    });
   }
   // An empty YAML document is a valid file that contributes no defaults.
   if (parsed === null || parsed === undefined) return {};
   if (!isRecord(parsed)) {
-    throw new TypeError(`Configuration in ${filePath} must be an object.`);
+    throw new CleanStackError(`Configuration in ${filePath} must be an object.`, {
+      suggestions: [
+        'Use top-level "key: value" entries, for example:\n  name: app\n  options:\n    database: h2',
+      ],
+    });
   }
   return parsed;
 }

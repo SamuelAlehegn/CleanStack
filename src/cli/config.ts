@@ -56,6 +56,10 @@ export async function runConfigCommand(
       `No CleanStack configuration file was found in "${cwd}" or its parent directories. ` +
         'Looked for cleanstack.config.{ts,mts,js,mjs,json,yml,yaml} and ' +
         '.cleanstackrc[.json][.yml][.yaml]. Set CLEANSTACK_CONFIG to use a specific file.',
+      [
+        'Create .cleanstackrc.yml in this directory to share defaults with your team.',
+        'Or run "cleanstack new <name>" to generate a project with its own configuration.',
+      ],
     );
   }
 
@@ -115,7 +119,13 @@ async function loadConfig(
     return await new ConfigLoader().loadDefaults({ cwd, configPath, env });
   } catch (error) {
     if (error instanceof ZodError) {
-      throw new CliOptionError(`Invalid configuration in ${configPath}: ${formatZodError(error)}`);
+      throw new CliOptionError(
+        `Invalid configuration in ${configPath}:\n${formatZodError(error)}`,
+        [
+          'Fix the highlighted fields and run "cleanstack config validate" again.',
+          'See the Configuration section in README.md for supported keys and values.',
+        ],
+      );
     }
     throw error;
   }

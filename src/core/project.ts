@@ -1,5 +1,6 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { CleanStackError } from '../utils/errors.js';
 
 export interface BackendProject {
   /** Absolute path to the Spring Boot project. */
@@ -32,18 +33,24 @@ export interface LocateProjectOptions {
   cwd?: string;
 }
 
-export class ProjectNotFoundError extends Error {
+export class ProjectNotFoundError extends CleanStackError {
   constructor(cwd: string) {
     super(
       `No generated CleanStack project was found from "${cwd}". Run this command inside a project created by "cleanstack new".`,
+      {
+        suggestions: [
+          'Run "cleanstack new <name>" to create a project.',
+          'Or change into a generated project directory and run the command again.',
+        ],
+      },
     );
     this.name = 'ProjectNotFoundError';
   }
 }
 
-export class ProjectDetectionError extends Error {
-  constructor(message: string) {
-    super(message);
+export class ProjectDetectionError extends CleanStackError {
+  constructor(message: string, suggestions: string[] = []) {
+    super(message, { suggestions });
     this.name = 'ProjectDetectionError';
   }
 }

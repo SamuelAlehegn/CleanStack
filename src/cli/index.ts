@@ -4,6 +4,7 @@ import { CommanderError } from 'commander';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Logger } from '../utils/logger.js';
+import { formatError } from '../utils/errors.js';
 import { createProgram, extractGlobalFlags } from './program.js';
 
 interface PackageMetadata {
@@ -36,7 +37,7 @@ if (args.length === 0) {
       process.exitCode = error.exitCode;
       return;
     }
-    logger.error(error instanceof Error ? error.message : String(error));
+    logger.error(formatError(error), error);
     process.exitCode = 1;
   });
 }

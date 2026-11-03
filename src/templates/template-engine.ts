@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureWithinRoot, isMissingPath, resolveWithinRoot } from '../utils/path-safety.js';
+import { CleanStackError } from '../utils/errors.js';
 
 export interface TemplateEngineOptions {
   /** Root of the project whose templates are rendered. Defaults to process.cwd(). */
@@ -16,7 +17,7 @@ export interface TemplateEngineOptions {
   extension?: string;
 }
 
-export class TemplateNotFoundError extends Error {
+export class TemplateNotFoundError extends CleanStackError {
   readonly templateName: string;
   readonly searchedPaths: string[];
 
@@ -25,6 +26,12 @@ export class TemplateNotFoundError extends Error {
       `Template "${templateName}" was not found. Searched:\n${searchedPaths
         .map((filePath) => `  - ${filePath}`)
         .join('\n')}`,
+      {
+        suggestions: [
+          'Run "cleanstack templates list" to see the available templates and where they resolve from.',
+          'Run "cleanstack templates init" to copy the built-in templates into the project.',
+        ],
+      },
     );
     this.name = 'TemplateNotFoundError';
     this.templateName = templateName;

@@ -78,6 +78,10 @@ export function buildInlineEntityConfig(
   if (fieldSpecs.length === 0) {
     throw new CliOptionError(
       `No descriptor was found for "${name}" and no fields were provided. Add entities/${name}.yaml or pass --field <name:type>.`,
+      [
+        `Create entities/${name}.yaml with the entity fields.`,
+        `Or define it inline: cleanstack entity ${name} --field name:String.`,
+      ],
     );
   }
 
@@ -88,7 +92,10 @@ export function buildInlineEntityConfig(
   };
   const result = EntityConfigSchema.safeParse(raw);
   if (!result.success) {
-    throw new CliOptionError(`Invalid entity definition: ${formatZodError(result.error)}`);
+    throw new CliOptionError(`Invalid entity definition:\n${formatZodError(result.error)}`, [
+      'Use <name>:<type>[:modifier...] for each --field, for example name:String:required.',
+      'Run "cleanstack entity --help" to see supported field types and modifiers.',
+    ]);
   }
   return result.data;
 }
@@ -205,6 +212,80 @@ async function readEntityDescriptor(
   return { entity, config: raw, descriptorPath };
 }
 
+/** Builds an error that lists where descriptors were searched and how to fix it. */
+export async function missingEntityDescriptorError(
+  options: DescriptorSearchOptions,
+): Promise<CliOptionError> {
+  const files = new Set<string>();
+  for (const directory of descriptorDirectories(options)) {
+    for (const file of await listDescriptorFiles(directory)) files.add(file);
+  }
+  const uniqueFiles = [...files].sort((left, right) => left.localeCompare(right));
+  const names = uniqueFiles.map((file) => path.basename(file).replace(/\.(ya?ml|json)$/i, ''));
+  const closest = closestName(options.name, names);
+
+  const suggestions: string[] = [];
+  if (closest !== undefined) {
+    const match = uniqueFiles.find(
+      (file) => path.basename(file).replace(/\.(ya?ml|json)$/i, '') === closest,
+    );
+    const location =
+      match === undefined
+        ? `entities/${closest}.yaml`
+        : path.relative(options.cwd, match).split(path.sep).join('/');
+    suggestions.push(`Did you mean "${closest}"? Found ${location}.`);
+  } else if (names.length > 0) {
+    suggestions.push(`Available descriptors: ${[...new Set(names)].sort().join(', ')}.`);
+  }
+
+  suggestions.push(
+    `Create entities/${options.name}.yaml (or .yml/.json) with the entity fields.`,
+    `Or define it inline: cleanstack entity ${options.name} --field name:String.`,
+    'Run "cleanstack entity --help" for descriptor locations and field syntax.',
+  );
+
+  const searched = descriptorDirectories(options)
+    .map((directory) => `  - ${directory}`)
+    .join('\n');
+  return new CliOptionError(
+    `No descriptor was found for "${options.name}". Searched:\n${searched}`,
+    suggestions,
+  );
+}
+
+function closestName(input: string, candidates: string[]): string | undefined {
+  const target = input.toLowerCase();
+  let best: string | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    const distance = editDistance(target, candidate.toLowerCase());
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = candidate;
+    }
+  }
+  const threshold = Math.max(1, Math.floor(input.length / 3));
+  return bestDistance <= threshold ? best : undefined;
+}
+
+function editDistance(left: string, right: string): number {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= left.length; row += 1) {
+    let diagonal = previous[0]!;
+    previous[0] = row;
+    for (let column = 1; column <= right.length; column += 1) {
+      const above = previous[column]!;
+      const value =
+        left[row - 1] === right[column - 1]
+          ? diagonal
+          : 1 + Math.min(diagonal, previous[column - 1]!, above);
+      diagonal = above;
+      previous[column] = value;
+    }
+  }
+  return previous[right.length]!;
+}
+
 async function resolveDescriptorPath(options: DescriptorSearchOptions): Promise<string> {
   const descriptor = options.descriptor!;
   const candidates = path.isAbsolute(descriptor)
@@ -219,7 +300,10 @@ async function resolveDescriptorPath(options: DescriptorSearchOptions): Promise<
     if (await isFile(candidate)) return candidate;
   }
 
-  throw new CliOptionError(`Descriptor "${descriptor}" was not found.`);
+  throw new CliOptionError(`Descriptor "${descriptor}" was not found.`, [
+    `Check the path; looked in:\n${candidates.map((candidate) => `  - ${candidate}`).join('\n')}`,
+    'Use a path relative to the current directory or the generated project.',
+  ]);
 }
 
 function descriptorDirectories(options: DescriptorSearchOptions): string[] {

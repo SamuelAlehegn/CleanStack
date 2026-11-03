@@ -27,6 +27,7 @@ function createHarness() {
     regenerateCommand: async (args) => calls.push(['regenerate', args]),
     templatesCommand: async (args) => calls.push(['templates', args]),
     configCommand: async (args) => calls.push(['config', args]),
+    doctorCommand: async (args) => calls.push(['doctor', args]),
     uiCommand: async (args) => calls.push(['ui', args]),
   };
   const output = { stdout: '', stderr: '' };
@@ -117,10 +118,12 @@ test('routes templates subcommands with their flags', async () => {
   assert.deepEqual((await route(['templates'])).calls, [['templates', ['list']]]);
 });
 
-test('routes config and the ui placeholder', async () => {
+test('routes config, doctor, and the ui placeholder', async () => {
   assert.deepEqual((await route(['config', 'show', '--json'])).calls, [
     ['config', ['show', '--json']],
   ]);
+  assert.deepEqual((await route(['doctor'])).calls, [['doctor', []]]);
+  assert.deepEqual((await route(['doctor', '--help'])).calls, [['doctor', ['--help']]]);
   assert.deepEqual((await route(['ui'])).calls, [['ui', []]]);
 });
 
@@ -159,7 +162,16 @@ test('--help lists every command and global flag', async () => {
     harness.program.parseAsync(['--help'], { from: 'user' }),
     (error) => error.exitCode === 0,
   );
-  for (const command of ['new', 'entity', 'generate', 'regenerate', 'templates', 'config', 'ui']) {
+  for (const command of [
+    'new',
+    'entity',
+    'generate',
+    'regenerate',
+    'templates',
+    'config',
+    'doctor',
+    'ui',
+  ]) {
     assert.match(harness.output.stdout, new RegExp(`\\b${command}\\b`));
   }
   for (const flag of ['--verbose', '--quiet', '--version', '--help']) {

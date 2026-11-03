@@ -2,6 +2,7 @@ import path from 'node:path';
 import { Command } from 'commander';
 import type { Logger } from '../utils/logger.js';
 import { runConfigCommand } from './config.js';
+import { runDoctorCommand } from './doctor.js';
 import { runEntityCommand } from './entity.js';
 import { runNewCommand } from './new.js';
 import { runRegenerateCommand } from './regenerate.js';
@@ -18,6 +19,7 @@ export interface CliHandlers {
   regenerateCommand(args: string[], context: CliCommandContext): Promise<void>;
   templatesCommand(args: string[], context: CliCommandContext): Promise<void>;
   configCommand(args: string[], context: CliCommandContext): Promise<void>;
+  doctorCommand(args: string[], context: CliCommandContext): Promise<void>;
   uiCommand(args: string[], context: CliCommandContext): Promise<void>;
 }
 
@@ -44,6 +46,7 @@ const defaultHandlers: CliHandlers = {
   regenerateCommand: (args, context) => runRegenerateCommand(args, context),
   templatesCommand: (args, context) => runTemplatesCommand(args, context),
   configCommand: (args, context) => runConfigCommand(args, context),
+  doctorCommand: (args, context) => runDoctorCommand(args, context),
   uiCommand: (_args, context) => {
     context.logger.warn(
       'The "ui" command is not available yet. It is planned for a future release.',
@@ -145,6 +148,10 @@ export function createProgram(options: CreateProgramOptions): Command {
   leaf(program, 'config')
     .description('Inspect the configuration resolved for this directory')
     .action((args: string[]) => handlers.configCommand(args, context));
+
+  leaf(program, 'doctor')
+    .description('Check the environment for common problems')
+    .action((args: string[]) => handlers.doctorCommand(args, context));
 
   leaf(program, 'ui')
     .description('Open the CleanStack web UI (not available yet)')

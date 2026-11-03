@@ -269,3 +269,27 @@ test('reports a missing descriptor with guidance', async () => {
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+test('suggests a similar descriptor name and how to define an inline entity', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-entity-typo-'));
+  try {
+    const projectRoot = await generateProject(cwd);
+    await mkdir(path.join(projectRoot, 'entities'), { recursive: true });
+    await writeFile(
+      path.join(projectRoot, 'entities', 'Product.yaml'),
+      ['name: Product', 'fields:', '  - name: name', '    type: String', ''].join('\n'),
+    );
+
+    await assert.rejects(runEntityCommand(['Productt'], { cwd: projectRoot, logger }), (error) => {
+      assert.match(error.message, /No descriptor was found for "Productt"/);
+      assert.ok(error.suggestions.some((hint) => /Did you mean "Product"/.test(hint)));
+      assert.ok(
+        error.suggestions.some((hint) => /--field name:String/.test(hint)),
+        'expected an inline-entity suggestion',
+      );
+      return true;
+    });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});

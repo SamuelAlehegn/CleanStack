@@ -310,7 +310,10 @@ async function withDiscoveredEntities(
     entities: [...byName.values()],
   });
   if (!result.success) {
-    throw new CliOptionError(`Invalid entity definitions: ${formatZodError(result.error)}`);
+    throw new CliOptionError(`Invalid entity definitions:\n${formatZodError(result.error)}`, [
+      'Check the entity descriptors in entities/ and the project configuration.',
+      'Run "cleanstack regenerate --dry-run" after fixing the listed fields.',
+    ]);
   }
   return result.data;
 }

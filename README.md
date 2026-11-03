@@ -34,6 +34,7 @@ cleanstack
   regenerate | r             Re-generate files, preserving protected regions
   templates                  List, copy, diff, and reset template overrides
   config                     Inspect the resolved configuration
+  doctor                     Check the environment for common problems
   ui                         Open the web UI (not available yet)
   --version, -V              Print the version
   --help, -h                 Show help
@@ -126,6 +127,43 @@ cleanstack config show --json # print it as JSON
 cleanstack config path        # print the configuration file path
 cleanstack config validate    # validate the configuration and report problems
 ```
+
+## Doctor
+
+`cleanstack doctor` checks the tools and files needed to build generated
+projects and prints a suggested fix for anything that is missing or outdated:
+
+- Node.js 22+
+- Java 21+
+- Maven or Gradle, matching the detected project
+- Git
+- Configuration file validity
+- Built-in template integrity
+
+```sh
+cleanstack doctor
+```
+
+Doctor exits non-zero when a hard requirement fails. Warnings, such as a missing
+optional tool, do not block generation but may prevent a generated project from
+building.
+
+## Error messages
+
+Configuration and entity validation errors are reported field by field with
+their full paths, expected values, and a suggested fix:
+
+```text
+✖ Invalid configuration in /work/app/.cleanstackrc.yml:
+  • options.database: Invalid value. Expected one of: "postgresql", "mysql", "h2".
+  • options.auth: Invalid value. Expected one of: "jwt", "none", "keycloak".
+
+  Hint: Fix the highlighted fields and run "cleanstack config validate" again.
+```
+
+Missing entity descriptors list the directories that were searched, suggest a
+similar file name when one exists, and show the inline `--field` alternative.
+Use `--verbose` to include stack traces for unexpected failures.
 
 ## Safe regeneration
 

@@ -2,7 +2,11 @@ import path from 'node:path';
 import { JAVA_PACKAGE_PATTERN, type EntityConfig, type ProjectConfig } from '../core/config.js';
 import { CliOptionError } from '../core/config-loader.js';
 import { buildEntityModels, type EntityModel } from '../core/entity-model.js';
-import { buildInlineEntityConfig, findEntityDescriptor } from '../core/entity-input.js';
+import {
+  buildInlineEntityConfig,
+  findEntityDescriptor,
+  missingEntityDescriptorError,
+} from '../core/entity-input.js';
 import {
   addEntityNavLink,
   addEntityRoutes,
@@ -276,9 +280,12 @@ export async function runEntityCommand(
       ...(parsed.descriptor === undefined ? {} : { descriptor: parsed.descriptor }),
     });
     if (!descriptor) {
-      throw new CliOptionError(
-        `No descriptor was found for "${name}". Add entities/${name}.yaml or pass --field <name:type>.`,
-      );
+      throw await missingEntityDescriptorError({
+        name,
+        cwd,
+        projectRoot: project.rootDir,
+        ...(parsed.descriptor === undefined ? {} : { descriptor: parsed.descriptor }),
+      });
     }
     entity = descriptor.entity;
     entityConfig = descriptor.config;
