@@ -213,6 +213,9 @@ extension), for example `spring-boot/root/README.md`. Without a project or user
 override the command reports that nothing needs resetting; `--dry-run` only
 reports what it would delete.
 
+For the complete template catalog, context variables, helpers, manifest format,
+and best practices, see [docs/TEMPLATES.md](docs/TEMPLATES.md).
+
 ## Development
 
 ```sh
