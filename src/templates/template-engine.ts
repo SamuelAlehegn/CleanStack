@@ -1,5 +1,6 @@
 import Handlebars from 'handlebars';
 import { readdir, readFile, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureWithinRoot, isMissingPath, resolveWithinRoot } from '../utils/path-safety.js';
@@ -36,8 +37,20 @@ interface ResolvedTemplate {
   root: string;
 }
 
+export type TemplateOverrideLocation = 'project' | 'user' | 'built-in';
+
+export interface ResolvedTemplateLocation {
+  /** Absolute file path of the template that will be rendered. */
+  filePath: string;
+  /** Which override level the template was found at, in precedence order. */
+  location: TemplateOverrideLocation;
+  /** The override root directory that supplied the template. */
+  rootDir: string;
+}
+
 const DEFAULT_EXTENSION = '.hbs';
-const BUILT_IN_TEMPLATE_ROOT = path.resolve(
+/** Shipped template packs, used as the final fallback of the override chain. */
+export const BUILT_IN_TEMPLATE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../templates',
 );
@@ -85,6 +98,23 @@ export class TemplateEngine {
         },
       );
     }
+  }
+
+  /**
+   * Finds the file that would back a single template and reports where it came
+   * from, without rendering it. Callers use this for discovery, diffing, and
+   * diagnostics on top of the override chain.
+   */
+  async resolve(templateName: string): Promise<ResolvedTemplateLocation> {
+    const resolved = await this.resolveTemplate(templateName);
+    const index = this.roots.indexOf(resolved.root);
+    const location: TemplateOverrideLocation =
+      index === 0 ? 'project' : index === 1 ? 'user' : 'built-in';
+    return {
+      filePath: resolved.filePath,
+      location,
+      rootDir: resolved.root,
+    };
   }
 
   private async resolveTemplate(templateName: string): Promise<ResolvedTemplate> {
@@ -234,8 +264,13 @@ function normalizeExtension(extension: string): string {
   return extension.startsWith('.') ? extension : `.${extension}`;
 }
 
-function getUserHome(): string {
-  return process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
+/**
+ * Home directory used for the user-level override chain. `os.homedir()` reads
+ * HOME on POSIX and USERPROFILE on Windows, so redirected environments behave
+ * consistently; the env fallbacks keep exotic setups working.
+ */
+export function getUserHome(): string {
+  return homedir() || process.env.HOME || process.env.USERPROFILE || process.cwd();
 }
 
 async function listFiles(directory: string, extension: string): Promise<string[]> {

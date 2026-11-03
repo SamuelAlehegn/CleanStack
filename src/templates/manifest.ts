@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { buildEntityModels, type EntityModel } from '../core/entity-model.js';
 import type { ProjectConfig } from '../core/config.js';
@@ -113,17 +114,40 @@ export function migrationVersions(entities: EntityModel[]): Map<string, number> 
   return new Map(ordered.map((entity, index) => [entity.name.toLowerCase(), index + 2]));
 }
 
-/** Reads a built-in template manifest. */
+/**
+ * Reads a template manifest through the override chain: the project root,
+ * the user template directory, and finally the built-in templates. A project
+ * or user pack can therefore replace the file list of one template set without
+ * copying every built-in template.
+ */
 export async function readManifest(
   templateSet: string,
   filesystemLogger: FileSystemLogger,
+  engine?: TemplateEngine,
 ): Promise<TemplateManifest> {
+  if (engine !== undefined) {
+    const { filePath, location } = await engine.resolve(`${templateSet}/manifest.json`);
+    const contents = await readFile(filePath, 'utf8');
+    return parseTemplateManifest(contents, `${location}: ${filePath}`);
+  }
+
   const fs = new FileSystemService({
     rootDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../templates'),
     logger: filesystemLogger,
   });
   const contents = await fs.readFile(`${templateSet}/manifest.json`);
-  return JSON.parse(contents) as TemplateManifest;
+  return parseTemplateManifest(contents, 'built-in manifest');
+}
+
+/** Validates the emitted manifest entry list and fails with its source on bad shapes. */
+function parseTemplateManifest(contents: string, source: string): TemplateManifest {
+  const parsed = JSON.parse(contents) as { files?: unknown };
+  if (!Array.isArray(parsed.files)) {
+    throw new Error(
+      `Template manifest (${source}) must declare a "files" array; received ${typeof parsed.files}.`,
+    );
+  }
+  return parsed as unknown as TemplateManifest;
 }
 
 /** Resolves every destination a manifest would write without rendering any templates. */
@@ -133,8 +157,9 @@ export async function planManifest(
   context: Record<string, unknown>,
   filesystemLogger: FileSystemLogger,
   filter?: (entry: ManifestEntry) => boolean,
+  engine?: TemplateEngine,
 ): Promise<ManifestPlanItem[]> {
-  const manifest = await readManifest(templateSet, filesystemLogger);
+  const manifest = await readManifest(templateSet, filesystemLogger, engine);
   const plan: ManifestPlanItem[] = [];
 
   for (const entry of manifest.files) {
@@ -170,7 +195,7 @@ export async function renderManifest(
   filesystemLogger: FileSystemLogger,
   options: RenderManifestOptions = {},
 ): Promise<string[]> {
-  const plan = await planManifest(templateSet, project, context, filesystemLogger, options.filter);
+  const plan = await planManifest(templateSet, project, context, filesystemLogger, options.filter, engine);
   const written: string[] = [];
 
   for (const item of plan) {

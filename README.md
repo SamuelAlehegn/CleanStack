@@ -144,6 +144,78 @@ should be generated before the entity that owns the foreign key or join table.
 See [docs/entity-descriptor.md](docs/entity-descriptor.md#relations) for the
 owning and inverse side rules.
 
+## Template overrides
+
+Every generated file comes from a Handlebars template. Templates resolve through
+a three-level priority chain:
+
+1. `.cleanstack/templates/` in the project (or the workspace root for
+   `cleanstack new`)
+2. `~/.cleanstack/templates/` in your home directory
+3. Built-in templates shipped with CleanStack
+
+The chain mirrors the template directory layout: to override a single file, copy
+only that file and keep its relative path. For example, to replace the backend
+README of the Spring Boot templates:
+
+```text
+.cleanstack/templates/spring-boot/root/README.md.hbs
+```
+
+A partial override affects just that file. Everything not overridden continues
+to render from the built-in templates, so you never copy a whole template pack
+to change one file. A template can also replace a template set's file list: put
+a `manifest.json` with a `files` array in an override directory, and it fully
+controls which files that set writes (built-in files you leave out are not
+generated).
+
+Which project level applies depends on the command:
+
+| Command                           | Project override location                              |
+| --------------------------------- | ------------------------------------------------------ |
+| `cleanstack new`                  | `.cleanstack/templates/` next to the generated project |
+| `cleanstack entity`, `regenerate` | `.cleanstack/templates/` inside the generated project  |
+
+Keep override templates safe to regenerate: include the
+`<cleanstack:user-code ...>` region markers where the built-in template has
+them. Without a matching region the safe writer preserves the existing file on
+reruns (see [Safe regeneration](#safe-regeneration)); `--force` overwrites.
+`manifest.json` itself participates in the chain, and a manifest override must
+declare a `files` array.
+
+## Managing templates
+
+The `templates` command inspects and manages the override directory of the
+current project (`.cleanstack/templates`):
+
+```sh
+cleanstack templates list            # every template and where it resolves from
+cleanstack templates init            # copy built-in templates into the project
+cleanstack templates diff            # show differences from the built-in
+cleanstack templates reset <name>    # remove one override, fall back to built-in
+```
+
+`list` annotates each template with its source (`project`, `user`, or
+`built-in`) and flags override-only files. A pack name can narrow the output:
+`cleanstack templates list spring-boot`.
+
+`init` copies the built-in templates so you can edit them locally. Existing
+override files are kept unless you pass `--force`; `--dry-run` reports what
+would be copied without writing.
+
+`diff` compares every override file with its built-in counterpart and prints
+line differences (context collapsed around changes). Files that exist only in
+an override are reported as added.
+
+`reset` deletes an override file so the built-in template applies again. The
+name is the pack-qualified template path (with or without the `.hbs`
+extension), for example `spring-boot/root/README.md`. Without a project or user
+override the command reports that nothing needs resetting; `--dry-run` only
+reports what it would delete.
+
+For the complete template catalog, context variables, helpers, manifest format,
+and best practices, see [docs/TEMPLATES.md](docs/TEMPLATES.md).
+
 ## Development
 
 ```sh
