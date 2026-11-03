@@ -1,5 +1,6 @@
 import Handlebars from 'handlebars';
 import { readdir, readFile, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureWithinRoot, isMissingPath, resolveWithinRoot } from '../utils/path-safety.js';
@@ -263,8 +264,13 @@ function normalizeExtension(extension: string): string {
   return extension.startsWith('.') ? extension : `.${extension}`;
 }
 
-function getUserHome(): string {
-  return process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
+/**
+ * Home directory used for the user-level override chain. `os.homedir()` reads
+ * HOME on POSIX and USERPROFILE on Windows, so redirected environments behave
+ * consistently; the env fallbacks keep exotic setups working.
+ */
+export function getUserHome(): string {
+  return homedir() || process.env.HOME || process.env.USERPROFILE || process.cwd();
 }
 
 async function listFiles(directory: string, extension: string): Promise<string[]> {

@@ -97,18 +97,16 @@ test('cleanstack entity applies a user-level single-file override', async () => 
   const previousHome = process.env.HOME;
   const previousUserProfile = process.env.USERPROFILE;
   try {
-    // Point the user override directory at a fixture location.
+    // Point the user override directory at a fixture location. Set both
+    // variables so POSIX and Windows hosts resolve the same home.
     const home = path.join(root, 'home');
     await writeTemplate(
       home,
       '.cleanstack/templates/angular/src/app/models/Entity.ts.hbs',
       '// USER-OVERRIDE {{entity.className}}\nexport interface {{entity.className}}Custom {}\n',
     );
-    if (process.platform === 'win32') {
-      process.env.USERPROFILE = home;
-    } else {
-      process.env.HOME = home;
-    }
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
 
     const projectRoot = await generateProject(workspace);
     await mkdir(path.join(projectRoot, 'entities'), { recursive: true });
@@ -133,11 +131,10 @@ test('cleanstack entity applies a user-level single-file override', async () => 
     );
     assert.match(service, /export class ProductService/);
   } finally {
-    if (process.platform === 'win32') {
-      process.env.USERPROFILE = previousUserProfile;
-    } else {
-      process.env.HOME = previousHome;
-    }
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     await rm(root, { recursive: true, force: true });
   }
 });

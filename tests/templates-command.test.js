@@ -265,16 +265,10 @@ test('diff shows modified and override-only files with added and removed lines',
 test('diff counts identical overrides as unchanged', async () => {
   const { root, workspace } = await createWorkspace();
   try {
-    // Copy the built-in README verbatim; diff must not flag it.
+    // Copy the built-in README verbatim; diff must not flag it. A file URL
+    // resolves correctly on Windows as well as POSIX hosts.
     const builtIn = await readFile(
-      path.join(
-        new URL('.', import.meta.url).pathname,
-        '..',
-        'templates',
-        'spring-boot',
-        'root',
-        'README.md.hbs',
-      ),
+      new URL('../templates/spring-boot/root/README.md.hbs', import.meta.url),
       'utf8',
     );
     await writeFileAt(workspace, '.cleanstack/templates/spring-boot/root/README.md.hbs', builtIn);
@@ -340,6 +334,7 @@ test('reset removes a project override and the built-in template applies again',
 test('reset falls back to the user override and rejects unknown templates', async () => {
   const { root, workspace } = await createWorkspace();
   const previousHome = process.env.HOME;
+  const previousUserProfile = process.env.USERPROFILE;
   try {
     const home = path.join(root, 'home');
     await writeFileAt(
@@ -347,11 +342,9 @@ test('reset falls back to the user override and rejects unknown templates', asyn
       '.cleanstack/templates/spring-boot/root/README.md.hbs',
       '# from user dir',
     );
-    if (process.platform === 'win32') {
-      process.env.USERPROFILE = home;
-    } else {
-      process.env.HOME = home;
-    }
+    // Redirect both variables so POSIX and Windows hosts use the fixture home.
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
 
     const logger = recordingLogger();
     await runTemplatesCommand(['reset', 'spring-boot/root/README.md.hbs'], {
@@ -368,11 +361,10 @@ test('reset falls back to the user override and rejects unknown templates', asyn
       /No template named/,
     );
   } finally {
-    if (process.platform === 'win32') {
-      process.env.USERPROFILE = previousHome;
-    } else {
-      process.env.HOME = previousHome;
-    }
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     await rm(root, { recursive: true, force: true });
   }
 });

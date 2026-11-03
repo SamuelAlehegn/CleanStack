@@ -4,6 +4,7 @@ import { CliOptionError } from '../core/config-loader.js';
 import { readManifest } from '../templates/manifest.js';
 import {
   BUILT_IN_TEMPLATE_ROOT,
+  getUserHome,
   TemplateEngine,
   type TemplateOverrideLocation,
 } from '../templates/template-engine.js';
@@ -367,10 +368,9 @@ async function resetTemplate(
 // --- helpers ---
 
 function overrideRoots(cwd: string): Map<TemplateOverrideLocation, string> {
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? cwd;
   return new Map<TemplateOverrideLocation, string>([
     ['project', path.join(cwd, '.cleanstack', 'templates')],
-    ['user', path.join(home, '.cleanstack', 'templates')],
+    ['user', path.join(getUserHome(), '.cleanstack', 'templates')],
   ]);
 }
 
@@ -404,7 +404,9 @@ async function listPacks(builtInRoot: string): Promise<string[]> {
 async function listOverrideFiles(root: string, pack: string): Promise<string[]> {
   const packRoot = path.join(root, pack);
   const files = await walkFiles(packRoot);
-  return files.map((absolute) => path.relative(packRoot, absolute));
+  // Pack-relative names always use forward slashes, matching manifests and
+  // template lookups on every platform.
+  return files.map((absolute) => path.relative(packRoot, absolute).split(path.sep).join('/'));
 }
 
 async function walkFiles(directory: string): Promise<string[]> {
