@@ -67,7 +67,7 @@ interface Problem {
 type PreviewTab = 'yaml' | 'files';
 
 export function EntitiesPage() {
-  const { projects, meta, selectedProject, refresh } = useWorkspace();
+  const { projects, meta, selectedProject, refresh, demo } = useWorkspace();
   const [draft, setDraft] = useState<EntityDraft>(emptyDraft);
   const [editingName, setEditingName] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -280,6 +280,13 @@ export function EntitiesPage() {
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (selectedProject === null) return;
+    if (demo) {
+      setProblem({
+        message: 'Generation is disabled in the static demo.',
+        suggestions: ['Run "cleanstack ui" locally to generate and update entities.'],
+      });
+      return;
+    }
 
     const localProblem = validateDraft(draft);
     if (localProblem !== null) {
@@ -312,6 +319,14 @@ export function EntitiesPage() {
   };
 
   const saveYaml = async (overwrite = false): Promise<void> => {
+    if (demo) {
+      setProblem({
+        message: 'YAML saves are disabled in the static demo.',
+        suggestions: ['Run "cleanstack ui" locally to write descriptors.'],
+      });
+      return;
+    }
+
     const localProblem = validateDraft(draft);
     if (localProblem !== null) {
       setValidation(localProblem);
@@ -602,13 +617,19 @@ export function EntitiesPage() {
 
               <div className="form-actions">
                 <span className="form-footnote">
-                  <Icon name="layers" size={15} />
-                  YAML saves to <code>entities/</code> in the studio workspace.
+                  <Icon name={demo ? 'warning' : 'layers'} size={15} />
+                  {demo ? (
+                    'Static demo: generation and YAML saves are disabled.'
+                  ) : (
+                    <>
+                      YAML saves to <code>entities/</code> in the studio workspace.
+                    </>
+                  )}
                 </span>
                 <div className="entity-action-buttons">
                   <button
                     className="button button-secondary"
-                    disabled={submitting || savingYaml}
+                    disabled={submitting || savingYaml || demo}
                     onClick={() => void saveYaml()}
                     type="button"
                   >
@@ -626,7 +647,7 @@ export function EntitiesPage() {
                   </button>
                   <button
                     className="button button-primary"
-                    disabled={submitting || savingYaml}
+                    disabled={submitting || savingYaml || demo}
                     type="submit"
                   >
                     {submitting ? (
@@ -710,7 +731,10 @@ export function EntitiesPage() {
                     </pre>
                   ) : preview.files.length === 0 ? (
                     <p className="preview-note">
-                      No generated files are available for this project.
+                      <Icon name="warning" size={15} />
+                      {demo
+                        ? 'Generated file previews require the local engine. The YAML tab is still live.'
+                        : 'No generated files are available for this project.'}
                     </p>
                   ) : (
                     <>

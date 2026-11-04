@@ -35,7 +35,7 @@ cleanstack
   templates                  List, copy, diff, and reset template overrides
   config                     Inspect the resolved configuration
   doctor                     Check the environment for common problems
-  ui                         Open the local web UI
+  ui                         Start the local web UI
   --version, -V              Print the version
   --help, -h                 Show help
   --verbose, -v              Show debug output
@@ -48,33 +48,58 @@ Global flags may appear before or after a command, so `cleanstack new demo
 
 ## Web UI
 
-The repository also includes a local React UI for creating projects, modeling
-entities, and previewing generated files. It is a thin client over the same
-engine as the CLI: project creation calls `runNewCommand`, entity generation
-calls `runEntityCommand`, and neither templates nor validation rules are
-duplicated in the UI.
+The project includes CleanStack Studio, a local React UI for creating projects,
+modeling entities, and previewing generated files. It is a thin client over the
+same engine as the CLI: project creation calls `runNewCommand`, entity
+generation calls `runEntityCommand`, and neither templates nor validation rules
+are duplicated in the UI.
 
 ```sh
-# Development server with Vite hot reload
+# Development server with Vite hot reload and the local engine API
 npm run ui:dev
 
-# Build the UI and serve it with the Node API server
+# Build the CLI and UI, then start the studio with the local engine API
 npm run ui
 
 # Type-check the UI sources
 npm run ui:check
 ```
 
+With the CLI built or installed globally, start the studio directly:
+
+```sh
+cleanstack ui
+cleanstack ui --workspace ~/projects --port 5180
+cleanstack ui --host 0.0.0.0
+```
+
 The server listens on `http://127.0.0.1:5173` by default. It discovers generated
 projects in the current directory, or in the directory set by
 `CLEANSTACK_WEB_WORKSPACE` (or `--workspace`). The API is local-only and every
 generation action writes to the local filesystem, exactly like the CLI. Use
-`--port` and `--host` to change the bind address:
+`--port` (including `0` for any free port) and `--host` to change the bind
+address, and `--dev` to serve through Vite.
+
+### Static demo mode
+
+`cleanstack ui --static` serves only the built UI on a local port, without the
+engine API:
 
 ```sh
-node dist/web/server.js --workspace ~/projects --port 5180
-npm run ui:dev -- --workspace ~/projects
+cleanstack ui --static
+npm run ui:static   # rebuild the CLI and UI first
 ```
+
+The frontend notices that `/api` is unavailable and switches to a bundled sample
+workspace marked **Static demo**. Generation, file previews, ZIP downloads, and
+YAML saves are disabled because the shared engine is not running; the entity
+editor still renders YAML descriptors in the browser. Static mode never reads or
+writes the local filesystem.
+
+The same bundle can be hosted on any static file server. Build it with
+`npm run ui:build` and publish `web/dist`; relative asset paths let it run under
+a subpath. Opening `index.html` directly from disk works too and falls back to
+the demo data.
 
 The **Create a new project** flow is a four-step wizard that mirrors the options
 accepted by `cleanstack new`:

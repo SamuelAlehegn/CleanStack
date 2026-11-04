@@ -89,7 +89,7 @@ const FALLBACK_DEFAULTS: ProjectDefaults = {
 };
 
 export function NewProjectPage() {
-  const { meta, workspace, refresh } = useWorkspace();
+  const { meta, workspace, refresh, demo } = useWorkspace();
   const defaults = defaultsFromMeta(meta);
   const [form, setForm] = useState<CreateProjectRequest>(() => initialForm(defaults));
   const [step, setStep] = useState<WizardStep>('project');
@@ -101,6 +101,7 @@ export function NewProjectPage() {
   const [validation, setValidation] = useState<string | null>(null);
   const defaultsApplied = useRef(meta !== null);
   const localAvailable = meta?.capabilities.localGeneration ?? false;
+  const downloadAvailable = meta?.capabilities.archiveDownload ?? false;
   const currentIndex = Math.max(
     0,
     STEPS.findIndex((item) => item.id === step),
@@ -190,6 +191,14 @@ export function NewProjectPage() {
       setDestination('download');
       setValidation(
         'Local generation is not available from this browser session. Choose ZIP download to continue.',
+      );
+      return;
+    }
+    if (destination === 'download' && !downloadAvailable) {
+      setValidation(
+        demo
+          ? 'Generation is disabled in the static demo. Run "cleanstack ui" locally to create a project.'
+          : 'ZIP downloads are not available from this session.',
       );
       return;
     }
@@ -389,7 +398,9 @@ export function NewProjectPage() {
           {step === 'options' && <OptionsStep form={form} update={update} />}
           {step === 'review' && (
             <ReviewStep
+              demo={demo}
               destination={destination}
+              downloadAvailable={downloadAvailable}
               form={form}
               localAvailable={localAvailable}
               onDestinationChange={setDestination}
@@ -429,7 +440,9 @@ export function NewProjectPage() {
               ) : (
                 <button
                   className="button button-primary"
-                  disabled={submitting || (destination === 'local' && !localAvailable)}
+                  disabled={
+                    submitting || (destination === 'local' ? !localAvailable : !downloadAvailable)
+                  }
                   type="submit"
                 >
                   {submitting ? (
@@ -766,12 +779,16 @@ function OptionsStep({ form, update }: StepProps) {
 interface ReviewStepProps extends StepProps {
   destination: Destination;
   localAvailable: boolean;
+  downloadAvailable: boolean;
+  demo: boolean;
   workspacePath: string;
   onDestinationChange(destination: Destination): void;
 }
 
 function ReviewStep({
   destination,
+  downloadAvailable,
+  demo,
   form,
   localAvailable,
   onDestinationChange,
@@ -853,6 +870,7 @@ function ReviewStep({
           aria-pressed={destination === 'download'}
           className="destination-card"
           data-selected={destination === 'download'}
+          disabled={!downloadAvailable}
           onClick={() => onDestinationChange('download')}
           type="button"
         >
@@ -867,6 +885,7 @@ function ReviewStep({
             </span>
             <span className="destination-path">{form.name.trim() || '<name>'}.zip</span>
           </span>
+          {!downloadAvailable && <span className="destination-badge">Unavailable</span>}
           {destination === 'download' && (
             <span className="destination-check">
               <Icon name="check" size={13} />
@@ -902,10 +921,11 @@ function ReviewStep({
         </button>
       </div>
 
-      {!localAvailable && (
+      {(!localAvailable || !downloadAvailable) && (
         <p className="destination-note">
-          Local generation is available when the studio is opened on the machine running the server.
-          The ZIP download works from any browser that can reach it.
+          {demo
+            ? 'Generation and downloads are disabled in the static demo. Run "cleanstack ui" locally to create a project.'
+            : 'Local generation is available when the studio is opened on the machine running the server. The ZIP download works from any browser that can reach it.'}
         </p>
       )}
     </>

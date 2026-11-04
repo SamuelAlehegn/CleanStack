@@ -14,10 +14,35 @@ import type {
   SaveEntityYamlResponse,
   WorkspaceResponse,
 } from '../../src/web/contracts';
+import {
+  demoEntityPreview,
+  demoMeta,
+  demoProject,
+  demoProjectFile,
+  demoProjectFiles,
+  demoWorkspace,
+} from './demo';
 
 export interface DownloadedArchive {
   blob: Blob;
   filename: string;
+}
+
+let staticDemo = false;
+
+/** Switches every API call to the bundled demo fixtures. */
+export function enableStaticDemo(): void {
+  staticDemo = true;
+}
+
+export function isStaticDemo(): boolean {
+  return staticDemo;
+}
+
+function demoUnavailable(action: string): ApiError {
+  return new ApiError(`The static demo cannot ${action}.`, [
+    'Run "cleanstack ui" locally to use the shared generation engine.',
+  ]);
 }
 
 export class ApiError extends Error {
@@ -44,7 +69,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch {
     throw new ApiError('The CleanStack local engine is not reachable.', [
-      'Start the UI with "npm run ui:dev" and try again.',
+      'Start the UI with "cleanstack ui" and try again.',
     ]);
   }
 
@@ -70,14 +95,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   workspace(): Promise<WorkspaceResponse> {
-    return request<WorkspaceResponse>('/api/workspace');
+    return staticDemo
+      ? Promise.resolve(demoWorkspace())
+      : request<WorkspaceResponse>('/api/workspace');
   },
 
   meta(): Promise<MetaResponse> {
-    return request<MetaResponse>('/api/meta');
+    return staticDemo ? Promise.resolve(demoMeta()) : request<MetaResponse>('/api/meta');
   },
 
   createProject(body: CreateProjectRequest): Promise<CommandResult> {
+    if (staticDemo) return Promise.reject(demoUnavailable('create projects'));
     return request<CommandResult>('/api/projects', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -85,6 +113,7 @@ export const api = {
   },
 
   async downloadProject(body: DownloadProjectRequest): Promise<DownloadedArchive> {
+    if (staticDemo) throw demoUnavailable('build project archives');
     let response: Response;
     try {
       response = await fetch('/api/projects/download', {
@@ -94,7 +123,7 @@ export const api = {
       });
     } catch {
       throw new ApiError('The CleanStack local engine is not reachable.', [
-        'Start the UI with "npm run ui:dev" and try again.',
+        'Start the UI with "cleanstack ui" and try again.',
       ]);
     }
 
@@ -109,6 +138,7 @@ export const api = {
   },
 
   createEntity(body: CreateEntityRequest): Promise<CommandResult> {
+    if (staticDemo) return Promise.reject(demoUnavailable('generate or update entities'));
     return request<CommandResult>('/api/entities', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -116,6 +146,7 @@ export const api = {
   },
 
   previewEntity(body: PreviewEntityRequest): Promise<EntityPreviewResponse> {
+    if (staticDemo) return Promise.resolve(demoEntityPreview(body));
     return request<EntityPreviewResponse>('/api/entities/preview', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -123,6 +154,7 @@ export const api = {
   },
 
   saveEntityYaml(body: SaveEntityYamlRequest): Promise<SaveEntityYamlResponse> {
+    if (staticDemo) return Promise.reject(demoUnavailable('save YAML descriptors'));
     return request<SaveEntityYamlResponse>('/api/entities/yaml', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -130,18 +162,27 @@ export const api = {
   },
 
   projectFiles(projectPath: string): Promise<ProjectFilesResponse> {
+    if (staticDemo) return Promise.resolve(demoProjectFiles(projectPath));
     return request<ProjectFilesResponse>(
       `/api/projects/files?path=${encodeURIComponent(projectPath)}`,
     );
   },
 
   file(projectPath: string, filePath: string): Promise<ProjectFileResponse> {
+    if (staticDemo) {
+      try {
+        return Promise.resolve(demoProjectFile(projectPath, filePath));
+      } catch (error) {
+        return Promise.reject(new ApiError(error instanceof Error ? error.message : String(error)));
+      }
+    }
     return request<ProjectFileResponse>(
       `/api/projects/file?path=${encodeURIComponent(projectPath)}&file=${encodeURIComponent(filePath)}`,
     );
   },
 
   project(projectPath: string): Promise<ProjectSummary> {
+    if (staticDemo) return Promise.resolve(demoProject(projectPath));
     return request<ProjectSummary>(`/api/projects/detail?path=${encodeURIComponent(projectPath)}`);
   },
 };

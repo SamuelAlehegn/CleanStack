@@ -7,6 +7,9 @@ const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 
 export default defineConfig({
   root,
+  // Relative asset URLs let the built UI run from any host or subpath,
+  // including plain static hosting of web/dist.
+  base: './',
   plugins: [react()],
   server: {
     fs: {

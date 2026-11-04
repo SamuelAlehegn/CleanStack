@@ -16,7 +16,7 @@ export function App() {
 
 function StudioShell() {
   const route = useRoute();
-  const { workspace, projects, error, loading } = useWorkspace();
+  const { workspace, projects, error, loading, demo } = useWorkspace();
 
   const page =
     route === 'new' ? (
@@ -34,7 +34,8 @@ function StudioShell() {
       route={route}
       workspacePath={workspace?.workspacePath ?? ''}
       projectCount={projects.length}
-      engineOnline={!loading && workspace !== null && error === null}
+      engineOnline={!demo && !loading && workspace !== null && error === null}
+      demo={demo}
     >
       {page}
     </AppShell>

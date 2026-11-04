@@ -10,6 +10,8 @@ interface WebServerOptions {
   host: string;
   port: number;
   workspace: string;
+  /** Serve the built UI only, with no local API. */
+  static?: boolean;
 }
 
 interface ParsedArguments extends Partial<WebServerOptions> {
@@ -39,7 +41,8 @@ export async function startServer(options: WebServerOptions): Promise<{
   server: Server;
   url: string;
 }> {
-  const api = createApiHandler({ workspace: options.workspace });
+  const api =
+    options.static === true ? undefined : createApiHandler({ workspace: options.workspace });
   let vite: ViteDevServer | undefined;
 
   const server = createServer((request, response) => {
@@ -61,6 +64,13 @@ export async function startServer(options: WebServerOptions): Promise<{
   async function dispatch(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const url = request.url ?? '/';
     if (url === '/api' || url.startsWith('/api/') || url.startsWith('/api?')) {
+      if (api === undefined) {
+        sendJson(response, 404, {
+          error: 'The static demo does not include the local engine API.',
+          suggestions: ['Run "cleanstack ui" without --static to use the local engine.'],
+        });
+        return;
+      }
       await api(request, response);
       return;
     }
@@ -161,12 +171,33 @@ function sendText(response: ServerResponse, status: number, message: string): vo
   response.end(message);
 }
 
+function sendJson(response: ServerResponse, status: number, body: unknown): void {
+  const contents = Buffer.from(JSON.stringify(body));
+  response.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': contents.length,
+    'cache-control': 'no-store',
+  });
+  response.end(contents);
+}
+
+/** True when the production UI bundle exists on disk. */
+export async function hasBuiltUi(): Promise<boolean> {
+  try {
+    return (await stat(path.join(uiRoot, 'index.html'))).isFile();
+  } catch {
+    return false;
+  }
+}
+
 const HELP = `Usage: cleanstack-web [options]
 
 Serve the CleanStack web UI on top of the same engine used by the CLI.
+Prefer "cleanstack ui", which supports the same options.
 
 Options:
   --dev                Start Vite in middleware mode with hot reload
+  --static             Serve the built UI only, with bundled demo data and no API
   --port <number>      Port to listen on (default: 5173)
   --host <name>        Host to bind (default: 127.0.0.1)
   --workspace <path>   Workspace used to discover and create projects
@@ -184,6 +215,10 @@ export function parseServerArguments(args: string[]): ParsedArguments {
     }
     if (token === '--dev') {
       result.dev = true;
+      continue;
+    }
+    if (token === '--static') {
+      result.static = true;
       continue;
     }
     if (token === '--port' || token === '--host' || token === '--workspace') {
@@ -221,9 +256,11 @@ async function main(): Promise<void> {
   const workspace = path.resolve(
     parsed.workspace ?? process.env.CLEANSTACK_WEB_WORKSPACE ?? process.cwd(),
   );
-  const workspaceStat = await stat(workspace).catch(() => undefined);
-  if (workspaceStat === undefined || !workspaceStat.isDirectory()) {
-    throw new Error(`Workspace "${workspace}" does not exist or is not a directory.`);
+  if (parsed.static !== true) {
+    const workspaceStat = await stat(workspace).catch(() => undefined);
+    if (workspaceStat === undefined || !workspaceStat.isDirectory()) {
+      throw new Error(`Workspace "${workspace}" does not exist or is not a directory.`);
+    }
   }
 
   const { url } = await startServer({
@@ -231,9 +268,12 @@ async function main(): Promise<void> {
     host: parsed.host ?? '127.0.0.1',
     port: parsed.port ?? 5173,
     workspace,
+    static: parsed.static ?? false,
   });
   console.log(`CleanStack UI running at ${url}`);
-  console.log(`Workspace: ${workspace}`);
+  console.log(
+    parsed.static === true ? 'Mode: static demo (no local API)' : `Workspace: ${workspace}`,
+  );
 }
 
 if (

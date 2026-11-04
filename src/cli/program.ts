@@ -7,6 +7,7 @@ import { runEntityCommand } from './entity.js';
 import { runNewCommand } from './new.js';
 import { runRegenerateCommand } from './regenerate.js';
 import { runTemplatesCommand } from './templates.js';
+import { runUiCommand } from './ui.js';
 
 export interface CliCommandContext {
   logger: Logger;
@@ -47,12 +48,7 @@ const defaultHandlers: CliHandlers = {
   templatesCommand: (args, context) => runTemplatesCommand(args, context),
   configCommand: (args, context) => runConfigCommand(args, context),
   doctorCommand: (args, context) => runDoctorCommand(args, context),
-  uiCommand: (_args, context) => {
-    context.logger.warn(
-      'The "ui" command is not available yet. It is planned for a future release.',
-    );
-    return Promise.resolve();
-  },
+  uiCommand: (args, context) => runUiCommand(args, context).then(() => undefined),
 };
 
 /**
@@ -154,7 +150,7 @@ export function createProgram(options: CreateProgramOptions): Command {
     .action((args: string[]) => handlers.doctorCommand(args, context));
 
   leaf(program, 'ui')
-    .description('Open the CleanStack web UI (not available yet)')
+    .description('Start the local CleanStack web UI')
     .action((args: string[]) => handlers.uiCommand(args, context));
 
   return program;

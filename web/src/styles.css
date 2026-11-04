@@ -269,6 +269,13 @@ pre {
     0 0 12px rgb(200 245 106 / 45%);
 }
 
+.status-dot.demo {
+  background: var(--amber);
+  box-shadow:
+    0 0 0 3px rgb(255 200 102 / 10%),
+    0 0 12px rgb(255 200 102 / 35%);
+}
+
 .sidebar-footer code {
   overflow: hidden;
   color: var(--faint);
@@ -333,6 +340,42 @@ pre {
   border-radius: 99px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.local-pill.demo {
+  border-color: rgb(255 200 102 / 28%);
+  color: var(--amber);
+}
+
+.demo-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 22px;
+  padding: 11px 14px;
+  border: 1px solid rgb(255 200 102 / 28%);
+  border-radius: 10px;
+  background: rgb(255 200 102 / 7%);
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.demo-banner svg {
+  flex: none;
+  color: var(--amber);
+}
+
+.demo-banner strong {
+  color: var(--amber);
+}
+
+.demo-banner code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 25%);
+  color: var(--text);
+  font-size: 0.92em;
 }
 
 .page-shell {

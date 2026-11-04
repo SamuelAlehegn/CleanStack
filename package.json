@@ -58,6 +58,7 @@
   "files": [
     "dist",
     "templates",
+    "web/dist",
     "README.md",
     "LICENSE"
   ],
@@ -67,13 +68,14 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "ui": "npm run build && npm run ui:build && node dist/web/server.js",
-    "ui:dev": "tsx src/web/server.ts --dev",
+    "ui": "npm run build && npm run ui:build && node dist/cli/index.js ui",
+    "ui:static": "npm run build && npm run ui:build && node dist/cli/index.js ui --static",
+    "ui:dev": "tsx src/cli/index.ts ui --dev",
     "ui:build": "vite build --config web/vite.config.ts",
     "ui:check": "tsc -p web/tsconfig.json",
     "start": "npm run build && node dist/cli/index.js hello",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build && npm run ui:build"
   },
   "keywords": [
     "generator",

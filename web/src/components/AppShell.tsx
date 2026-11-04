@@ -15,6 +15,7 @@ interface AppShellProps {
   workspacePath: string;
   projectCount: number;
   engineOnline: boolean;
+  demo: boolean;
 }
 
 export function AppShell({
@@ -23,6 +24,7 @@ export function AppShell({
   workspacePath,
   projectCount,
   engineOnline,
+  demo,
 }: AppShellProps) {
   return (
     <div className="app-shell">
@@ -60,12 +62,25 @@ export function AppShell({
 
         <div className="sidebar-footer">
           <div className="engine-status">
-            <span className={engineOnline ? 'status-dot online' : 'status-dot'} />
-            <span>{engineOnline ? 'Local engine connected' : 'Engine unavailable'}</span>
+            <span
+              className={
+                demo ? 'status-dot demo' : engineOnline ? 'status-dot online' : 'status-dot'
+              }
+            />
+            <span>
+              {demo
+                ? 'Static demo data'
+                : engineOnline
+                  ? 'Local engine connected'
+                  : 'Engine unavailable'}
+            </span>
           </div>
-          <code title={workspacePath}>{workspacePath || 'loading workspace...'}</code>
+          <code title={workspacePath}>
+            {demo ? 'Bundled sample workspace' : workspacePath || 'loading workspace...'}
+          </code>
           <span className="sidebar-count">
-            {projectCount} project{projectCount === 1 ? '' : 's'} discovered
+            {projectCount} {demo ? 'sample project' : 'project'}
+            {projectCount === 1 ? '' : 's'} {demo ? 'included' : 'discovered'}
           </span>
         </div>
       </aside>
@@ -78,9 +93,9 @@ export function AppShell({
             <span>{items.find((item) => item.route === route)?.label ?? 'Home'}</span>
           </div>
           <div className="topbar-actions">
-            <span className="local-pill">
-              <span className="status-dot online" />
-              Local only
+            <span className={demo ? 'local-pill demo' : 'local-pill'}>
+              <span className={demo ? 'status-dot demo' : 'status-dot online'} />
+              {demo ? 'Static demo' : 'Local only'}
             </span>
             <a className="button button-small button-ghost" href={routeHref('new')}>
               <Icon name="plus" size={16} />
@@ -88,7 +103,18 @@ export function AppShell({
             </a>
           </div>
         </header>
-        <main className="page-shell">{children}</main>
+        <main className="page-shell">
+          {demo && (
+            <div className="demo-banner" role="status">
+              <Icon name="sparkles" size={17} />
+              <span>
+                <strong>Static demo</strong> — this build uses bundled sample data. Start{' '}
+                <code>cleanstack ui</code> locally to generate projects, entities, and files.
+              </span>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   );

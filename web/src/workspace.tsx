@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from 'react';
 import type { MetaResponse, ProjectSummary, WorkspaceResponse } from '../../src/web/contracts';
-import { api, ApiError } from './api';
+import { api, ApiError, enableStaticDemo } from './api';
+import { demoMeta, demoWorkspace } from './demo';
 
 interface WorkspaceContextValue {
   workspace: WorkspaceResponse | null;
@@ -18,6 +19,8 @@ interface WorkspaceContextValue {
   selectedPath: string | null;
   loading: boolean;
   error: string | null;
+  /** True when the UI could not reach the engine and fell back to bundled data. */
+  demo: boolean;
   selectProject(path: string): void;
   refresh(preferredPath?: string): Promise<void>;
   clearError(): void;
@@ -34,6 +37,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [demo, setDemo] = useState(false);
 
   const applyWorkspace = useCallback((next: WorkspaceResponse, preferredPath?: string) => {
     setWorkspace(next);
@@ -68,10 +72,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         applyWorkspace(nextWorkspace);
         setMeta(nextMeta);
         setError(null);
-      } catch (caught) {
-        if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : String(caught));
-        }
+      } catch {
+        if (cancelled) return;
+        // A pure static build has no /api server. Keep the studio usable by
+        // switching to the bundled demo workspace once, clearly marked in the shell.
+        enableStaticDemo();
+        setDemo(true);
+        applyWorkspace(demoWorkspace());
+        setMeta(demoMeta());
+        setError(null);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -107,11 +116,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       selectedPath,
       loading,
       error,
+      demo,
       selectProject,
       refresh,
       clearError: () => setError(null),
     }),
-    [error, loading, meta, refresh, selectProject, selectedPath, selectedProject, workspace],
+    [demo, error, loading, meta, refresh, selectProject, selectedPath, selectedProject, workspace],
   );
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
