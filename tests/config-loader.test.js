@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -188,5 +188,230 @@ test('reports malformed JSON with the configuration path', async () => {
     });
   } finally {
     await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// YAML configuration
+// ---------------------------------------------------------------------------
+
+test('loads team defaults from .cleanstackrc.yml without a project name', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    await writeFile(
+      path.join(cwd, '.cleanstackrc.yml'),
+      [
+        'packageName: com.team',
+        'options:',
+        '  database: h2',
+        '  auth: none',
+        '  docker: true',
+        'entities:',
+        '  - name: Product',
+        '    fields:',
+        '      - name: name',
+        '        type: String',
+        '',
+      ].join('\n'),
+    );
+
+    const defaults = await new ConfigLoader().loadDefaults({ cwd, env: {} });
+    assert.equal(defaults.name, undefined);
+    assert.equal(defaults.packageName, 'com.team');
+    assert.equal(defaults.options.database, 'h2');
+    assert.equal(defaults.options.auth, 'none');
+    assert.equal(defaults.options.docker, true);
+    assert.deepEqual(
+      defaults.entities.map((entity) => entity.name),
+      ['Product'],
+    );
+
+    const project = await new ConfigLoader().load({
+      cwd,
+      env: {},
+      args: ['shop'],
+    });
+    assert.equal(project.name, 'shop');
+    assert.equal(project.packageName, 'com.team');
+    assert.equal(project.options.database, 'h2');
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('loads cleanstack.config.yml and .yaml files', async () => {
+  for (const filename of ['cleanstack.config.yml', '.cleanstackrc.yaml']) {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+    try {
+      await writeFile(path.join(cwd, filename), 'name: from-yaml\noptions:\n  buildTool: gradle\n');
+      const config = await new ConfigLoader().load({ cwd, env: {} });
+      assert.equal(config.name, 'from-yaml', filename);
+      assert.equal(config.options.buildTool, 'gradle', filename);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  }
+});
+
+test('treats an empty YAML file as no defaults', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    await writeFile(path.join(cwd, '.cleanstackrc.yml'), '# intentionally empty\n');
+    const config = await new ConfigLoader().load({ cwd, env: {}, args: ['shop'] });
+    assert.equal(config.name, 'shop');
+    assert.equal(config.options.database, 'postgresql');
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('reports malformed YAML with the configuration path', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    const configPath = path.join(cwd, '.cleanstackrc.yml');
+    await writeFile(configPath, 'options: [unterminated\n');
+
+    await assert.rejects(new ConfigLoader().load({ cwd, env: {} }), (error) => {
+      assert.match(error.message, /Unable to read configuration from/);
+      assert.ok(error.message.includes(configPath));
+      return true;
+    });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Environment variables
+// ---------------------------------------------------------------------------
+
+test('environment variables override file defaults and CLI overrides the environment', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    await writeFile(
+      path.join(cwd, '.cleanstackrc.yml'),
+      'name: from-file\npackageName: com.file\noptions:\n  database: h2\n  auth: jwt\n',
+    );
+
+    const config = await new ConfigLoader().load({
+      cwd,
+      env: {
+        CLEANSTACK_PACKAGE_NAME: 'com.env',
+        CLEANSTACK_DATABASE: 'mysql',
+        CLEANSTACK_AUTH: 'none',
+        CLEANSTACK_DOCKER: 'yes',
+        CLEANSTACK_DRY_RUN: '1',
+      },
+      args: ['--db', 'postgresql'],
+    });
+
+    assert.equal(config.name, 'from-file');
+    assert.equal(config.packageName, 'com.env');
+    assert.equal(config.options.database, 'postgresql');
+    assert.equal(config.options.auth, 'none');
+    assert.equal(config.options.docker, true);
+    assert.equal(config.options.dryRun, true);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('environment variables accept aliases and boolean spellings', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    const defaults = await new ConfigLoader().loadDefaults({
+      cwd,
+      env: {
+        CLEANSTACK_PACKAGE: 'com.alias',
+        CLEANSTACK_DB: 'h2',
+        CLEANSTACK_BUILD: 'gradle',
+        CLEANSTACK_FRONTEND: '0',
+        CLEANSTACK_BACKEND: 'off',
+        CLEANSTACK_OUTPUT_DIR: 'generated',
+      },
+      cliOptions: {},
+    });
+
+    assert.equal(defaults.packageName, 'com.alias');
+    assert.equal(defaults.options.database, 'h2');
+    assert.equal(defaults.options.buildTool, 'gradle');
+    assert.equal(defaults.options.frontend, false);
+    assert.equal(defaults.options.backend, false);
+    assert.equal(defaults.options.outputDir, 'generated');
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('rejects invalid boolean environment variables', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    await assert.rejects(
+      new ConfigLoader().load({ cwd, env: { CLEANSTACK_DOCKER: 'sometimes' } }),
+      /CLEANSTACK_DOCKER expects a boolean/,
+    );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('rejects two environment aliases for the same setting', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    await assert.rejects(
+      new ConfigLoader().load({
+        cwd,
+        env: { CLEANSTACK_DB: 'h2', CLEANSTACK_DATABASE: 'mysql' },
+      }),
+      /both set "database"/,
+    );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('CLEANSTACK_CONFIG selects an explicit configuration file', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    await writeFile(
+      path.join(cwd, 'team.yml'),
+      'name: from-explicit\noptions:\n  auth: keycloak\n',
+    );
+
+    const config = await new ConfigLoader().load({
+      cwd,
+      env: { CLEANSTACK_CONFIG: 'team.yml' },
+    });
+    assert.equal(config.name, 'from-explicit');
+    assert.equal(config.options.auth, 'keycloak');
+
+    await assert.rejects(
+      new ConfigLoader().load({ cwd, env: { CLEANSTACK_CONFIG: 'missing.yml' } }),
+      /Configuration file .*missing\.yml" does not exist/,
+    );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Shared team configuration in a parent directory
+// ---------------------------------------------------------------------------
+
+test('discovers configuration files in parent directories', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-'));
+  try {
+    await writeFile(
+      path.join(root, '.cleanstackrc.yml'),
+      'packageName: com.ancestor\noptions:\n  database: h2\n',
+    );
+    const nested = path.join(root, 'packages', 'app', 'src');
+    await mkdir(nested, { recursive: true });
+
+    const defaults = await new ConfigLoader().loadDefaults({ cwd: nested, env: {} });
+    assert.equal(defaults.packageName, 'com.ancestor');
+    assert.equal(defaults.options.database, 'h2');
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

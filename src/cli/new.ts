@@ -23,6 +23,26 @@ interface NewCommandOptions {
   logger: Logger;
 }
 
+export const NEW_USAGE = `Usage: cleanstack new <name> [options]
+
+Create a new project skeleton.
+
+Options:
+  --package <name>             Java package, for example com.example
+  --db <postgresql|h2|mysql>   Database (default: postgresql)
+  --auth <jwt|none|keycloak>   Authentication (default: jwt)
+  --build <maven|gradle>       Build tool (default: maven)
+  --frontend <angular|none>    Frontend (default: angular)
+  --docker                     Emit Docker files
+  --entities                   Generate entities from the project configuration
+  --no-entities                Skip configured entities
+  --interactive                Prompt for any missing settings
+  -y, --yes                    Skip prompts and use defaults for missing settings
+  --git                        Initialize a git repository in the generated project
+  --force                      Overwrite generated files completely, including protected regions
+  --dry-run                    Show what would change without writing files
+  -h, --help                   Show this help`;
+
 const defaults = {
   packageName: 'com.example',
   database: 'postgresql',
@@ -33,14 +53,23 @@ const defaults = {
 } as const;
 export async function runNewCommand(args: string[], options: NewCommandOptions): Promise<void> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
-  const { interactive, yes, initializeGit, includeEntities, force, dryRun, configArgs } =
+  const { interactive, yes, initializeGit, includeEntities, force, dryRun, help, configArgs } =
     extractControlFlags(args);
-  let cliOptions = mapFrontendOption(parseCommandLineOptions(configArgs));
-  if (!yes && (interactive || hasMissingSettings(cliOptions))) {
-    cliOptions = await collectInteractiveOptions(cliOptions);
+  if (help) {
+    options.logger.info(NEW_USAGE);
+    return;
   }
-  validateProjectName(cliOptions.name);
-  const project = await new ConfigLoader().load({ cwd, cliOptions });
+  let cliOptions = mapFrontendOption(parseCommandLineOptions(configArgs));
+  const loader = new ConfigLoader();
+  // File and environment defaults count as provided values, so `new` only
+  // prompts for settings that are still missing.
+  let provided = await loader.resolve({ cwd, cliOptions });
+  if (!yes && (interactive || hasMissingSettings(provided))) {
+    cliOptions = await collectInteractiveOptions(provided);
+    provided = await loader.resolve({ cwd, cliOptions });
+  }
+  validateProjectName(provided.name);
+  const project = await loader.load({ cwd, cliOptions });
   const inputFs = new FileSystemService({ rootDir: cwd, logger: { log: () => {} } });
   let entityDescriptorFiles: string[] = [];
   if (await inputFs.exists('entities')) {
@@ -71,7 +100,7 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
           : [];
     if (entities.length === 0) {
       options.logger.warn(
-        'No entity definitions found. Add entities to cleanstack.config.json or place YAML/JSON descriptors in entities/.',
+        'No entity definitions found. Add entities to the project configuration or place YAML/JSON descriptors in entities/.',
       );
     }
     generationProject = { ...project, entities };
@@ -191,6 +220,7 @@ function extractControlFlags(args: string[]): {
   includeEntities: boolean | undefined;
   force: boolean;
   dryRun: boolean;
+  help: boolean;
   configArgs: string[];
 } {
   let interactive = false;
@@ -199,6 +229,7 @@ function extractControlFlags(args: string[]): {
   let includeEntities: boolean | undefined;
   let force = false;
   let dryRun = false;
+  let help = false;
   const configArgs: string[] = [];
   for (const arg of args) {
     if (arg === '--interactive') interactive = true;
@@ -208,6 +239,7 @@ function extractControlFlags(args: string[]): {
     else if (arg === '--no-entities') includeEntities = false;
     else if (arg === '--force') force = true;
     else if (arg === '--dry-run') dryRun = true;
+    else if (arg === '--help' || arg === '-h') help = true;
     else if (arg.startsWith('--frontend=')) {
       const value = arg.slice('--frontend='.length);
       if (value !== 'angular' && value !== 'none')
@@ -223,7 +255,7 @@ function extractControlFlags(args: string[]): {
     if (value === 'angular' || value === 'none')
       configArgs[frontIndex + 1] = String(value === 'angular');
   }
-  return { interactive, yes, initializeGit, includeEntities, force, dryRun, configArgs };
+  return { interactive, yes, initializeGit, includeEntities, force, dryRun, help, configArgs };
 }
 
 function hasMissingSettings(input: Record<string, unknown>): boolean {

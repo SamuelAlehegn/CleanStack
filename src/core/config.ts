@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z, type RefinementCtx } from 'zod';
 
 const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const PACKAGE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
@@ -214,83 +214,100 @@ export const GenerationOptionsSchema = z
 
 const DEFAULT_GENERATION_OPTIONS = GenerationOptionsSchema.parse({});
 
-export const ProjectConfigSchema = z
-  .object({
-    name: z.string().trim().min(1),
-    packageName: z
-      .string()
-      .trim()
-      .regex(
-        PACKAGE_NAME_PATTERN,
-        'packageName must be a valid Java package name (for example, com.example).',
-      )
-      .default('com.example'),
-    entities: z.array(EntityConfigSchema).default([]),
-    options: GenerationOptionsSchema.default(DEFAULT_GENERATION_OPTIONS),
-  })
-  .strict()
-  .superRefine((config, ctx) => {
-    const entityIndexes = new Map<string, number>();
+const projectConfigFields = {
+  name: z.string().trim().min(1),
+  packageName: z
+    .string()
+    .trim()
+    .regex(
+      PACKAGE_NAME_PATTERN,
+      'packageName must be a valid Java package name (for example, com.example).',
+    )
+    .default('com.example'),
+  entities: z.array(EntityConfigSchema).default([]),
+  options: GenerationOptionsSchema.default(DEFAULT_GENERATION_OPTIONS),
+};
 
-    config.entities.forEach((entity, entityIndex) => {
-      const entityKey = entity.name.toLowerCase();
-      const existingEntityIndex = entityIndexes.get(entityKey);
-      if (existingEntityIndex !== undefined) {
+const ProjectConfigObjectSchema = z.object(projectConfigFields).strict();
+
+function refineProjectConfig(config: { entities: EntityConfig[] }, ctx: RefinementCtx): void {
+  const entityIndexes = new Map<string, number>();
+
+  config.entities.forEach((entity, entityIndex) => {
+    const entityKey = entity.name.toLowerCase();
+    const existingEntityIndex = entityIndexes.get(entityKey);
+    if (existingEntityIndex !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Duplicate entity "${entity.name}" (already defined at entities.${existingEntityIndex}).`,
+        path: ['entities', entityIndex, 'name'],
+      });
+    } else {
+      entityIndexes.set(entityKey, entityIndex);
+    }
+
+    const fieldNames = new Set<string>();
+    entity.fields.forEach((field, fieldIndex) => {
+      if (fieldNames.has(field.name)) {
         ctx.addIssue({
           code: 'custom',
-          message: `Duplicate entity "${entity.name}" (already defined at entities.${existingEntityIndex}).`,
-          path: ['entities', entityIndex, 'name'],
+          message: `Duplicate field "${field.name}" on entity "${entity.name}".`,
+          path: ['entities', entityIndex, 'fields', fieldIndex, 'name'],
         });
       } else {
-        entityIndexes.set(entityKey, entityIndex);
+        fieldNames.add(field.name);
       }
-
-      const fieldNames = new Set<string>();
-      entity.fields.forEach((field, fieldIndex) => {
-        if (fieldNames.has(field.name)) {
-          ctx.addIssue({
-            code: 'custom',
-            message: `Duplicate field "${field.name}" on entity "${entity.name}".`,
-            path: ['entities', entityIndex, 'fields', fieldIndex, 'name'],
-          });
-        } else {
-          fieldNames.add(field.name);
-        }
-      });
-
-      const relationNames = new Set<string>();
-      entity.relations.forEach((relation, relationIndex) => {
-        if (relationNames.has(relation.field)) {
-          ctx.addIssue({
-            code: 'custom',
-            message: `Duplicate relation "${relation.field}" on entity "${entity.name}".`,
-            path: ['entities', entityIndex, 'relations', relationIndex, 'field'],
-          });
-        } else {
-          relationNames.add(relation.field);
-        }
-      });
     });
 
-    const knownEntities = new Set(config.entities.map((entity) => entity.name.toLowerCase()));
-    config.entities.forEach((entity, entityIndex) => {
-      entity.relations.forEach((relation, relationIndex) => {
-        if (!knownEntities.has(relation.target.toLowerCase())) {
-          ctx.addIssue({
-            code: 'custom',
-            message: `Relation "${relation.field}" targets unknown entity "${relation.target}".`,
-            path: ['entities', entityIndex, 'relations', relationIndex, 'target'],
-          });
-        }
-      });
+    const relationNames = new Set<string>();
+    entity.relations.forEach((relation, relationIndex) => {
+      if (relationNames.has(relation.field)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `Duplicate relation "${relation.field}" on entity "${entity.name}".`,
+          path: ['entities', entityIndex, 'relations', relationIndex, 'field'],
+        });
+      } else {
+        relationNames.add(relation.field);
+      }
     });
   });
+
+  const knownEntities = new Set(config.entities.map((entity) => entity.name.toLowerCase()));
+  config.entities.forEach((entity, entityIndex) => {
+    entity.relations.forEach((relation, relationIndex) => {
+      if (!knownEntities.has(relation.target.toLowerCase())) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `Relation "${relation.field}" targets unknown entity "${relation.target}".`,
+          path: ['entities', entityIndex, 'relations', relationIndex, 'target'],
+        });
+      }
+    });
+  });
+}
+
+/** Fully resolved project configuration; a project name is required. */
+export const ProjectConfigSchema = ProjectConfigObjectSchema.superRefine(refineProjectConfig);
+
+/**
+ * Team-wide defaults that may omit the project name. `cleanstack new <name>`
+ * supplies the name, and `cleanstack config` can inspect and validate the rest.
+ */
+export const ProjectDefaultsSchema = z
+  .object({
+    ...projectConfigFields,
+    name: z.string().trim().min(1).optional(),
+  })
+  .strict()
+  .superRefine(refineProjectConfig);
 
 export type FieldConfig = z.infer<typeof FieldConfigSchema>;
 export type RelationConfig = z.infer<typeof RelationConfigSchema>;
 export type EntityConfig = z.infer<typeof EntityConfigSchema>;
 export type GenerationOptions = z.infer<typeof GenerationOptionsSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
+export type ProjectDefaults = z.infer<typeof ProjectDefaultsSchema>;
 
 export interface TemplateContext {
   project: ProjectConfig;

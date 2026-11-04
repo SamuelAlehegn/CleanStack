@@ -12,6 +12,7 @@ import {
 import { formatZodError } from './entity-parser.js';
 import type { GeneratedProject } from './project.js';
 import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
+import { CleanStackError } from '../utils/errors.js';
 
 /** Project-relative path of the generation metadata written by `cleanstack new`. */
 export const PROJECT_METADATA_PATH = '.cleanstack/project.json';
@@ -61,12 +62,24 @@ export async function readProjectMetadata(projectRoot: string): Promise<ProjectC
     parsed = JSON.parse(contents);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Unable to read project metadata from ${filePath}: ${detail}`);
+    throw new CleanStackError(`Unable to read project metadata from ${filePath}: ${detail}`, {
+      cause: error,
+      suggestions: [
+        'The metadata file was written by "cleanstack new"; restore it from version control or regenerate the project.',
+      ],
+    });
   }
 
   const result = ProjectMetadataSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`Invalid project metadata in ${filePath}: ${formatZodError(result.error)}`);
+    throw new CleanStackError(
+      `Invalid project metadata in ${filePath}:\n${formatZodError(result.error)}`,
+      {
+        suggestions: [
+          'Restore .cleanstack/project.json from version control, or delete it and run "cleanstack regenerate" to infer settings.',
+        ],
+      },
+    );
   }
   // Cast: StoredProjectConfigSchema is intentionally permissive (it allows
   // relation targets that haven't been stored yet). The caller treats the
@@ -119,8 +132,9 @@ export async function resolveProjectConfig(
 
   const configPath = await findConfigFileInAncestors(options.cwd ?? project.rootDir);
   if (configPath !== undefined) {
-    const loaded = await new ConfigLoader().load({
+    const loaded = await new ConfigLoader().loadDefaults({
       cwd: path.dirname(configPath),
+      configPath,
     });
     return normalizeConfig({
       ...loaded,

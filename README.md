@@ -20,11 +20,152 @@ npm run build
 npm start
 ```
 
-To run the greeting command directly:
+Run the built CLI with `node dist/cli/index.js <command>`, or install it globally
+with `npm link` and use `cleanstack`.
+
+## Commands
+
+```text
+cleanstack
+  new                        Create a new project skeleton
+  entity                     Generate an entity in an existing project
+    generate entity          Alias for `entity`
+    g e                      Alias for `entity`
+  regenerate | r             Re-generate files, preserving protected regions
+  templates                  List, copy, diff, and reset template overrides
+  config                     Inspect the resolved configuration
+  doctor                     Check the environment for common problems
+  ui                         Open the web UI (not available yet)
+  --version, -V              Print the version
+  --help, -h                 Show help
+  --verbose, -v              Show debug output
+  --quiet, -q                Suppress non-error output
+```
+
+Global flags may appear before or after a command, so `cleanstack new demo
+--verbose` and `cleanstack --verbose new demo` are equivalent. Run
+`cleanstack <command> --help` for the full option list of any command.
+
+## Configuration
+
+CleanStack reads defaults from the first supported configuration file in the
+current directory or up to four parent directories:
+
+- `cleanstack.config.ts`, `.mts`, `.js`, `.mjs`
+- `cleanstack.config.json`, `.yml`, `.yaml`
+- `.cleanstackrc`, `.cleanstackrc.json`, `.cleanstackrc.yml`, `.cleanstackrc.yaml`
+
+TypeScript and JavaScript files default-export an object; JSON and YAML files
+contain the same object. A file checked into the repository root acts as
+team-wide defaults, so `cleanstack new demo` picks it up from any subdirectory.
+
+```ts
+// cleanstack.config.ts
+export default {
+  packageName: 'com.acme',
+  options: {
+    database: 'postgresql',
+    auth: 'jwt',
+    buildTool: 'maven',
+    docker: false,
+  },
+};
+```
+
+```yaml
+# .cleanstackrc.yml
+packageName: com.acme
+options:
+  database: postgresql
+  auth: jwt
+  buildTool: maven
+```
+
+A team defaults file may omit `name`; the name passed to `cleanstack new` (or
+`--name`) supplies it. Files may also list `entities` using the same format as a
+generated project configuration.
+
+### Environment variables
+
+Every setting can also be supplied through a `CLEANSTACK_` environment
+variable. Precedence, highest first:
+
+1. Command-line options
+2. Environment variables
+3. Configuration file
+4. Built-in defaults
+
+| Variable                                        | Setting                            |
+| ----------------------------------------------- | ---------------------------------- |
+| `CLEANSTACK_NAME`                               | Project name                       |
+| `CLEANSTACK_PACKAGE`, `CLEANSTACK_PACKAGE_NAME` | Java package                       |
+| `CLEANSTACK_BACKEND`                            | Generate backend files             |
+| `CLEANSTACK_FRONTEND`                           | Generate frontend files            |
+| `CLEANSTACK_DATABASE`, `CLEANSTACK_DB`          | `postgresql`, `mysql`, or `h2`     |
+| `CLEANSTACK_AUTH`                               | `jwt`, `none`, or `keycloak`       |
+| `CLEANSTACK_BUILD`, `CLEANSTACK_BUILD_TOOL`     | `maven` or `gradle`                |
+| `CLEANSTACK_DOCKER`                             | Emit Docker files                  |
+| `CLEANSTACK_DRY_RUN`                            | Report changes without writing     |
+| `CLEANSTACK_OUTPUT_DIR`                         | Output directory                   |
+| `CLEANSTACK_CONFIG`                             | Explicit configuration file to use |
+
+Boolean variables accept `true`/`false`, `1`/`0`, `yes`/`no`, and `on`/`off`.
+Empty variables are ignored, and setting two aliases for the same option (for
+example both `CLEANSTACK_DB` and `CLEANSTACK_DATABASE`) is an error.
 
 ```sh
-node dist/cli/index.js hello
+CLEANSTACK_DATABASE=h2 cleanstack new demo
+CLEANSTACK_CONFIG=./ci/team.yml cleanstack config validate
 ```
+
+The `config` command reports the effective values for the discovered file,
+including environment overrides:
+
+```sh
+cleanstack config             # print the effective configuration (alias: show)
+cleanstack config show --json # print it as JSON
+cleanstack config path        # print the configuration file path
+cleanstack config validate    # validate the configuration and report problems
+```
+
+## Doctor
+
+`cleanstack doctor` checks the tools and files needed to build generated
+projects and prints a suggested fix for anything that is missing or outdated:
+
+- Node.js 22+
+- Java 21+
+- Maven or Gradle, matching the detected project
+- Angular CLI (optional, only needed for frontend work)
+- Git
+- Free disk space
+- Configuration file validity
+- Built-in template integrity (manifests and referenced template files)
+
+```sh
+cleanstack doctor
+```
+
+Doctor exits non-zero when a hard requirement fails. Warnings, such as a missing
+optional tool, do not block generation but may prevent a generated project from
+building.
+
+## Error messages
+
+Configuration and entity validation errors are reported field by field with
+their full paths, expected values, and a suggested fix:
+
+```text
+✖ Invalid configuration in /work/app/.cleanstackrc.yml:
+  • options.database: Invalid value. Expected one of: "postgresql", "mysql", "h2".
+  • options.auth: Invalid value. Expected one of: "jwt", "none", "keycloak".
+
+  Hint: Fix the highlighted fields and run "cleanstack config validate" again.
+```
+
+Missing entity descriptors list the directories that were searched, suggest a
+similar file name when one exists, and show the inline `--field` alternative.
+Use `--verbose` to include stack traces for unexpected failures.
 
 ## Safe regeneration
 

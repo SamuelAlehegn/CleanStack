@@ -3,7 +3,6 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { resolveCommand } from '../dist/cli/command-router.js';
 import { parseTemplatesCommandArguments, runTemplatesCommand } from '../dist/cli/templates.js';
 import { TemplateEngine } from '../dist/templates/template-engine.js';
 
@@ -53,19 +52,8 @@ function recordingLogger() {
 }
 
 // ---------------------------------------------------------------------------
-// Command routing and argument parsing
+// Command argument parsing
 // ---------------------------------------------------------------------------
-
-test('the router maps "templates" and keeps subcommand arguments', () => {
-  assert.deepEqual(resolveCommand(['templates', 'list']), {
-    name: 'templates',
-    args: ['list'],
-  });
-  assert.deepEqual(resolveCommand(['templates', 'reset', 'spring-boot/root/README.md.hbs']), {
-    name: 'templates',
-    args: ['reset', 'spring-boot/root/README.md.hbs'],
-  });
-});
 
 test('parses templates subcommands and flags', () => {
   assert.equal(parseTemplatesCommandArguments([]).subcommand, 'list');

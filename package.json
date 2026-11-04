@@ -88,6 +88,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.7.5",
+    "commander": "^15.0.0",
     "handlebars": "^4.7.10",
     "ora": "^9.4.1",
     "picocolors": "^1.1.1",
