@@ -4,10 +4,14 @@ import type {
   CreateEntityRequest,
   CreateProjectRequest,
   DownloadProjectRequest,
+  EntityPreviewResponse,
   MetaResponse,
+  PreviewEntityRequest,
   ProjectFileResponse,
   ProjectFilesResponse,
   ProjectSummary,
+  SaveEntityYamlRequest,
+  SaveEntityYamlResponse,
   WorkspaceResponse,
 } from '../../src/web/contracts';
 
@@ -18,11 +22,13 @@ export interface DownloadedArchive {
 
 export class ApiError extends Error {
   readonly suggestions: string[];
+  readonly status: number | undefined;
 
-  constructor(message: string, suggestions: string[] = []) {
+  constructor(message: string, suggestions: string[] = [], status?: number) {
     super(message);
     this.name = 'ApiError';
     this.suggestions = suggestions;
+    this.status = status;
   }
 }
 
@@ -55,6 +61,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(
       error?.error ?? `The request failed with status ${response.status}.`,
       error?.suggestions ?? [],
+      response.status,
     );
   }
 
@@ -108,6 +115,20 @@ export const api = {
     });
   },
 
+  previewEntity(body: PreviewEntityRequest): Promise<EntityPreviewResponse> {
+    return request<EntityPreviewResponse>('/api/entities/preview', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  saveEntityYaml(body: SaveEntityYamlRequest): Promise<SaveEntityYamlResponse> {
+    return request<SaveEntityYamlResponse>('/api/entities/yaml', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
   projectFiles(projectPath: string): Promise<ProjectFilesResponse> {
     return request<ProjectFilesResponse>(
       `/api/projects/files?path=${encodeURIComponent(projectPath)}`,
@@ -136,6 +157,7 @@ async function readApiError(response: Response): Promise<ApiError> {
   return new ApiError(
     error?.error ?? `The request failed with status ${response.status}.`,
     error?.suggestions ?? [],
+    response.status,
   );
 }
 

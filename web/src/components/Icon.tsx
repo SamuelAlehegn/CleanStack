@@ -16,8 +16,11 @@ export type IconName =
   | 'folder'
   | 'home'
   | 'layers'
+  | 'link'
+  | 'pencil'
   | 'plus'
   | 'refresh'
+  | 'save'
   | 'search'
   | 'sparkles'
   | 'terminal'
@@ -44,8 +47,14 @@ const paths: Record<IconName, string[]> = {
   folder: ['M3 6h7l2 2h9v11H3z'],
   home: ['m3 11 9-7 9 7', 'M5 10v10h14V10', 'M9 20v-6h6v6'],
   layers: ['m12 3 9 5-9 5-9-5 9-5Z', 'm3 12 9 5 9-5', 'm3 16 9 5 9-5'],
+  link: [
+    'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1L11 5',
+    'M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1L13 19',
+  ],
+  pencil: ['M4 20h4L19 9l-4-4L4 16v4Z', 'm13.5 5.5 4 4'],
   plus: ['M12 5v14', 'M5 12h14'],
   refresh: ['M20 11a8 8 0 0 0-14-5l-2 2', 'M4 13a8 8 0 0 0 14 5l2-2', 'M4 4v4h4', 'M20 20v-4h-4'],
+  save: ['M5 3h11l3 3v15H5z', 'M8 3v6h8V3', 'M8 21v-6h8v6'],
   search: ['M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z', 'm21 21-4.3-4.3'],
   sparkles: [
     'm12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3Z',

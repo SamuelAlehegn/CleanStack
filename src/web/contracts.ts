@@ -1,4 +1,9 @@
-import type { EntityConfig, FieldConfig, GenerationOptions } from '../core/config.js';
+import type {
+  EntityConfig,
+  FieldConfig,
+  GenerationOptions,
+  RelationConfig,
+} from '../core/config.js';
 
 /** A message emitted by the shared CLI engine while a request runs. */
 export interface LogEntry {
@@ -71,15 +76,69 @@ export interface CreateProjectRequest extends ProjectGenerationRequest {
 /** A ZIP download is generated in a temporary staging directory. */
 export type DownloadProjectRequest = ProjectGenerationRequest;
 
-export interface CreateEntityRequest {
-  projectPath: string;
+/** One entity as edited in the visual entity editor. */
+export interface EntityDefinitionRequest {
   name: string;
   tableName?: string;
   fields: EntityFieldRequest[];
+  relations: EntityRelationRequest[];
 }
 
 export type EntityFieldRequest = Pick<FieldConfig, 'name' | 'type'> &
-  Partial<Pick<FieldConfig, 'required' | 'unique' | 'maxLength'>>;
+  Partial<
+    Pick<
+      FieldConfig,
+      | 'required'
+      | 'unique'
+      | 'generated'
+      | 'minLength'
+      | 'maxLength'
+      | 'min'
+      | 'max'
+      | 'pattern'
+      | 'validations'
+      | 'default'
+    >
+  >;
+
+export type EntityRelationRequest = Pick<RelationConfig, 'field' | 'type' | 'target'> &
+  Partial<Pick<RelationConfig, 'required' | 'mappedBy' | 'inverse'>>;
+
+export interface CreateEntityRequest extends EntityDefinitionRequest {
+  projectPath: string;
+  /** Replace generated files completely, including protected regions. */
+  force?: boolean;
+}
+
+export interface PreviewEntityRequest extends EntityDefinitionRequest {
+  projectPath: string;
+}
+
+/** A representative generated file rendered without touching the workspace. */
+export interface EntityPreviewFile {
+  /** Path relative to the generated project root. */
+  path: string;
+  language: string;
+  side: 'backend' | 'frontend';
+  contents: string;
+}
+
+export interface EntityPreviewResponse {
+  /** YAML descriptor for the current draft. */
+  yaml: string;
+  files: EntityPreviewFile[];
+}
+
+export interface SaveEntityYamlRequest extends EntityDefinitionRequest {
+  /** Replace an existing descriptor at entities/<name>.yaml. */
+  overwrite?: boolean;
+}
+
+export interface SaveEntityYamlResponse {
+  /** Workspace-relative descriptor path, for example entities/Product.yaml. */
+  path: string;
+  overwritten: boolean;
+}
 
 export interface CommandResult {
   project?: ProjectSummary;

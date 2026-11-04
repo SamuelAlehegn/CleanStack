@@ -35,7 +35,7 @@ cleanstack
   templates                  List, copy, diff, and reset template overrides
   config                     Inspect the resolved configuration
   doctor                     Check the environment for common problems
-  ui                         Open the web UI (not available yet)
+  ui                         Open the local web UI
   --version, -V              Print the version
   --help, -h                 Show help
   --verbose, -v              Show debug output
@@ -97,6 +97,21 @@ The underlying routes are `POST /api/projects` for local generation and
 `POST /api/projects/download` for ZIP archives. Both honor the workspace
 configuration file and the workspace `entities/` directory, so the wizard and
 the CLI produce the same project.
+
+The **Entities** page is a visual editor for the descriptor format. Add and
+remove fields, choose types, set length/number/pattern constraints and Bean
+Validation annotations, and define `many-to-one`, `one-to-many`, `one-to-one`,
+or `many-to-many` relations. Existing entities can be loaded from the project
+catalog and regenerated without renaming them. A debounced preview shows the
+YAML descriptor plus representative backend and frontend files rendered by the
+shared templates. **Save as YAML** writes `entities/<Name>.yaml` in the studio
+workspace and asks before replacing an existing file.
+
+Entity generation uses `POST /api/entities`; preview and descriptor saves use
+`POST /api/entities/preview` and `POST /api/entities/yaml`. Relation-aware
+generation stages the project's entities plus the draft in a temporary
+descriptor directory, then calls the same `runEntityCommand --descriptor` path
+as the CLI.
 
 ## Configuration
 

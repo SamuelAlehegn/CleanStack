@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -223,6 +223,185 @@ test('web API creates a project and an entity through the CLI engine', async (co
     `/api/projects/file?path=${encodeURIComponent(project.rootDir)}&file=${encodeURIComponent('../package.json')}`,
   );
   assert.equal(unsafe.status, 400);
+});
+
+test('web API previews, generates, edits, and saves relation-aware entities', async (context) => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-web-editor-'));
+  const app = await startApi(workspace);
+  context.after(async () => {
+    await app.close();
+    await rm(workspace, { recursive: true, force: true });
+  });
+
+  const created = await call(
+    app.url,
+    '/api/projects',
+    postJson({
+      name: 'catalog-demo',
+      packageName: 'com.example.catalog',
+      outputDir: 'apps',
+      database: 'h2',
+      auth: 'none',
+      buildTool: 'maven',
+      frontend: true,
+      docker: false,
+      includeEntities: false,
+      git: false,
+      force: false,
+    }),
+  );
+  assert.equal(created.status, 201);
+  const project = created.body.project;
+
+  const category = await call(
+    app.url,
+    '/api/entities',
+    postJson({
+      projectPath: project.rootDir,
+      name: 'Category',
+      fields: [
+        {
+          name: 'name',
+          type: 'String',
+          required: true,
+          maxLength: 80,
+          validations: ['NotBlank'],
+        },
+      ],
+      relations: [],
+    }),
+  );
+  assert.equal(category.status, 201);
+
+  const productDefinition = {
+    name: 'Product',
+    fields: [
+      {
+        name: 'name',
+        type: 'String',
+        required: true,
+        minLength: 2,
+        maxLength: 120,
+        validations: ['NotBlank'],
+      },
+      {
+        name: 'price',
+        type: 'BigDecimal',
+        required: true,
+        min: 0,
+        validations: ['PositiveOrZero'],
+      },
+      { name: 'sku', type: 'String', unique: true, pattern: '^[A-Z0-9-]+$' },
+      { name: 'status', type: 'String', default: 'draft' },
+    ],
+    relations: [{ field: 'category', type: 'many-to-one', target: 'Category', required: true }],
+  };
+
+  const preview = await call(
+    app.url,
+    '/api/entities/preview',
+    postJson({ projectPath: project.rootDir, ...productDefinition }),
+  );
+  assert.equal(preview.status, 200);
+  assert.match(preview.body.yaml, /name: Product/);
+  assert.match(preview.body.yaml, /maxLength: 120/);
+  assert.match(preview.body.yaml, /validations:\n\s+- NotBlank/);
+  assert.match(preview.body.yaml, /relations:\n\s+- field: category/);
+  assert.match(preview.body.yaml, /target: Category/);
+  assert.match(preview.body.yaml, /default: draft/);
+  assert.ok(preview.body.files.some((file) => file.path.endsWith('/Product.java')));
+  assert.ok(preview.body.files.some((file) => file.path.endsWith('/product.ts')));
+  assert.ok(preview.body.files.some((file) => file.path.endsWith('/ProductController.java')));
+
+  const afterPreviewFiles = await call(
+    app.url,
+    `/api/projects/files?path=${encodeURIComponent(project.rootDir)}`,
+  );
+  assert.ok(
+    !afterPreviewFiles.body.files.some((file) => file.path.endsWith('/domain/Product.java')),
+    'preview must not write generated files',
+  );
+  const afterPreviewWorkspace = await call(app.url, '/api/workspace');
+  assert.equal(afterPreviewWorkspace.body.projects[0].entities.length, 1);
+
+  const generated = await call(
+    app.url,
+    '/api/entities',
+    postJson({ projectPath: project.rootDir, ...productDefinition }),
+  );
+  assert.equal(generated.status, 201);
+  const product = generated.body.project.entities.find((entity) => entity.name === 'Product');
+  assert.ok(product);
+  assert.equal(product.fields.find((field) => field.name === 'name').validations[0], 'NotBlank');
+  assert.equal(product.relations[0].field, 'category');
+  assert.equal(product.relations[0].type, 'many-to-one');
+
+  const generatedFiles = await call(
+    app.url,
+    `/api/projects/files?path=${encodeURIComponent(project.rootDir)}`,
+  );
+  const productFile = generatedFiles.body.files.find((file) =>
+    file.path.endsWith('/domain/Product.java'),
+  );
+  assert.ok(productFile);
+  const productContent = await call(
+    app.url,
+    `/api/projects/file?path=${encodeURIComponent(project.rootDir)}&file=${encodeURIComponent(productFile.path)}`,
+  );
+  assert.match(productContent.body.content, /@ManyToOne/);
+  assert.match(productContent.body.content, /category_id/);
+
+  const editedDefinition = {
+    ...productDefinition,
+    fields: [
+      ...productDefinition.fields.map((field) =>
+        field.name === 'name' ? { ...field, maxLength: 160 } : field,
+      ),
+      { name: 'description', type: 'String', maxLength: 500 },
+    ],
+  };
+  const edited = await call(
+    app.url,
+    '/api/entities',
+    postJson({ projectPath: project.rootDir, ...editedDefinition }),
+  );
+  assert.equal(edited.status, 201);
+  const editedProduct = edited.body.project.entities.find((entity) => entity.name === 'Product');
+  assert.equal(editedProduct.fields.find((field) => field.name === 'name').maxLength, 160);
+  assert.equal(editedProduct.fields.find((field) => field.name === 'status').default, 'draft');
+  assert.ok(editedProduct.fields.some((field) => field.name === 'description'));
+
+  const saved = await call(app.url, '/api/entities/yaml', postJson(editedDefinition));
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.path, 'entities/Product.yaml');
+  assert.equal(saved.body.overwritten, false);
+  const savedYaml = await readFile(path.join(workspace, 'entities', 'Product.yaml'), 'utf8');
+  assert.match(savedYaml, /maxLength: 160/);
+  assert.match(savedYaml, /target: Category/);
+
+  const conflict = await call(app.url, '/api/entities/yaml', postJson(editedDefinition));
+  assert.equal(conflict.status, 409);
+
+  const overwritten = await call(
+    app.url,
+    '/api/entities/yaml',
+    postJson({ ...editedDefinition, overwrite: true }),
+  );
+  assert.equal(overwritten.status, 200);
+  assert.equal(overwritten.body.overwritten, true);
+
+  const invalidTarget = await call(
+    app.url,
+    '/api/entities/preview',
+    postJson({
+      projectPath: project.rootDir,
+      name: 'Review',
+      fields: [{ name: 'body', type: 'String' }],
+      relations: [{ field: 'product', type: 'many-to-one', target: 'Missing' }],
+    }),
+  );
+  assert.equal(invalidTarget.status, 400);
+  assert.match(invalidTarget.body.error, /unknown entity/i);
 });
 
 test('web API can include workspace entities and force a regeneration', async (context) => {

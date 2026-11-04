@@ -1,30 +1,45 @@
-import { mkdtemp, open, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { zipSync } from 'fflate';
-import { runEntityCommand } from '../cli/entity.js';
+import { stringify as stringifyYaml } from 'yaml';
+import { nextMigrationVersion, runEntityCommand } from '../cli/entity.js';
 import { runNewCommand } from '../cli/new.js';
 import {
+  EntityConfigSchema,
   FIELD_TYPES,
   FIELD_VALIDATIONS,
   GenerationOptionsSchema,
+  ProjectConfigSchema,
+  type EntityConfig,
   type FieldConfig,
+  type ProjectConfig,
+  type RelationConfig,
 } from '../core/config.js';
+import { buildEntityModels, type EntityModel } from '../core/entity-model.js';
 import { resolveProjectConfig } from '../core/project-metadata.js';
 import { locateGeneratedProject, type GeneratedProject } from '../core/project.js';
-import { CleanStackError, formatError } from '../utils/errors.js';
+import { planManifest, templateAliases } from '../templates/manifest.js';
+import { TemplateEngine } from '../templates/template-engine.js';
+import { FileSystemService } from '../utils/file-system.js';
+import { CleanStackError, formatError, formatZodError } from '../utils/errors.js';
 import { ensureWithinRoot, isMissingPath, resolveWithinRoot } from '../utils/path-safety.js';
 import { Logger } from '../utils/logger.js';
 import type {
   ApiErrorResponse,
   CommandResult,
   EntityFieldRequest,
+  EntityPreviewFile,
+  EntityPreviewResponse,
+  EntityRelationRequest,
   LogEntry,
   MetaResponse,
   ProjectFile,
   ProjectFileResponse,
   ProjectFilesResponse,
   ProjectSummary,
+  SaveEntityYamlResponse,
   WorkspaceResponse,
 } from './contracts.js';
 
@@ -226,6 +241,20 @@ async function routeRequest(
     const body = await readJsonBody(request);
     const result = await createEntity(body, workspace);
     sendJson(response, 201, result);
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/entities/preview') {
+    const body = await readJsonBody(request);
+    const result = await previewEntity(body, workspace);
+    sendJson(response, 200, result);
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/entities/yaml') {
+    const body = await readJsonBody(request);
+    const result = await saveEntityYaml(body, workspace);
+    sendJson(response, 200, result);
     return;
   }
 
@@ -520,31 +549,116 @@ async function collectArchiveEntries(
 }
 
 async function createEntity(raw: unknown, workspace: string): Promise<CommandResult> {
-  const body = asRecord(raw, 'entity');
+  const { body, entity } = parseEntityDefinition(raw);
   const projectPath = requiredString(body, 'projectPath');
   const project = await openProject(projectPath, workspace);
+  const force = optionalBoolean(body, 'force') ?? false;
+  const entities = await resolveEntitySet(project, entity);
+  buildModelsOrThrow(entities);
+
+  // Descriptor-based generation keeps relation resolution in the shared engine
+  // and lets the draft reference every entity already stored in the project.
+  const staging = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-entity-'));
+  try {
+    const descriptorDirectory = path.join(staging, 'entities');
+    await writeEntityDescriptors(descriptorDirectory, entities);
+    const descriptorPath = path.join(descriptorDirectory, `${entity.name}.yaml`);
+    const displayDescriptor = `entities/${entity.name}.yaml`;
+    const args = [entity.name, '--descriptor', descriptorPath, ...(force ? ['--force'] : [])];
+    const logger = new CaptureLogger();
+
+    await runEntityCommand(args, { cwd: project.rootDir, logger });
+    const refreshed = await openProject(project.rootDir, workspace);
+    return {
+      project: await summarizeProject(refreshed, workspace),
+      messages: logger.entries.map((entry) => ({
+        ...entry,
+        message: entry.message.replaceAll(descriptorPath, displayDescriptor),
+      })),
+      command: [
+        'cleanstack',
+        'entity',
+        entity.name,
+        '--descriptor',
+        displayDescriptor,
+        ...(force ? ['--force'] : []),
+      ],
+    };
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+  }
+}
+
+async function previewEntity(raw: unknown, workspace: string): Promise<EntityPreviewResponse> {
+  const { body, entity } = parseEntityDefinition(raw);
+  const project = await openProject(requiredString(body, 'projectPath'), workspace);
+  const entities = await resolveEntitySet(project, entity);
+  const models = buildModelsOrThrow(entities);
+  const model = models.find(
+    (candidate) => candidate.name.toLowerCase() === entity.name.toLowerCase(),
+  );
+  if (model === undefined) {
+    throw new ApiError(`Could not build a preview for "${entity.name}".`, 400);
+  }
+
+  return {
+    yaml: serializeEntityDescriptor(entity),
+    files: await renderEntityPreview(project, entity, model),
+  };
+}
+
+async function saveEntityYaml(raw: unknown, workspace: string): Promise<SaveEntityYamlResponse> {
+  const { body, entity } = parseEntityDefinition(raw);
+  const overwrite = optionalBoolean(body, 'overwrite') ?? false;
+  const relativePath = path.posix.join('entities', `${entity.name}.yaml`);
+  const target = path.join(workspace, 'entities', `${entity.name}.yaml`);
+  const exists = await pathExists(target);
+
+  if (exists && !overwrite) {
+    throw new ApiError(`A descriptor already exists at ${relativePath}.`, 409, [
+      'Confirm that you want to replace the existing YAML file, or choose another entity name.',
+    ]);
+  }
+
+  await mkdir(path.dirname(target), { recursive: true });
+  await writeFile(target, serializeEntityDescriptor(entity), 'utf8');
+  return { path: relativePath, overwritten: exists };
+}
+
+interface ParsedEntityDefinition {
+  body: Record<string, unknown>;
+  entity: EntityConfig;
+}
+
+function parseEntityDefinition(raw: unknown): ParsedEntityDefinition {
+  const body = asRecord(raw, 'entity');
   const name = requiredString(body, 'name');
   const tableName = optionalString(body, 'tableName');
 
   if (!Array.isArray(body.fields) || body.fields.length === 0) {
     throw new ApiError('Add at least one field before generating an entity.');
   }
+  if (body.relations !== undefined && !Array.isArray(body.relations)) {
+    throw new ApiError('"relations" must be an array.');
+  }
 
   const fields = body.fields.map((field, index) => normalizeField(field, index));
-  const args = [
+  const relations = (body.relations ?? []).map((relation, index) =>
+    normalizeRelation(relation, index),
+  );
+  const result = EntityConfigSchema.safeParse({
     name,
-    ...fields.flatMap((field) => ['--field', JSON.stringify(field)]),
-    ...(tableName === undefined || tableName.trim() === '' ? [] : ['--table', tableName]),
-  ];
-  const logger = new CaptureLogger();
+    ...(tableName === undefined || tableName === '' ? {} : { tableName }),
+    fields,
+    relations,
+  });
+  if (!result.success) {
+    throw new ApiError(`Invalid entity definition:\n${formatZodError(result.error)}`, 400, [
+      'Check field names, relation targets, and that each validation applies to the field type.',
+    ]);
+  }
 
-  await runEntityCommand(args, { cwd: project.rootDir, logger });
-  const refreshed = await openProject(project.rootDir, workspace);
-  return {
-    project: await summarizeProject(refreshed, workspace),
-    messages: logger.entries,
-    command: ['cleanstack', 'entity', ...args],
-  };
+  return { body, entity: result.data };
 }
 
 function normalizeField(raw: unknown, index: number): EntityFieldRequest {
@@ -560,11 +674,279 @@ function normalizeField(raw: unknown, index: number): EntityFieldRequest {
   const result: EntityFieldRequest = { name, type: type as FieldConfig['type'] };
   const required = optionalBoolean(field, 'required');
   const unique = optionalBoolean(field, 'unique');
+  const generated = optionalBoolean(field, 'generated');
+  const minLength = optionalNonNegativeInteger(field, 'minLength');
   const maxLength = optionalPositiveInteger(field, 'maxLength');
+  const min = optionalFiniteNumber(field, 'min');
+  const max = optionalFiniteNumber(field, 'max');
+  const pattern = optionalString(field, 'pattern');
+  const validations = optionalValidations(field);
+  const defaultValue = field.default;
+
   if (required !== undefined) result.required = required;
   if (unique !== undefined) result.unique = unique;
+  if (generated !== undefined) result.generated = generated;
+  if (minLength !== undefined) result.minLength = minLength;
   if (maxLength !== undefined) result.maxLength = maxLength;
+  if (min !== undefined) result.min = min;
+  if (max !== undefined) result.max = max;
+  if (pattern !== undefined && pattern !== '') result.pattern = pattern;
+  if (validations !== undefined) result.validations = validations;
+  if (defaultValue !== undefined) result.default = defaultValue;
   return result;
+}
+
+const RELATION_TYPES: ReadonlyArray<RelationConfig['type']> = [
+  'one-to-one',
+  'one-to-many',
+  'many-to-one',
+  'many-to-many',
+];
+
+function normalizeRelation(raw: unknown, index: number): EntityRelationRequest {
+  const relation = asRecord(raw, `relation ${index + 1}`);
+  const field = optionalString(relation, 'field') ?? optionalString(relation, 'name');
+  if (field === undefined || field === '') {
+    throw new ApiError(`Relation ${index + 1} needs a field name.`);
+  }
+
+  const typeValue = requiredString(relation, 'type');
+  const type = typeValue
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .toLowerCase() as RelationConfig['type'];
+  if (!RELATION_TYPES.includes(type)) {
+    throw new ApiError(`Relation "${field}" has an unsupported type "${typeValue}".`, 400, [
+      'Use one of: one-to-one, one-to-many, many-to-one, or many-to-many.',
+    ]);
+  }
+
+  const target = requiredString(relation, 'target');
+  const result: EntityRelationRequest = { field, type, target };
+  const required = optionalBoolean(relation, 'required');
+  const inverse = optionalBoolean(relation, 'inverse');
+  const mappedBy = optionalString(relation, 'mappedBy');
+  if (required !== undefined) result.required = required;
+  if (inverse !== undefined) result.inverse = inverse;
+  if (mappedBy !== undefined && mappedBy !== '') result.mappedBy = mappedBy;
+  return result;
+}
+
+function optionalValidations(
+  record: Record<string, unknown>,
+): FieldConfig['validations'] | undefined {
+  const value = record.validations;
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) {
+    throw new ApiError('"validations" must be an array.');
+  }
+
+  const validations: FieldConfig['validations'] = [];
+  for (const item of value) {
+    if (
+      typeof item !== 'string' ||
+      !FIELD_VALIDATIONS.includes(item as (typeof FIELD_VALIDATIONS)[number])
+    ) {
+      throw new ApiError(`Unsupported validation "${String(item)}".`, 400, [
+        `Use one of: ${FIELD_VALIDATIONS.join(', ')}.`,
+      ]);
+    }
+    if (!validations.includes(item as FieldConfig['validations'][number])) {
+      validations.push(item as FieldConfig['validations'][number]);
+    }
+  }
+  return validations;
+}
+
+async function resolveEntitySet(
+  project: GeneratedProject,
+  entity: EntityConfig,
+): Promise<EntityConfig[]> {
+  const config = await resolveProjectConfig(project, { cwd: project.rootDir });
+  const entities = config.entities.filter(
+    (candidate) => candidate.name.toLowerCase() !== entity.name.toLowerCase(),
+  );
+  entities.push(entity);
+
+  const result = ProjectConfigSchema.safeParse({ ...config, entities });
+  if (!result.success) {
+    throw new ApiError(`Invalid entity definition:\n${formatZodError(result.error)}`, 400, [
+      'Verify that every relation target names another entity in this project or in the draft.',
+    ]);
+  }
+  return result.data.entities;
+}
+
+function buildModelsOrThrow(entities: EntityConfig[]): EntityModel[] {
+  try {
+    return buildEntityModels(entities);
+  } catch (error) {
+    throw new ApiError(error instanceof Error ? error.message : String(error), 400, [
+      'For inverse one-to-one, one-to-many, or many-to-many relations, set mappedBy or add the matching owning relation.',
+    ]);
+  }
+}
+
+async function writeEntityDescriptors(directory: string, entities: EntityConfig[]): Promise<void> {
+  await mkdir(directory, { recursive: true });
+  await Promise.all(
+    entities.map((entity) =>
+      writeFile(
+        path.join(directory, `${entity.name}.yaml`),
+        serializeEntityDescriptor(entity),
+        'utf8',
+      ),
+    ),
+  );
+}
+
+/** Serializes an entity as the concise YAML descriptor accepted by the CLI. */
+function serializeEntityDescriptor(entity: EntityConfig): string {
+  const fields = entity.fields.map((field) => {
+    const descriptor: Record<string, unknown> = { name: field.name, type: field.type };
+    if (field.required) descriptor.required = true;
+    if (field.unique) descriptor.unique = true;
+    if (field.default !== undefined) descriptor.default = field.default;
+    if (field.generated) descriptor.generated = true;
+    if (field.minLength !== undefined) descriptor.minLength = field.minLength;
+    if (field.maxLength !== undefined) descriptor.maxLength = field.maxLength;
+    if (field.min !== undefined) descriptor.min = field.min;
+    if (field.max !== undefined) descriptor.max = field.max;
+    if (field.pattern !== undefined) descriptor.pattern = field.pattern;
+    if (field.validations.length > 0) descriptor.validations = field.validations;
+    return descriptor;
+  });
+  const relations = entity.relations.map((relation) => {
+    const descriptor: Record<string, unknown> = {
+      field: relation.field,
+      type: relation.type,
+      target: relation.target,
+    };
+    if (relation.required) descriptor.required = true;
+    if (relation.mappedBy !== undefined) descriptor.mappedBy = relation.mappedBy;
+    if (relation.inverse) descriptor.inverse = true;
+    return descriptor;
+  });
+
+  return stringifyYaml(
+    {
+      name: entity.name,
+      ...(entity.tableName === undefined ? {} : { tableName: entity.tableName }),
+      fields,
+      ...(relations.length === 0 ? {} : { relations }),
+    },
+    { lineWidth: 0 },
+  );
+}
+
+interface PreviewTemplate {
+  template: string;
+  language: string;
+}
+
+const PREVIEW_TEMPLATES: Record<'backend' | 'frontend', PreviewTemplate[]> = {
+  backend: [
+    { template: 'resources/db/migration/Entity.sql.hbs', language: 'sql' },
+    { template: 'java/domain/Entity.java.hbs', language: 'java' },
+    { template: 'java/infrastructure/web/EntityController.java.hbs', language: 'java' },
+    { template: 'java/infrastructure/web/EntityRequest.java.hbs', language: 'java' },
+  ],
+  frontend: [
+    { template: 'src/app/models/Entity.ts.hbs', language: 'typescript' },
+    { template: 'src/app/pages/entity/form/EntityFormComponent.ts.hbs', language: 'typescript' },
+    { template: 'src/app/pages/entity/form/EntityFormComponent.html.hbs', language: 'html' },
+  ],
+};
+
+const MAX_PREVIEW_FILE_CHARS = 24_000;
+
+async function renderEntityPreview(
+  project: GeneratedProject,
+  entityConfig: EntityConfig,
+  entity: EntityModel,
+): Promise<EntityPreviewFile[]> {
+  const config = await resolveProjectConfig(project, { cwd: project.rootDir });
+  const projectConfig: ProjectConfig = {
+    name: path.basename(project.rootDir),
+    packageName: project.backend?.packageName ?? config.packageName,
+    entities: [],
+    options: {
+      ...config.options,
+      backend: project.backend !== undefined,
+      frontend: project.frontend !== undefined,
+      buildTool: project.backend?.buildTool ?? config.options.buildTool,
+      dryRun: false,
+      outputDir: '.',
+    },
+  };
+  const filesystemLogger = { log: () => {} };
+  const migrationVersion =
+    project.backend === undefined
+      ? 2
+      : await nextMigrationVersion(
+          new FileSystemService({
+            rootDir: project.backend.directory,
+            logger: filesystemLogger,
+          }),
+          entityConfig.tableName ?? entity.tableName,
+        );
+  const entityContext = { ...entity, migrationVersion };
+  const context = {
+    project: { ...projectConfig, entities: [entityContext] },
+    ...projectConfig,
+    entities: [entityContext],
+    ...templateAliases(projectConfig),
+  } as unknown as Record<string, unknown>;
+  const engine = new TemplateEngine({ projectRoot: project.workspaceRoot });
+  const previews: EntityPreviewFile[] = [];
+
+  const sides = [
+    {
+      side: 'backend' as const,
+      directory: project.backend?.directory,
+      templateSet: 'spring-boot',
+    },
+    {
+      side: 'frontend' as const,
+      directory: project.frontend?.directory,
+      templateSet: 'angular',
+    },
+  ];
+
+  for (const side of sides) {
+    if (side.directory === undefined) continue;
+    const selected = new Set(PREVIEW_TEMPLATES[side.side].map((item) => item.template));
+    const plan = await planManifest(
+      side.templateSet,
+      { ...projectConfig, name: path.basename(side.directory) },
+      context,
+      filesystemLogger,
+      (entry) => entry.forEach === 'entities' && selected.has(entry.template),
+      engine,
+    );
+
+    for (const item of plan) {
+      const template = PREVIEW_TEMPLATES[side.side].find(
+        (candidate) => candidate.template === item.entry.template,
+      );
+      if (template === undefined) continue;
+
+      const contents = await engine.render(
+        `${side.templateSet}/${item.entry.template}`,
+        item.context,
+      );
+      previews.push({
+        path: relativePortable(project.rootDir, path.join(side.directory, item.destination)),
+        language: template.language,
+        side: side.side,
+        contents:
+          contents.length <= MAX_PREVIEW_FILE_CHARS
+            ? contents
+            : `${contents.slice(0, MAX_PREVIEW_FILE_CHARS)}\n/* Preview truncated by CleanStack Studio. */\n`,
+      });
+    }
+  }
+
+  return previews;
 }
 
 async function listProjectFiles(
@@ -723,6 +1105,27 @@ function optionalPositiveInteger(record: Record<string, unknown>, key: string): 
   if (value === undefined || value === null || value === '') return undefined;
   if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
     throw new ApiError(`"${key}" must be a positive integer.`);
+  }
+  return value;
+}
+
+function optionalNonNegativeInteger(
+  record: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = record[key];
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new ApiError(`"${key}" must be a non-negative integer.`);
+  }
+  return value;
+}
+
+function optionalFiniteNumber(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key];
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new ApiError(`"${key}" must be a finite number.`);
   }
   return value;
 }
