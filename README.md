@@ -32,6 +32,7 @@ cleanstack
     generate entity          Alias for `entity`
     g e                      Alias for `entity`
   regenerate | r             Re-generate files, preserving protected regions
+  openapi | api              Generate API artifacts from OpenAPI
   templates                  List, copy, diff, and reset template overrides
   config                     Inspect the resolved configuration
   doctor                     Check the environment for common problems
@@ -284,6 +285,96 @@ Related descriptors must be present in `entities/`, and the target entity
 should be generated before the entity that owns the foreign key or join table.
 See [docs/entity-descriptor.md](docs/entity-descriptor.md#relations) for the
 owning and inverse side rules.
+
+## Generating API artifacts from OpenAPI
+
+Generated Spring Boot projects include springdoc. While the backend is running it
+publishes the contract at:
+
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+- OpenAPI YAML: `http://localhost:8080/v3/api-docs.yaml`
+
+Generate or refresh the typed Angular client from the workspace root:
+
+```sh
+cleanstack openapi --input http://localhost:8080/v3/api-docs
+cleanstack api --input openapi/openapi.json
+```
+
+Without `--input`, the command looks for `openapi/openapi.yaml`, `.yml`, or
+`.json`, then a few common locations such as `openapi.yaml` and
+`docs/openapi.yaml`. The default output is
+`<name>-ui/src/app/api/generated`.
+
+| Option                      | Meaning                                                           |
+| --------------------------- | ----------------------------------------------------------------- |
+| `-i, --input <path\|url>`   | OpenAPI 3 document. URLs are downloaded and validated.            |
+| `-o, --output <path>`       | Angular output inside the frontend project.                       |
+| `-g, --generator <name>`    | openapi-generator client generator, default `typescript-angular`. |
+| `--contract-first`          | Also generate Spring API interfaces and models.                   |
+| `--backend-output <path>`   | Spring output inside `src/main/java`; defaults to the package.    |
+| `--spring-generator <name>` | Spring generator, default `spring`.                               |
+| `--force`                   | Replace collisions with unmanaged files (unknown files remain).   |
+| `--dry-run`                 | Generate in a temporary directory and report without writing.     |
+
+Client regeneration is safe by design:
+
+1. The generator writes into a temporary directory, so a failed generation
+   never leaves a half-written client.
+2. `src/app/api/generated/.cleanstack-openapi.json` records every generated
+   file and its hash.
+3. Only tracked files can be replaced or removed. Stale generated files are
+   deleted; custom files in the same directory are preserved.
+4. Files edited after generation produce warnings before they are replaced.
+   Collisions with untracked files stop the command unless `--force` is used.
+5. The spec is validated as OpenAPI 3 before the generator runs.
+
+### Contract-first mode
+
+Pass `--contract-first` when the OpenAPI document is the source of truth. The
+command generates the Angular client and Spring API interfaces from the same
+document:
+
+```sh
+cleanstack openapi --contract-first --input openapi/openapi.yaml
+```
+
+Spring artifacts are written to
+`<name>-backend/src/main/java/<package>/api/generated` by default:
+
+```text
+com/example/demo/api/generated/
+  api/ProductsApi.java       interfaces with @RequestMapping operations
+  model/Product.java         request and response models
+  .cleanstack-openapi.json   ownership manifest
+```
+
+The Spring generator runs in interface-only mode. Implement each generated
+interface with a normal controller:
+
+```java
+@RestController
+public class ProductsController implements ProductsApi {
+    @Override
+    public ResponseEntity<List<Product>> listProducts() {
+        // call a service, map domain objects, return the response model
+    }
+}
+```
+
+Do not add a class-level `@RequestMapping` to the implementation; the generated
+interface already declares the path. Use `--backend-output` to choose a
+different package directory under `src/main/java`, and `--spring-generator` to
+override the generator. Both outputs are staged and planned before either is
+written, so a collision in one target does not leave the other half-updated.
+The same manifest rules apply to the backend directory.
+
+The command uses the `@openapitools/openapi-generator-cli` dev dependency
+installed in the generated Angular app, or downloads a pinned version with
+`npx`. openapi-generator requires Java 11 or later; run `cleanstack doctor` to
+check the local environment. See [docs/OPENAPI.md](docs/OPENAPI.md) for the
+manifest format and design details.
 
 ## Template overrides
 

@@ -25,6 +25,7 @@ function createHarness() {
     newCommand: async (args) => calls.push(['new', args]),
     entityCommand: async (args) => calls.push(['entity', args]),
     regenerateCommand: async (args) => calls.push(['regenerate', args]),
+    openapiCommand: async (args) => calls.push(['openapi', args]),
     templatesCommand: async (args) => calls.push(['templates', args]),
     configCommand: async (args) => calls.push(['config', args]),
     doctorCommand: async (args) => calls.push(['doctor', args]),
@@ -102,6 +103,13 @@ test('routes regenerate and its alias', async () => {
   ]);
 });
 
+test('routes openapi and its api alias with flags intact', async () => {
+  assert.deepEqual((await route(['openapi', '--input', 'openapi/openapi.json'])).calls, [
+    ['openapi', ['--input', 'openapi/openapi.json']],
+  ]);
+  assert.deepEqual((await route(['api', '--dry-run'])).calls, [['openapi', ['--dry-run']]]);
+});
+
 test('routes templates subcommands with their flags', async () => {
   assert.deepEqual((await route(['templates', 'list', 'spring-boot'])).calls, [
     ['templates', ['list', 'spring-boot']],
@@ -167,6 +175,7 @@ test('--help lists every command and global flag', async () => {
     'entity',
     'generate',
     'regenerate',
+    'openapi',
     'templates',
     'config',
     'doctor',

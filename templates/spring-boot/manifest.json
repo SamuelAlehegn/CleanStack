@@ -32,6 +32,7 @@
     { "template": "java/application/EntityNotFoundException.java.hbs", "destination": "src/main/java/{{package}}/exception/{{entity.className}}NotFoundException.java", "forEach": "entities" },
     { "template": "java/infrastructure/config/package-info.java.hbs", "destination": "src/main/java/{{package}}/config/package-info.java" },
     { "template": "java/infrastructure/config/ApplicationConfig.java.hbs", "destination": "src/main/java/{{package}}/config/ApplicationConfig.java" },
+    { "template": "java/infrastructure/config/OpenApiConfig.java.hbs", "destination": "src/main/java/{{package}}/config/OpenApiConfig.java" },
     { "template": "java/infrastructure/security/package-info.java.hbs", "destination": "src/main/java/{{package}}/security/package-info.java" },
     { "template": "java/infrastructure/security/SecurityConfig.java.hbs", "destination": "src/main/java/{{package}}/security/SecurityConfig.java", "when": { "auth": "jwt" } },
     { "template": "java/infrastructure/security/SecurityConfig.java.hbs", "destination": "src/main/java/{{package}}/security/SecurityConfig.java", "when": { "auth": "keycloak" } },

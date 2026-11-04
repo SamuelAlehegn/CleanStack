@@ -29,6 +29,10 @@
       "types": "./dist/core/entity-parser.d.ts",
       "default": "./dist/core/entity-parser.js"
     },
+    "./openapi-client": {
+      "types": "./dist/core/openapi-client.d.ts",
+      "default": "./dist/core/openapi-client.js"
+    },
     "./templates": {
       "types": "./dist/templates/template-engine.d.ts",
       "default": "./dist/templates/template-engine.js"

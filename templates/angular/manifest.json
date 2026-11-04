@@ -91,12 +91,12 @@
       "destination": "src/app/services/README.md"
     },
     {
-      "template": "src/app/services/api/README.md.hbs",
-      "destination": "src/app/services/api/README.md"
+      "template": "src/app/api/README.md.hbs",
+      "destination": "src/app/api/README.md"
     },
     {
-      "template": "src/app/services/api/generated/.gitkeep.hbs",
-      "destination": "src/app/services/api/generated/.gitkeep"
+      "template": "src/app/api/generated/.gitkeep.hbs",
+      "destination": "src/app/api/generated/.gitkeep"
     },
     {
       "template": "src/app/models/Entity.ts.hbs",

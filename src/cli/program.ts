@@ -5,6 +5,7 @@ import { runConfigCommand } from './config.js';
 import { runDoctorCommand } from './doctor.js';
 import { runEntityCommand } from './entity.js';
 import { runNewCommand } from './new.js';
+import { runOpenApiCommand } from './openapi.js';
 import { runRegenerateCommand } from './regenerate.js';
 import { runTemplatesCommand } from './templates.js';
 
@@ -17,6 +18,7 @@ export interface CliHandlers {
   newCommand(args: string[], context: CliCommandContext): Promise<void>;
   entityCommand(args: string[], context: CliCommandContext): Promise<void>;
   regenerateCommand(args: string[], context: CliCommandContext): Promise<void>;
+  openapiCommand(args: string[], context: CliCommandContext): Promise<void>;
   templatesCommand(args: string[], context: CliCommandContext): Promise<void>;
   configCommand(args: string[], context: CliCommandContext): Promise<void>;
   doctorCommand(args: string[], context: CliCommandContext): Promise<void>;
@@ -44,6 +46,7 @@ const defaultHandlers: CliHandlers = {
   newCommand: (args, context) => runNewCommand(args, context),
   entityCommand: (args, context) => runEntityCommand(args, context),
   regenerateCommand: (args, context) => runRegenerateCommand(args, context),
+  openapiCommand: (args, context) => runOpenApiCommand(args, context),
   templatesCommand: (args, context) => runTemplatesCommand(args, context),
   configCommand: (args, context) => runConfigCommand(args, context),
   doctorCommand: (args, context) => runDoctorCommand(args, context),
@@ -128,6 +131,11 @@ export function createProgram(options: CreateProgramOptions): Command {
     .alias('r')
     .description('Re-generate project files while preserving protected regions')
     .action((args: string[]) => handlers.regenerateCommand(args, context));
+
+  leaf(program, 'openapi')
+    .alias('api')
+    .description('Generate the Angular API client from an OpenAPI document')
+    .action((args: string[]) => handlers.openapiCommand(args, context));
 
   const templates = program
     .command('templates')

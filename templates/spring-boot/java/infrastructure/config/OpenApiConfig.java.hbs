@@ -1,0 +1,23 @@
+package {{project.packageName}}.config;
+
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/** Publishes the API contract used by springdoc and the generated Angular client. */
+@Configuration(proxyBeanMethods = false)
+public class OpenApiConfig {
+
+    @Bean
+    OpenAPI cleanStackOpenApi() {
+        return new OpenAPI()
+                .info(new Info()
+                        .title("{{pascalCase project.name}} API")
+                        .description("HTTP API exposed by the {{pascalCase project.name}} service.")
+                        .version("v1"));
+    }
+
+    // <cleanstack:user-code id="config.openapi.custom">
+    // </cleanstack:user-code>
+}
