@@ -46,6 +46,36 @@ Global flags may appear before or after a command, so `cleanstack new demo
 --verbose` and `cleanstack --verbose new demo` are equivalent. Run
 `cleanstack <command> --help` for the full option list of any command.
 
+## Web UI
+
+The repository also includes a local React UI for creating projects, modeling
+entities, and previewing generated files. It is a thin client over the same
+engine as the CLI: project creation calls `runNewCommand`, entity generation
+calls `runEntityCommand`, and neither templates nor validation rules are
+duplicated in the UI.
+
+```sh
+# Development server with Vite hot reload
+npm run ui:dev
+
+# Build the UI and serve it with the Node API server
+npm run ui
+
+# Type-check the UI sources
+npm run ui:check
+```
+
+The server listens on `http://127.0.0.1:5173` by default. It discovers generated
+projects in the current directory, or in the directory set by
+`CLEANSTACK_WEB_WORKSPACE` (or `--workspace`). The API is local-only and every
+generation action writes to the local filesystem, exactly like the CLI. Use
+`--port` and `--host` to change the bind address:
+
+```sh
+node dist/web/server.js --workspace ~/projects --port 5180
+npm run ui:dev -- --workspace ~/projects
+```
+
 ## Configuration
 
 CleanStack reads defaults from the first supported configuration file in the
