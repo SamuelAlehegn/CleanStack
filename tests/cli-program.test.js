@@ -126,7 +126,7 @@ test('routes templates subcommands with their flags', async () => {
   assert.deepEqual((await route(['templates'])).calls, [['templates', ['list']]]);
 });
 
-test('routes config, doctor, and the ui placeholder', async () => {
+test('routes config, doctor, and ui', async () => {
   assert.deepEqual((await route(['config', 'show', '--json'])).calls, [
     ['config', ['show', '--json']],
   ]);

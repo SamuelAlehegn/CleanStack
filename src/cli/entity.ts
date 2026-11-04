@@ -447,7 +447,8 @@ async function updateFrontendNavigation(
   }
 }
 
-async function nextMigrationVersion(
+/** Finds the migration number a new or regenerated entity should use. */
+export async function nextMigrationVersion(
   fileSystem: FileSystemService,
   tableName: string,
 ): Promise<number> {

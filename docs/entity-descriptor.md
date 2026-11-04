@@ -2,6 +2,21 @@
 
 An entity descriptor is one YAML document per entity. Store descriptors in `entities/` and use the entity name as the file name, for example `entities/product.yaml`.
 
+## Visual editor
+
+The local web UI includes an entity editor that writes the same YAML format.
+Fields expose their type, required/unique/generated flags, string length and
+pattern constraints, numeric bounds, and validation annotations. Relations can
+target any entity already in the project, and the editor previews the descriptor
+plus representative generated Java, SQL, and Angular files before writing
+anything.
+
+**Generate entity** calls the shared engine and updates the project metadata.
+**Save as YAML** writes `entities/<Name>.yaml` in the studio workspace, using
+the normalized descriptor shown in the preview; it asks before replacing an
+existing file. The preview route and YAML save route are
+`POST /api/entities/preview` and `POST /api/entities/yaml`.
+
 ## Command-line usage
 
 Add an entity to a project that was already generated with `cleanstack new`:

@@ -36,7 +36,7 @@ cleanstack
   templates                  List, copy, diff, and reset template overrides
   config                     Inspect the resolved configuration
   doctor                     Check the environment for common problems
-  ui                         Open the web UI (not available yet)
+  ui                         Start the local web UI
   --version, -V              Print the version
   --help, -h                 Show help
   --verbose, -v              Show debug output
@@ -46,6 +46,98 @@ cleanstack
 Global flags may appear before or after a command, so `cleanstack new demo
 --verbose` and `cleanstack --verbose new demo` are equivalent. Run
 `cleanstack <command> --help` for the full option list of any command.
+
+## Web UI
+
+The project includes CleanStack Studio, a local React UI for creating projects,
+modeling entities, and previewing generated files. It is a thin client over the
+same engine as the CLI: project creation calls `runNewCommand`, entity
+generation calls `runEntityCommand`, and neither templates nor validation rules
+are duplicated in the UI.
+
+```sh
+# Development server with Vite hot reload and the local engine API
+npm run ui:dev
+
+# Build the CLI and UI, then start the studio with the local engine API
+npm run ui
+
+# Type-check the UI sources
+npm run ui:check
+```
+
+With the CLI built or installed globally, start the studio directly:
+
+```sh
+cleanstack ui
+cleanstack ui --workspace ~/projects --port 5180
+cleanstack ui --host 0.0.0.0
+```
+
+The server listens on `http://127.0.0.1:5173` by default. It discovers generated
+projects in the current directory, or in the directory set by
+`CLEANSTACK_WEB_WORKSPACE` (or `--workspace`). The API is local-only and every
+generation action writes to the local filesystem, exactly like the CLI. Use
+`--port` (including `0` for any free port) and `--host` to change the bind
+address, and `--dev` to serve through Vite.
+
+### Static demo mode
+
+`cleanstack ui --static` serves only the built UI on a local port, without the
+engine API:
+
+```sh
+cleanstack ui --static
+npm run ui:static   # rebuild the CLI and UI first
+```
+
+The frontend notices that `/api` is unavailable and switches to a bundled sample
+workspace marked **Static demo**. Generation, file previews, ZIP downloads, and
+YAML saves are disabled because the shared engine is not running; the entity
+editor still renders YAML descriptors in the browser. Static mode never reads or
+writes the local filesystem.
+
+The same bundle can be hosted on any static file server. Build it with
+`npm run ui:build` and publish `web/dist`; relative asset paths let it run under
+a subpath. Opening `index.html` directly from disk works too and falls back to
+the demo data.
+
+The **Create a new project** flow is a four-step wizard that mirrors the options
+accepted by `cleanstack new`:
+
+1. **Project** – folder name and Java package.
+2. **Stack** – database, authentication, build tool, Angular frontend, and Docker files.
+3. **Options** – output directory, entities from the workspace, `git init`, and forced overwrites.
+4. **Review** – inspect the settings and choose a destination.
+
+On the final step you can **Download ZIP** or **Generate into workspace**.
+Downloads are built by the same `runNewCommand` engine in a hidden temporary
+folder inside the workspace, streamed as `<project>.zip`, and then cleaned up;
+the workspace itself is left untouched. Local generation is offered when the UI
+is opened on the machine running the server (a loopback connection). ZIP
+downloads work for any browser that can reach the server. The `/api/meta`
+response reports these capabilities so the UI can disable local generation for
+remote clients.
+
+The underlying routes are `POST /api/projects` for local generation and
+`POST /api/projects/download` for ZIP archives. Both honor the workspace
+configuration file and the workspace `entities/` directory, so the wizard and
+the CLI produce the same project.
+
+The **Entities** page is a visual editor for the descriptor format. Add and
+remove fields, choose types, set length/number/pattern constraints and Bean
+Validation annotations, and define `many-to-one`, `one-to-many`, `one-to-one`,
+or `many-to-many` relations. Existing entities can be loaded from the project
+catalog and regenerated without renaming them. A debounced preview shows the
+YAML descriptor plus representative backend and frontend files rendered by the
+shared templates. **Save as YAML** writes `entities/<Name>.yaml` in the studio
+workspace and asks before replacing an existing file.
+
+Entity generation uses `POST /api/entities`; preview and descriptor saves use
+`POST /api/entities/preview` and `POST /api/entities/yaml`. Relation-aware
+generation stages the project's entities plus the draft in a temporary
+descriptor directory, then calls the same `runEntityCommand --descriptor` path
+as the CLI.
 
 ## Configuration
 
