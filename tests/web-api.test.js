@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { unzipSync } from 'fflate';
 import { createApiHandler } from '../dist/web/api.js';
 
 async function startApi(workspace) {
@@ -39,12 +40,37 @@ async function call(baseUrl, pathname, init) {
   return { status: response.status, body: text === '' ? undefined : JSON.parse(text) };
 }
 
+async function callBinary(baseUrl, pathname, init) {
+  const response = await fetch(`${baseUrl}${pathname}`, init);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return { response, buffer };
+}
+
 function postJson(body) {
   return {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   };
+}
+
+async function writeEntityDescriptor(workspace) {
+  await mkdir(path.join(workspace, 'entities'), { recursive: true });
+  await writeFile(
+    path.join(workspace, 'entities', 'Product.yaml'),
+    [
+      'name: Product',
+      'fields:',
+      '  - name: name',
+      '    type: String',
+      '    required: true',
+      '    maxLength: 120',
+      '  - name: price',
+      '    type: BigDecimal',
+      '    required: true',
+      '',
+    ].join('\n'),
+  );
 }
 
 test('web API exposes the shared engine metadata', async (context) => {
@@ -63,6 +89,8 @@ test('web API exposes the shared engine metadata', async (context) => {
   assert.deepEqual(response.body.databases, ['postgresql', 'mysql', 'h2']);
   assert.equal(response.body.defaults.database, 'postgresql');
   assert.equal(response.body.defaults.frontend, true);
+  assert.equal(response.body.capabilities.localGeneration, true);
+  assert.equal(response.body.capabilities.archiveDownload, true);
 });
 
 test('web API creates a project and an entity through the CLI engine', async (context) => {
@@ -85,6 +113,9 @@ test('web API creates a project and an entity through the CLI engine', async (co
       buildTool: 'maven',
       frontend: false,
       docker: false,
+      includeEntities: false,
+      git: false,
+      force: false,
     }),
   );
 
@@ -98,6 +129,10 @@ test('web API creates a project and an entity through the CLI engine', async (co
   assert.deepEqual(project.entities, []);
   assert.ok(created.body.command.includes('new'));
   assert.ok(created.body.command.includes('--no-entities'));
+  assert.ok(created.body.command.includes('--no-docker'));
+  assert.ok(created.body.command.includes('--no-dry-run'));
+  assert.ok(!created.body.command.includes('--git'));
+  assert.ok(!created.body.command.includes('--force'));
   assert.ok(created.body.messages.some((message) => message.level === 'success'));
 
   const workspaceResponse = await call(app.url, '/api/workspace');
@@ -188,4 +223,91 @@ test('web API creates a project and an entity through the CLI engine', async (co
     `/api/projects/file?path=${encodeURIComponent(project.rootDir)}&file=${encodeURIComponent('../package.json')}`,
   );
   assert.equal(unsafe.status, 400);
+});
+
+test('web API can include workspace entities and force a regeneration', async (context) => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-web-entities-'));
+  const app = await startApi(workspace);
+  context.after(async () => {
+    await app.close();
+    await rm(workspace, { recursive: true, force: true });
+  });
+
+  await writeEntityDescriptor(workspace);
+
+  const request = {
+    name: 'entity-demo',
+    packageName: 'com.example.entitydemo',
+    outputDir: 'apps',
+    database: 'h2',
+    auth: 'none',
+    buildTool: 'maven',
+    frontend: false,
+    docker: false,
+    includeEntities: true,
+    git: false,
+    force: false,
+  };
+
+  const created = await call(app.url, '/api/projects', postJson(request));
+  assert.equal(created.status, 201);
+  assert.ok(created.body.command.includes('--entities'));
+  assert.equal(created.body.project.entities.length, 1);
+  assert.equal(created.body.project.entities[0].name, 'Product');
+
+  const regenerated = await call(app.url, '/api/projects', postJson({ ...request, force: true }));
+  assert.equal(regenerated.status, 201);
+  assert.ok(regenerated.body.command.includes('--force'));
+  assert.equal(regenerated.body.project.entities[0].name, 'Product');
+});
+
+test('web API downloads a ZIP built by the CLI engine', async (context) => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-web-zip-'));
+  const app = await startApi(workspace);
+  context.after(async () => {
+    await app.close();
+    await rm(workspace, { recursive: true, force: true });
+  });
+
+  await writeEntityDescriptor(workspace);
+
+  const download = await callBinary(
+    app.url,
+    '/api/projects/download',
+    postJson({
+      name: 'zip-demo',
+      packageName: 'com.example.zipdemo',
+      database: 'h2',
+      auth: 'none',
+      buildTool: 'maven',
+      frontend: false,
+      docker: true,
+      includeEntities: true,
+    }),
+  );
+
+  assert.equal(download.response.status, 200);
+  assert.equal(download.response.headers.get('content-type'), 'application/zip');
+  assert.match(download.response.headers.get('content-disposition') ?? '', /zip-demo\.zip/);
+
+  const entries = unzipSync(new Uint8Array(download.buffer));
+  const names = Object.keys(entries);
+  assert.ok(names.length > 0);
+  assert.ok(names.every((name) => name.startsWith('zip-demo/')));
+  assert.ok(names.some((name) => name.endsWith('/README.md')));
+  assert.ok(names.some((name) => name.endsWith('/Dockerfile')));
+  assert.ok(
+    names.includes(
+      'zip-demo/zip-demo-backend/src/main/java/com/example/zipdemo/domain/Product.java',
+    ),
+  );
+  assert.ok(names.includes('zip-demo/.cleanstack/project.json'));
+
+  const workspaceResponse = await call(app.url, '/api/workspace');
+  assert.equal(workspaceResponse.status, 200);
+  assert.equal(workspaceResponse.body.projects.length, 0);
+
+  const workspaceEntries = await readdir(workspace);
+  assert.ok(!workspaceEntries.includes('zip-demo'));
+  assert.ok(workspaceEntries.every((entry) => !entry.startsWith('.cleanstack-archive-')));
 });

@@ -1,6 +1,7 @@
-import { open, readdir, stat } from 'node:fs/promises';
+import { mkdtemp, open, readFile, readdir, rm, stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
+import { zipSync } from 'fflate';
 import { runEntityCommand } from '../cli/entity.js';
 import { runNewCommand } from '../cli/new.js';
 import {
@@ -115,6 +116,7 @@ export function createApiHandler(options: ApiHandlerOptions): ApiHandler {
         allow: 'GET, POST, OPTIONS',
         'access-control-allow-methods': 'GET, POST, OPTIONS',
         'access-control-allow-headers': 'content-type',
+        'access-control-expose-headers': 'content-disposition',
       });
       response.end();
       return;
@@ -123,6 +125,10 @@ export function createApiHandler(options: ApiHandlerOptions): ApiHandler {
     try {
       await routeRequest(request, response, workspace);
     } catch (error) {
+      if (response.headersSent) {
+        response.end();
+        return;
+      }
       const status =
         error instanceof ApiError ? error.status : error instanceof CleanStackError ? 400 : 500;
       const body: ApiErrorResponse = {
@@ -149,7 +155,7 @@ async function routeRequest(
   }
 
   if (method === 'GET' && pathname === '/api/meta') {
-    sendJson(response, 200, buildMeta());
+    sendJson(response, 200, buildMeta(request));
     return;
   }
 
@@ -196,9 +202,23 @@ async function routeRequest(
   }
 
   if (method === 'POST' && pathname === '/api/projects') {
+    if (!isLoopbackRequest(request)) {
+      throw new ApiError(
+        'Local project generation is only available when the studio is opened on this machine.',
+        403,
+        ['Download a ZIP archive instead, or run the studio on the target machine.'],
+      );
+    }
     const body = await readJsonBody(request);
     const result = await createProject(workspace, body);
     sendJson(response, 201, result);
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/projects/download') {
+    const body = await readJsonBody(request);
+    const archive = await createProjectArchive(workspace, body);
+    sendArchive(response, archive);
     return;
   }
 
@@ -212,7 +232,7 @@ async function routeRequest(
   throw new ApiError(`No API route matches ${method} ${pathname}.`, 404);
 }
 
-function buildMeta(): MetaResponse {
+function buildMeta(request: IncomingMessage): MetaResponse {
   return {
     fieldTypes: [...FIELD_TYPES],
     validations: [...FIELD_VALIDATIONS],
@@ -220,7 +240,22 @@ function buildMeta(): MetaResponse {
     authMethods: [...AUTH_METHODS],
     buildTools: [...BUILD_TOOLS],
     defaults: GenerationOptionsSchema.parse({}),
+    capabilities: {
+      localGeneration: isLoopbackRequest(request),
+      archiveDownload: true,
+    },
   };
+}
+
+function isLoopbackRequest(request: IncomingMessage): boolean {
+  const address = request.socket.remoteAddress;
+  if (address === undefined) return false;
+  const normalized = address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address;
+  return (
+    normalized === '::1' ||
+    normalized === '0:0:0:0:0:0:0:1' ||
+    /^127(?:\.\d{1,3}){3}$/.test(normalized)
+  );
 }
 
 async function buildWorkspace(workspace: string): Promise<WorkspaceResponse> {
@@ -331,55 +366,48 @@ async function summarizeProject(
   };
 }
 
-async function createProject(workspace: string, raw: unknown): Promise<CommandResult> {
-  const body = asRecord(raw, 'project');
-  const name = requiredString(body, 'name');
-  if (name === '.' || name === '..' || /[\\/]/.test(name)) {
-    throw new ApiError('Project name must be a single directory name without path separators.');
-  }
-  const packageName = requiredString(body, 'packageName');
-  const outputDir = optionalString(body, 'outputDir') || '.';
-  const database = requiredChoice(body, 'database', DATABASES);
-  const auth = requiredChoice(body, 'auth', AUTH_METHODS);
-  const buildTool = requiredChoice(body, 'buildTool', BUILD_TOOLS);
-  const frontend = optionalBoolean(body, 'frontend') ?? true;
-  const docker = optionalBoolean(body, 'docker') ?? false;
+interface ParsedProjectRequest {
+  name: string;
+  packageName: string;
+  database: MetaResponse['databases'][number];
+  auth: MetaResponse['authMethods'][number];
+  buildTool: MetaResponse['buildTools'][number];
+  frontend: boolean;
+  docker: boolean;
+  includeEntities: boolean;
+  outputDir: string;
+  git: boolean;
+  force: boolean;
+}
 
-  const targetRoot = path.resolve(workspace, outputDir, name);
+interface ProjectArchive {
+  contents: Buffer;
+  filename: string;
+}
+
+async function createProject(workspace: string, raw: unknown): Promise<CommandResult> {
+  const request = parseProjectRequest(raw);
+  const targetRoot = path.resolve(workspace, request.outputDir, request.name);
   try {
-    await ensureWithinRoot(workspace, targetRoot, path.posix.join(outputDir, name));
+    await ensureWithinRoot(workspace, targetRoot, path.posix.join(request.outputDir, request.name));
   } catch (error) {
     if (error instanceof Error && error.name === 'UnsafePathError') {
       throw new ApiError('The output directory must stay inside the active workspace.', 400);
     }
     throw error;
   }
-  if (await pathExists(targetRoot)) {
+  if (!request.force && (await pathExists(targetRoot))) {
     throw new ApiError(
-      `A project directory named "${name}" already exists at ${targetRoot}.`,
+      `A project directory named "${request.name}" already exists at ${targetRoot}.`,
       409,
-      ['Choose another project name, or manage the existing project from the Entities page.'],
+      [
+        'Choose another project name, or turn on "Overwrite existing files" to regenerate it.',
+        'You can also manage the existing project from the Entities page.',
+      ],
     );
   }
 
-  const args = [
-    name,
-    '--yes',
-    '--no-entities',
-    '--package',
-    packageName,
-    '--db',
-    database,
-    '--auth',
-    auth,
-    '--build',
-    buildTool,
-    '--frontend',
-    frontend ? 'angular' : 'none',
-    '--output-dir',
-    outputDir,
-    ...(docker ? ['--docker'] : []),
-  ];
+  const args = projectArguments(request, request.git, request.force);
   const logger = new CaptureLogger();
 
   await runNewCommand(args, { cwd: workspace, logger });
@@ -389,6 +417,106 @@ async function createProject(workspace: string, raw: unknown): Promise<CommandRe
     messages: logger.entries,
     command: ['cleanstack', 'new', ...args],
   };
+}
+
+async function createProjectArchive(workspace: string, raw: unknown): Promise<ProjectArchive> {
+  const request = parseProjectRequest(raw);
+  // Generate into a hidden temporary directory so the archive uses exactly the
+  // same engine, workspace configuration, and entities as a local generation.
+  const staging = await mkdtemp(path.join(workspace, '.cleanstack-archive-'));
+  try {
+    const outputDir = relativePortable(workspace, staging) || '.';
+    const args = projectArguments({ ...request, outputDir }, false, false);
+    await runNewCommand(args, { cwd: workspace, logger: new CaptureLogger() });
+
+    const projectRoot = path.join(staging, request.name);
+    const entries = await collectArchiveEntries(projectRoot, request.name);
+    return {
+      contents: Buffer.from(zipSync(entries, { level: 6 })),
+      filename: `${request.name}.zip`,
+    };
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+  }
+}
+
+function parseProjectRequest(raw: unknown): ParsedProjectRequest {
+  const body = asRecord(raw, 'project');
+  const name = requiredString(body, 'name');
+  if (name === '.' || name === '..' || /[\\/]/.test(name)) {
+    throw new ApiError('Project name must be a single directory name without path separators.');
+  }
+
+  return {
+    name,
+    packageName: requiredString(body, 'packageName'),
+    database: requiredChoice(body, 'database', DATABASES),
+    auth: requiredChoice(body, 'auth', AUTH_METHODS),
+    buildTool: requiredChoice(body, 'buildTool', BUILD_TOOLS),
+    frontend: optionalBoolean(body, 'frontend') ?? true,
+    docker: optionalBoolean(body, 'docker') ?? false,
+    includeEntities: optionalBoolean(body, 'includeEntities') ?? false,
+    outputDir: optionalString(body, 'outputDir') || '.',
+    git: optionalBoolean(body, 'git') ?? false,
+    force: optionalBoolean(body, 'force') ?? false,
+  };
+}
+
+function projectArguments(
+  request: ParsedProjectRequest,
+  initializeGit: boolean,
+  force: boolean,
+): string[] {
+  return [
+    request.name,
+    '--yes',
+    request.includeEntities ? '--entities' : '--no-entities',
+    '--package',
+    request.packageName,
+    '--db',
+    request.database,
+    '--auth',
+    request.auth,
+    '--build',
+    request.buildTool,
+    '--frontend',
+    request.frontend ? 'angular' : 'none',
+    '--output-dir',
+    request.outputDir,
+    request.docker ? '--docker' : '--no-docker',
+    '--no-dry-run',
+    ...(initializeGit && request.git ? ['--git'] : []),
+    ...(force ? ['--force'] : []),
+  ];
+}
+
+async function collectArchiveEntries(
+  rootDir: string,
+  rootName: string,
+): Promise<Record<string, Uint8Array>> {
+  const entries: Record<string, Uint8Array> = {};
+
+  const walk = async (directory: string, relativeDirectory: string): Promise<void> => {
+    for (const entry of await readDirectoryEntries(directory)) {
+      if (entry.name === '.DS_Store' || entry.name === '.git') continue;
+      if (entry.isSymbolicLink()) continue;
+
+      const relativePath =
+        relativeDirectory === '' ? entry.name : `${relativeDirectory}/${entry.name}`;
+      const absolutePath = path.join(directory, entry.name);
+
+      if (entry.isDirectory()) {
+        await walk(absolutePath, relativePath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+
+      entries[`${rootName}/${relativePath}`] = new Uint8Array(await readFile(absolutePath));
+    }
+  };
+
+  await walk(rootDir, '');
+  return entries;
 }
 
 async function createEntity(raw: unknown, workspace: string): Promise<CommandResult> {
@@ -643,4 +771,15 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
     'cache-control': 'no-store',
   });
   response.end(contents);
+}
+
+function sendArchive(response: ServerResponse, archive: ProjectArchive): void {
+  const asciiFilename = archive.filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  response.writeHead(200, {
+    'content-type': 'application/zip',
+    'content-length': archive.contents.length,
+    'content-disposition': `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(archive.filename)}`,
+    'cache-control': 'no-store',
+  });
+  response.end(archive.contents);
 }

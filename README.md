@@ -76,6 +76,28 @@ node dist/web/server.js --workspace ~/projects --port 5180
 npm run ui:dev -- --workspace ~/projects
 ```
 
+The **Create a new project** flow is a four-step wizard that mirrors the options
+accepted by `cleanstack new`:
+
+1. **Project** – folder name and Java package.
+2. **Stack** – database, authentication, build tool, Angular frontend, and Docker files.
+3. **Options** – output directory, entities from the workspace, `git init`, and forced overwrites.
+4. **Review** – inspect the settings and choose a destination.
+
+On the final step you can **Download ZIP** or **Generate into workspace**.
+Downloads are built by the same `runNewCommand` engine in a hidden temporary
+folder inside the workspace, streamed as `<project>.zip`, and then cleaned up;
+the workspace itself is left untouched. Local generation is offered when the UI
+is opened on the machine running the server (a loopback connection). ZIP
+downloads work for any browser that can reach the server. The `/api/meta`
+response reports these capabilities so the UI can disable local generation for
+remote clients.
+
+The underlying routes are `POST /api/projects` for local generation and
+`POST /api/projects/download` for ZIP archives. Both honor the workspace
+configuration file and the workspace `entities/` directory, so the wizard and
+the CLI produce the same project.
+
 ## Configuration
 
 CleanStack reads defaults from the first supported configuration file in the

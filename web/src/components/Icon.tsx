@@ -1,6 +1,8 @@
 import type { SVGProps } from 'react';
 
 export type IconName =
+  | 'archive'
+  | 'arrow-left'
   | 'arrow-right'
   | 'check'
   | 'chevron-down'
@@ -8,6 +10,7 @@ export type IconName =
   | 'code'
   | 'copy'
   | 'database'
+  | 'download'
   | 'eye'
   | 'file'
   | 'folder'
@@ -22,6 +25,8 @@ export type IconName =
   | 'warning';
 
 const paths: Record<IconName, string[]> = {
+  archive: ['M3 7h18v13H3z', 'm3 7 2-3h14l2 3', 'M8 12h8'],
+  'arrow-left': ['M19 12H5', 'm11 18-6-6 6-6'],
   'arrow-right': ['M5 12h14', 'm13 6 6 6-6 6'],
   check: ['m5 12 4 4L19 6'],
   'chevron-down': ['m6 9 6 6 6-6'],
@@ -33,6 +38,7 @@ const paths: Record<IconName, string[]> = {
     'M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6',
     'M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6',
   ],
+  download: ['M12 3v12', 'm7 10 5 5 5-5', 'M4 21h16'],
   eye: ['M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z', 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z'],
   file: ['M6 3h8l4 4v14H6z', 'M14 3v5h5'],
   folder: ['M3 6h7l2 2h9v11H3z'],

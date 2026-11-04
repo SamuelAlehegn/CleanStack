@@ -3,12 +3,18 @@ import type {
   CommandResult,
   CreateEntityRequest,
   CreateProjectRequest,
+  DownloadProjectRequest,
   MetaResponse,
   ProjectFileResponse,
   ProjectFilesResponse,
   ProjectSummary,
   WorkspaceResponse,
 } from '../../src/web/contracts';
+
+export interface DownloadedArchive {
+  blob: Blob;
+  filename: string;
+}
 
 export class ApiError extends Error {
   readonly suggestions: string[];
@@ -71,6 +77,30 @@ export const api = {
     });
   },
 
+  async downloadProject(body: DownloadProjectRequest): Promise<DownloadedArchive> {
+    let response: Response;
+    try {
+      response = await fetch('/api/projects/download', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw new ApiError('The CleanStack local engine is not reachable.', [
+        'Start the UI with "npm run ui:dev" and try again.',
+      ]);
+    }
+
+    if (!response.ok) throw await readApiError(response);
+
+    const blob = await response.blob();
+    return {
+      blob,
+      filename:
+        filenameFromDisposition(response.headers.get('content-disposition')) ?? `${body.name}.zip`,
+    };
+  },
+
   createEntity(body: CreateEntityRequest): Promise<CommandResult> {
     return request<CommandResult>('/api/entities', {
       method: 'POST',
@@ -94,3 +124,37 @@ export const api = {
     return request<ProjectSummary>(`/api/projects/detail?path=${encodeURIComponent(projectPath)}`);
   },
 };
+
+async function readApiError(response: Response): Promise<ApiError> {
+  let body: unknown;
+  try {
+    body = (await response.json()) as unknown;
+  } catch {
+    body = undefined;
+  }
+  const error = body as ApiErrorResponse | undefined;
+  return new ApiError(
+    error?.error ?? `The request failed with status ${response.status}.`,
+    error?.suggestions ?? [],
+  );
+}
+
+function filenameFromDisposition(value: string | null): string | undefined {
+  if (value === null) return undefined;
+
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(value);
+  const encoded = utf8?.[1];
+  if (encoded !== undefined) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return encoded;
+    }
+  }
+
+  const quoted = /filename="([^"]+)"/i.exec(value);
+  if (quoted !== null) return quoted[1];
+
+  const plain = /filename=([^;]+)/i.exec(value);
+  return plain?.[1]?.trim();
+}

@@ -29,6 +29,14 @@ export interface WorkspaceResponse {
   projects: ProjectSummary[];
 }
 
+/** Features the running server can offer to the current client. */
+export interface MetaCapabilities {
+  /** Writing a generated project into the workspace is available from this machine. */
+  localGeneration: boolean;
+  /** JSON project options can be turned into a downloadable ZIP archive. */
+  archiveDownload: boolean;
+}
+
 export interface MetaResponse {
   fieldTypes: string[];
   validations: string[];
@@ -36,18 +44,32 @@ export interface MetaResponse {
   authMethods: GenerationOptions['auth'][];
   buildTools: GenerationOptions['buildTool'][];
   defaults: GenerationOptions;
+  capabilities: MetaCapabilities;
 }
 
-export interface CreateProjectRequest {
+/** Generator settings shared by local generation and ZIP downloads. */
+export interface ProjectGenerationRequest {
   name: string;
   packageName: string;
-  outputDir: string;
   database: GenerationOptions['database'];
   auth: GenerationOptions['auth'];
   buildTool: GenerationOptions['buildTool'];
   frontend: boolean;
   docker: boolean;
+  /** Generate entities from the workspace configuration or `entities/` directory. */
+  includeEntities: boolean;
 }
+
+export interface CreateProjectRequest extends ProjectGenerationRequest {
+  outputDir: string;
+  /** Initialize a git repository in the generated project. */
+  git: boolean;
+  /** Replace existing files, including protected regions. */
+  force: boolean;
+}
+
+/** A ZIP download is generated in a temporary staging directory. */
+export type DownloadProjectRequest = ProjectGenerationRequest;
 
 export interface CreateEntityRequest {
   projectPath: string;
