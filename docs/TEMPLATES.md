@@ -69,14 +69,14 @@ Manifest: `templates/spring-boot/manifest.json`.
 
 ### Build and project files
 
-| Template                        | Destination           | Condition | Purpose                                             |
-| ------------------------------- | --------------------- | --------- | --------------------------------------------------- |
-| `build/pom.xml.hbs`             | `pom.xml`             | Maven     | Spring Boot, JPA, Flyway, validation, and auth deps |
-| `build/build.gradle.kts.hbs`    | `build.gradle.kts`    | Gradle    | Kotlin DSL build file with the same dependencies    |
-| `build/settings.gradle.kts.hbs` | `settings.gradle.kts` | Gradle    | Gradle project name and repositories                |
-| `root/.gitignore.hbs`           | `.gitignore`          | —         | Java/Maven/Gradle ignore rules                      |
-| `root/README.md.hbs`            | `README.md`           | —         | Stack, run/build commands, configuration, structure |
-| `root/ARCHITECTURE.md.hbs`      | `ARCHITECTURE.md`     | —         | Layering rules and package conventions              |
+| Template                        | Destination           | Condition | Purpose                                                    |
+| ------------------------------- | --------------------- | --------- | ---------------------------------------------------------- |
+| `build/pom.xml.hbs`             | `pom.xml`             | Maven     | Spring Boot, JPA, Flyway, validation, springdoc, auth deps |
+| `build/build.gradle.kts.hbs`    | `build.gradle.kts`    | Gradle    | Kotlin DSL build file with the same dependencies           |
+| `build/settings.gradle.kts.hbs` | `settings.gradle.kts` | Gradle    | Gradle project name and repositories                       |
+| `root/.gitignore.hbs`           | `.gitignore`          | —         | Java/Maven/Gradle ignore rules                             |
+| `root/README.md.hbs`            | `README.md`           | —         | Stack, run/build commands, configuration, structure        |
+| `root/ARCHITECTURE.md.hbs`      | `ARCHITECTURE.md`     | —         | Layering rules and package conventions                     |
 
 ### Local infrastructure
 
@@ -111,6 +111,7 @@ Manifest: `templates/spring-boot/manifest.json`.
 | ------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------- | ------------------------------------- |
 | `java/infrastructure/config/package-info.java.hbs`      | `src/main/java/{{package}}/config/package-info.java`                       | —                   | Config package documentation          |
 | `java/infrastructure/config/ApplicationConfig.java.hbs` | `src/main/java/{{package}}/config/ApplicationConfig.java`                  | —                   | Shared beans (clock, etc.)            |
+| `java/infrastructure/config/OpenApiConfig.java.hbs`     | `src/main/java/{{package}}/config/OpenApiConfig.java`                      | —                   | OpenAPI title and version metadata    |
 | `java/infrastructure/security/package-info.java.hbs`    | `src/main/java/{{package}}/security/package-info.java`                     | —                   | Security package documentation        |
 | `java/infrastructure/security/SecurityConfig.java.hbs`  | `src/main/java/{{package}}/security/SecurityConfig.java`                   | `auth` jwt/keycloak | HTTP security and JWT/keycloak wiring |
 | `java/infrastructure/web/package-info.java.hbs`         | `src/main/java/{{package}}/controller/package-info.java`                   | —                   | Controller package documentation      |
@@ -176,17 +177,17 @@ Manifest: `templates/angular/manifest.json`.
 These files document the intended layering and keep empty folders in version
 control:
 
-| Template                                      | Destination                               |
-| --------------------------------------------- | ----------------------------------------- |
-| `src/app/core/README.md.hbs`                  | `src/app/core/README.md`                  |
-| `src/app/directives/README.md.hbs`            | `src/app/directives/README.md`            |
-| `src/app/guards/README.md.hbs`                | `src/app/guards/README.md`                |
-| `src/app/interceptors/README.md.hbs`          | `src/app/interceptors/README.md`          |
-| `src/app/shared/README.md.hbs`                | `src/app/shared/README.md`                |
-| `src/app/models/README.md.hbs`                | `src/app/models/README.md`                |
-| `src/app/services/README.md.hbs`              | `src/app/services/README.md`              |
-| `src/app/services/api/README.md.hbs`          | `src/app/services/api/README.md`          |
-| `src/app/services/api/generated/.gitkeep.hbs` | `src/app/services/api/generated/.gitkeep` |
+| Template                             | Destination                      |
+| ------------------------------------ | -------------------------------- |
+| `src/app/core/README.md.hbs`         | `src/app/core/README.md`         |
+| `src/app/directives/README.md.hbs`   | `src/app/directives/README.md`   |
+| `src/app/guards/README.md.hbs`       | `src/app/guards/README.md`       |
+| `src/app/interceptors/README.md.hbs` | `src/app/interceptors/README.md` |
+| `src/app/shared/README.md.hbs`       | `src/app/shared/README.md`       |
+| `src/app/models/README.md.hbs`       | `src/app/models/README.md`       |
+| `src/app/services/README.md.hbs`     | `src/app/services/README.md`     |
+| `src/app/api/README.md.hbs`          | `src/app/api/README.md`          |
+| `src/app/api/generated/.gitkeep.hbs` | `src/app/api/generated/.gitkeep` |
 
 ### Entity screens (rendered per entity)
 

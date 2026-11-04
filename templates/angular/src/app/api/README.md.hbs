@@ -1,0 +1,33 @@
+# Generated API client
+
+`generated/` is managed by CleanStack and contains the typed Angular client
+generated from the Spring Boot OpenAPI contract. Do not edit files in
+`generated/` by hand: the next regeneration replaces them.
+
+Generate or refresh the client from the workspace root while the backend is
+running:
+
+```bash
+cleanstack openapi --input http://localhost:8080/v3/api-docs
+```
+
+You can also use a saved document:
+
+```bash
+cleanstack openapi --input openapi/openapi.json
+```
+
+Regeneration is safe. CleanStack:
+
+- generates into a temporary directory before touching the project,
+- records generated files in `generated/.cleanstack-openapi.json`,
+- removes only stale files listed in that manifest,
+- preserves custom files placed in `generated/`, and
+- warns when a generated file was edited after generation.
+
+Keep hand-written adapters outside `generated/` so they survive regeneration.
+A useful pattern is a small application-owned service in `src/app/services`
+that wraps the generated API services and maps them to UI state.
+
+<!-- <cleanstack:user-code id="api.client-notes"> -->
+<!-- </cleanstack:user-code> -->

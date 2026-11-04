@@ -32,6 +32,7 @@ cleanstack
     generate entity          Alias for `entity`
     g e                      Alias for `entity`
   regenerate | r             Re-generate files, preserving protected regions
+  openapi | api              Generate the Angular API client from OpenAPI
   templates                  List, copy, diff, and reset template overrides
   config                     Inspect the resolved configuration
   doctor                     Check the environment for common problems
@@ -284,6 +285,53 @@ Related descriptors must be present in `entities/`, and the target entity
 should be generated before the entity that owns the foreign key or join table.
 See [docs/entity-descriptor.md](docs/entity-descriptor.md#relations) for the
 owning and inverse side rules.
+
+## Generating the Angular API client
+
+Generated Spring Boot projects include springdoc. While the backend is running it
+publishes the contract at:
+
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+- OpenAPI YAML: `http://localhost:8080/v3/api-docs.yaml`
+
+Generate or refresh the typed Angular client from the workspace root:
+
+```sh
+cleanstack openapi --input http://localhost:8080/v3/api-docs
+cleanstack api --input openapi/openapi.json
+```
+
+Without `--input`, the command looks for `openapi/openapi.yaml`, `.yml`, or
+`.json`, then a few common locations such as `openapi.yaml` and
+`docs/openapi.yaml`. The default output is
+`<name>-ui/src/app/api/generated`.
+
+| Option                    | Meaning                                                         |
+| ------------------------- | --------------------------------------------------------------- |
+| `-i, --input <path\|url>` | OpenAPI 3 document. URLs are downloaded and validated.          |
+| `-o, --output <path>`     | Output inside the Angular project.                              |
+| `-g, --generator <name>`  | openapi-generator generator, default `typescript-angular`.      |
+| `--force`                 | Replace collisions with unmanaged files (unknown files remain). |
+| `--dry-run`               | Generate in a temporary directory and report without writing.   |
+
+Client regeneration is safe by design:
+
+1. The generator writes into a temporary directory, so a failed generation
+   never leaves a half-written client.
+2. `src/app/api/generated/.cleanstack-openapi.json` records every generated
+   file and its hash.
+3. Only tracked files can be replaced or removed. Stale generated files are
+   deleted; custom files in the same directory are preserved.
+4. Files edited after generation produce warnings before they are replaced.
+   Collisions with untracked files stop the command unless `--force` is used.
+5. The spec is validated as OpenAPI 3 before the generator runs.
+
+The command uses the `@openapitools/openapi-generator-cli` dev dependency
+installed in the generated Angular app, or downloads a pinned version with
+`npx`. openapi-generator requires Java 11 or later; run `cleanstack doctor` to
+check the local environment. See [docs/OPENAPI.md](docs/OPENAPI.md) for the
+manifest format and design details.
 
 ## Template overrides
 

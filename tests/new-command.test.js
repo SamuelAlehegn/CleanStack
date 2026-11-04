@@ -173,6 +173,14 @@ test('generates Angular CRUD pages and routes for configured entities', async ()
       /component: AppLayoutComponent/,
     );
     assert.match(await readFile(path.join(uiRoot, '..', 'styles.scss'), 'utf8'), /:root/);
+    assert.match(
+      await readFile(path.join(uiRoot, 'api', 'README.md'), 'utf8'),
+      /cleanstack openapi/,
+    );
+    assert.match(
+      await readFile(path.join(uiRoot, 'api', 'generated', '.gitkeep'), 'utf8'),
+      /^\s*$/,
+    );
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

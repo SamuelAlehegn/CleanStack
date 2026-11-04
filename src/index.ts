@@ -4,6 +4,7 @@ export * from './core/entity-input.js';
 export * from './core/entity-model.js';
 export * from './core/entity-parser.js';
 export * from './core/frontend-updates.js';
+export * from './core/openapi-client.js';
 export * from './core/project-metadata.js';
 export * from './core/project.js';
 export * from './core/protected-region-manager.js';

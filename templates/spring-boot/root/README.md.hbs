@@ -33,6 +33,26 @@ curl 'http://localhost:8080/api/greetings?name=Ada'
 ```
 
 Health check: `http://localhost:8080/actuator/health`.
+
+## OpenAPI
+
+The API contract is published with springdoc:
+
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- JSON: `http://localhost:8080/v3/api-docs`
+- YAML: `http://localhost:8080/v3/api-docs.yaml`
+
+From the workspace root, generate or refresh the Angular client after changing
+controllers or DTOs:
+
+```bash
+cleanstack openapi --input http://localhost:8080/v3/api-docs
+```
+
+The command can also consume a saved document with
+`--input openapi/openapi.json`. It writes only to the Angular client directory
+and preserves files that CleanStack did not generate.
+
 {{#if (eq project.options.auth "jwt")}}
 All application endpoints require a valid JWT bearer token. Set `JWT_ISSUER_URI` to the issuer that creates your tokens; it must publish OIDC metadata and signing keys. The actuator health endpoint remains public.
 {{/if}}{{#if (eq project.options.auth "keycloak")}}

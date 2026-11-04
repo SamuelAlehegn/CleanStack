@@ -28,6 +28,7 @@ The production build is written to `dist/{{kebabCase project.name}}/browser`.
 
 ```text
 src/app/
+  api/                 Generated OpenAPI client and client documentation
   core/                Application-wide providers and infrastructure
   directives/          Reusable attribute and structural directives
   guards/              Route guards
@@ -46,7 +47,21 @@ Angular components are standalone. The app uses Angular signals and built-in `@i
 
 ## API client
 
-See `src/app/services/api/README.md` for the planned OpenAPI-generated client location and regeneration command.
+The typed client in `src/app/api/generated/` is generated from the backend
+OpenAPI contract. Keep the backend running and run this from the workspace root:
+
+```bash
+cleanstack openapi --input http://localhost:8080/v3/api-docs
+```
+
+Or point the command at a saved document:
+
+```bash
+cleanstack openapi --input openapi/openapi.json
+```
+
+CleanStack regenerates the client safely and keeps files it did not generate.
+See `src/app/api/README.md` for details.
 
 <!-- <cleanstack:user-code id="readme.project-notes"> -->
 <!-- </cleanstack:user-code> -->

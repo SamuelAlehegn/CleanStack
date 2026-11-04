@@ -157,6 +157,27 @@ test('renders JWT and Keycloak resource-server configuration only when selected'
   assert.doesNotMatch(unauthenticated.get('pom.xml'), /spring-boot-starter-oauth2-resource-server/);
 });
 
+test('publishes the OpenAPI contract with springdoc', async () => {
+  const files = await renderProject({ auth: 'jwt' });
+
+  assert.match(files.get('pom.xml'), /springdoc-openapi-starter-webmvc-ui/);
+  assert.match(files.get('pom.xml'), /<springdoc.version>3\.2\.0<\/springdoc.version>/);
+  assert.match(files.get('src/main/resources/application.yml'), /springdoc:/);
+  assert.match(files.get('src/main/resources/application.yml'), /\/v3\/api-docs/);
+  assert.match(
+    files.get('src/main/java/com/acme/shop/config/OpenApiConfig.java'),
+    /class OpenApiConfig/,
+  );
+  assert.match(
+    files.get('src/main/java/com/acme/shop/security/SecurityConfig.java'),
+    /\/v3\/api-docs\/\*\*/,
+  );
+  assert.match(files.get('README.md'), /cleanstack openapi/);
+
+  const gradle = await renderProject({ buildTool: 'gradle' });
+  assert.match(gradle.get('build.gradle.kts'), /springdoc-openapi-starter-webmvc-ui:3\.2\.0/);
+});
+
 test('renders entity artifacts and a Flyway migration for configured entities', async () => {
   const files = await renderProject({
     entities: [
