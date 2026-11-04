@@ -2,7 +2,9 @@
 
 CleanStack treats the Spring Boot OpenAPI document as the contract between the
 backend and the Angular app. The backend publishes the contract with springdoc,
-and `cleanstack openapi` generates a typed Angular client from it.
+and `cleanstack openapi` generates a typed Angular client from it. Pass
+`--contract-first` to generate Spring API interfaces from the same document as
+well.
 
 ## Backend: springdoc
 
@@ -61,29 +63,110 @@ The command uses `node_modules/.bin/openapi-generator-cli` when the generated
 Angular app has installed its dev dependency. Otherwise it runs a pinned
 version through `npx`. openapi-generator requires Java 11 or later.
 
+## Contract-first mode
+
+By default CleanStack generates the backend from entities and then publishes its
+OpenAPI document. Contract-first reverses that direction: write the OpenAPI
+document first, then generate both sides from it.
+
+```sh
+cleanstack openapi --contract-first --input openapi/openapi.yaml
+```
+
+The command runs two openapi-generator passes from the same validated document:
+
+| Target  | Generator            | Default output                                         |
+| ------- | -------------------- | ------------------------------------------------------ |
+| Angular | `typescript-angular` | `<name>-ui/src/app/api/generated`                      |
+| Spring  | `spring`             | `<name>-backend/src/main/java/<package>/api/generated` |
+
+The Spring pass uses `interfaceOnly=true`, so it produces API interfaces and
+request/response models without controller implementations. Interface names
+come from OpenAPI tags; operations without a tag go into `DefaultApi`.
+
+```text
+com/example/demo/api/generated/
+  api/
+    ProductsApi.java       @RequestMapping operations for the products tag
+    ApiUtil.java
+    package-info.java
+  model/
+    Product.java
+    package-info.java
+  .cleanstack-openapi.json
+```
+
+Implement the generated interfaces with regular Spring controllers:
+
+```java
+package com.example.demo.controller;
+
+import com.example.demo.api.generated.api.ProductsApi;
+import com.example.demo.api.generated.model.Product;
+import java.util.List;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class ProductsController implements ProductsApi {
+    @Override
+    public ResponseEntity<List<Product>> listProducts() {
+        // call a service and map domain objects to generated models
+    }
+}
+```
+
+Do not repeat the class-level `@RequestMapping` on the implementation. The
+interface already declares it, and Spring MVC inherits mappings from
+implemented interfaces. Bean validation annotations from the contract are
+generated as `jakarta.validation` constraints.
+
+The Spring generator targets the generated Spring Boot 4 baseline:
+
+- `useSpringBoot4=true` and `useJackson3=true`
+- `useJspecify=true` for nullability annotations
+- `useBeanValidation=true` and `useResponseEntity=true`
+- `requestMappingMode=api_interface`
+- `skipDefaultInterface=true` so implementations must provide every operation
+- `openApiNullable=false` to avoid extra dependencies
+- API/model tests and documentation are disabled
+- generation timestamps are hidden so unchanged contracts produce identical files
+
+Use `--backend-output` to choose another package directory under
+`<name>-backend/src/main/java`. The directory path becomes the generated base
+package, so it must contain valid Java identifiers. Use `--spring-generator` to
+replace the `spring` generator. Both options require `--contract-first`.
+
 ## Safe regeneration
 
-The generated client directory is owned by CleanStack. Hand-written adapters
-belong outside it, for example in `src/app/services`.
+Each generated directory is owned by CleanStack and carries its own
+`.cleanstack-openapi.json` manifest. Hand-written adapters belong outside them,
+for example in `src/app/services` or a normal controller package.
 
 ```text
 src/app/
   api/
     README.md
     generated/
-      .cleanstack-openapi.json   <- ownership manifest
+      .cleanstack-openapi.json   <- Angular ownership manifest
       api/...
       model/...
   services/
     product.service.ts           <- hand-written adapter
+
+<name>-backend/src/main/java/<package>/api/generated/
+  .cleanstack-openapi.json       <- Spring ownership manifest
+  api/...
+  model/...
 ```
 
 Regeneration follows these rules:
 
 1. **Validate first.** The command downloads or reads the document, parses it,
    and verifies that it is OpenAPI 3 before invoking the generator.
-2. **Generate in isolation.** openapi-generator writes to a temporary
-   directory. If it fails, the project is untouched.
+2. **Generate in isolation.** openapi-generator writes to temporary
+   directories. If either generation fails, the project is untouched. In
+   contract-first mode both targets are planned before either is written.
 3. **Require ownership.** A non-empty directory without
    `.cleanstack-openapi.json` is rejected. `--force` allows colliding files to
    be replaced, but still does not remove unknown files.
@@ -123,16 +206,19 @@ unmanaged, so the next run requires `--force`.
 
 ## Relationship to entity generation
 
-Entity templates currently generate hand-written Angular models and services.
-The generated OpenAPI client is a separate, contract-derived layer. Both can
-coexist:
+Entity templates generate hand-written Angular models and services plus
+entity-oriented Spring controllers. The generated OpenAPI artifacts are a
+separate, contract-derived layer:
 
 - use entity templates for project-owned CRUD screens and custom fields,
-- use the generated client when integrating with external services or when the
-  backend contract should be the source of truth.
+- use contract-first mode when the OpenAPI document should drive both the
+  Spring interfaces and the Angular client,
+- use client-only mode when integrating with external services or an existing
+  backend contract.
 
-A future contract-first mode can reuse this client-generation step while
-generating Spring controllers from the same document.
+Entity DTOs and contract-first models can coexist, but contract-first should
+target dedicated packages. CleanStack refuses to overwrite unmanaged files
+unless `--force` is used.
 
 ## Troubleshooting
 
@@ -141,6 +227,8 @@ generating Spring controllers from the same document.
 | `No OpenAPI document was found`           | Start the backend and pass `--input http://localhost:8080/v3/api-docs`, or save the spec under `openapi/`. |
 | `used Swagger 2`                          | Upgrade springdoc to 3.x so the backend publishes OpenAPI 3.                                               |
 | `openapi-generator-cli failed`            | Check Java 11+ (`cleanstack doctor`), network access for npx, and the generator output with `--verbose`.   |
-| `unmanaged non-empty directory`           | Choose an empty `--output`, or use `--force` to allow colliding files to be replaced.                      |
+| `unmanaged non-empty directory`           | Choose an empty output, or use `--force` to allow colliding files to be replaced.                          |
+| `Contract-first generation needs a ...`   | Use a project with both backend and frontend, or omit `--contract-first` for client-only generation.       |
+| `must be a package directory under ...`   | Pass a `--backend-output` under `src/main/java` using valid Java package segments.                         |
 | A custom file was kept but should be gone | CleanStack never deletes untracked files. Remove it manually or let the generator own it.                  |
-| Generated file edits disappeared          | Do not edit `generated/`; move customizations to an adapter under `src/app/services`.                      |
+| Generated file edits disappeared          | Do not edit `generated/`; put adapters in `src/app/services` and implementations in `controller`.          |

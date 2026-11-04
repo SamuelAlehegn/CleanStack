@@ -53,6 +53,18 @@ The command can also consume a saved document with
 `--input openapi/openapi.json`. It writes only to the Angular client directory
 and preserves files that CleanStack did not generate.
 
+To work contract-first, write the document first and generate both sides from it:
+
+```bash
+cleanstack openapi --contract-first --input openapi/openapi.yaml
+```
+
+This also writes Spring API interfaces and models under
+`src/main/java/{{packagePath project.packageName}}/api/generated`. Implement
+the generated interfaces with `@RestController` classes in the `controller`
+package; do not repeat their class-level `@RequestMapping`. Regeneration uses
+the same ownership manifest and preserves files CleanStack did not generate.
+
 {{#if (eq project.options.auth "jwt")}}
 All application endpoints require a valid JWT bearer token. Set `JWT_ISSUER_URI` to the issuer that creates your tokens; it must publish OIDC metadata and signing keys. The actuator health endpoint remains public.
 {{/if}}{{#if (eq project.options.auth "keycloak")}}

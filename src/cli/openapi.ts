@@ -3,8 +3,11 @@ import { CliOptionError } from '../core/config-loader.js';
 import {
   DEFAULT_OPENAPI_CLIENT_DIRECTORY,
   DEFAULT_OPENAPI_GENERATOR,
+  DEFAULT_SPRING_GENERATOR,
   generateAngularClient,
+  generateContractFirst,
   type OpenApiGeneratorRunner,
+  type SpringGeneratorRunner,
 } from '../core/openapi-client.js';
 import { locateGeneratedProject } from '../core/project.js';
 import type { Logger } from '../utils/logger.js';
@@ -14,12 +17,17 @@ export interface OpenApiCommandOptions {
   logger: Logger;
   /** Injectable generator, primarily for tests. */
   runGenerator?: OpenApiGeneratorRunner;
+  /** Injectable Spring generator, primarily for tests. */
+  runBackendGenerator?: SpringGeneratorRunner;
 }
 
 export interface OpenApiCommandArguments {
   input?: string;
   output?: string;
   generator?: string;
+  backendOutput?: string;
+  springGenerator?: string;
+  contractFirst: boolean;
   force: boolean;
   dryRun: boolean;
   help: boolean;
@@ -28,27 +36,32 @@ export interface OpenApiCommandArguments {
 export const OPENAPI_USAGE = `Usage: cleanstack openapi [spec] [options]
        cleanstack api [spec] [options]
 
-Generates the Angular API client from a running Spring Boot OpenAPI document.
+Generates the Angular API client from an OpenAPI document. With --contract-first,
+it also generates Spring API interfaces and models for a contract-first workflow.
 
 The backend publishes its contract with springdoc at /v3/api-docs (JSON) and
 /v3/api-docs.yaml. The client is written to ${DEFAULT_OPENAPI_CLIENT_DIRECTORY} by default.
 Regeneration is safe: generation happens in a temporary directory first, only
 files recorded in the CleanStack manifest are replaced or removed, and custom
-files inside the client directory are preserved.
+files inside the generated directories are preserved.
 
 Options:
   -i, --input <path|url>   OpenAPI document or URL (default: discover openapi/openapi.yaml)
-  -o, --output <path>      Output directory inside the Angular project
+  -o, --output <path>      Angular output directory inside the frontend project
                            (default: ${DEFAULT_OPENAPI_CLIENT_DIRECTORY})
-  -g, --generator <name>   openapi-generator generator (default: ${DEFAULT_OPENAPI_GENERATOR})
+  -g, --generator <name>   openapi-generator client generator (default: ${DEFAULT_OPENAPI_GENERATOR})
+  --contract-first         Also generate Spring API interfaces and models
+  --backend-output <path>  Spring output inside the backend project
+                           (default: src/main/java/<package>/api/generated)
+  --spring-generator <name> Spring generator (default: ${DEFAULT_SPRING_GENERATOR})
   --force                  Replace files that collide with unmanaged files
   --dry-run                Generate in a temporary directory and report without writing
   -h, --help               Show this help
 
 Examples:
   cleanstack openapi --input http://localhost:8080/v3/api-docs
-  cleanstack openapi --input openapi/openapi.json
-  cleanstack api --dry-run`;
+  cleanstack openapi --contract-first --input openapi/openapi.yaml
+  cleanstack api --contract-first --dry-run`;
 
 export async function runOpenApiCommand(
   args: string[],
@@ -68,6 +81,62 @@ export async function runOpenApiCommand(
       ['Regenerate the project with a frontend, or run the command inside the Angular project.'],
     );
   }
+  if (parsed.contractFirst && project.backend === undefined) {
+    throw new CliOptionError(
+      'Contract-first generation needs a Spring Boot project, but none was found.',
+      [
+        'Regenerate the project with a backend, or run the command inside the Spring Boot project.',
+        'Run the command without --contract-first to generate only the Angular client.',
+      ],
+    );
+  }
+
+  if (parsed.contractFirst) {
+    const result = await generateContractFirst({
+      project,
+      logger: options.logger,
+      cwd,
+      ...(parsed.input === undefined ? {} : { input: parsed.input }),
+      ...(parsed.output === undefined ? {} : { output: parsed.output }),
+      ...(parsed.generator === undefined ? {} : { generator: parsed.generator }),
+      ...(parsed.backendOutput === undefined ? {} : { backendOutput: parsed.backendOutput }),
+      ...(parsed.springGenerator === undefined ? {} : { springGenerator: parsed.springGenerator }),
+      ...(options.runGenerator === undefined ? {} : { runGenerator: options.runGenerator }),
+      ...(options.runBackendGenerator === undefined
+        ? {}
+        : { runBackendGenerator: options.runBackendGenerator }),
+      force: parsed.force,
+      dryRun: parsed.dryRun,
+    });
+
+    for (const warning of new Set([...result.frontend.warnings, ...result.backend.warnings])) {
+      options.logger.warn(warning);
+    }
+
+    options.logger.info(
+      `API contract: ${result.spec.title}${result.spec.version === '' ? '' : ` ${result.spec.version}`} (OpenAPI ${result.spec.specVersion}, ${result.spec.source})`,
+    );
+    logSyncResult(
+      options.logger,
+      'API client',
+      path.posix.join(project.frontend.relativeDirectory, result.frontend.target),
+      result.frontend,
+      result.dryRun,
+    );
+    logSyncResult(
+      options.logger,
+      'Spring API interfaces',
+      path.posix.join(project.backend!.relativeDirectory, result.backend.target),
+      result.backend,
+      result.dryRun,
+    );
+    if (!result.dryRun) {
+      options.logger.info(
+        `Implement ${result.backend.apiPackage} interfaces in ${path.posix.join(project.backend!.relativeDirectory, 'src/main/java')} with @RestController classes.`,
+      );
+    }
+    return;
+  }
 
   const result = await generateAngularClient({
     project,
@@ -83,7 +152,25 @@ export async function runOpenApiCommand(
 
   for (const warning of result.warnings) options.logger.warn(warning);
 
-  const target = path.posix.join(project.frontend.relativeDirectory, result.target);
+  options.logger.info(
+    `API contract: ${result.spec.title}${result.spec.version === '' ? '' : ` ${result.spec.version}`} (OpenAPI ${result.spec.specVersion}, ${result.spec.source})`,
+  );
+  logSyncResult(
+    options.logger,
+    'API client',
+    path.posix.join(project.frontend.relativeDirectory, result.target),
+    result,
+    result.dryRun,
+  );
+}
+
+function logSyncResult(
+  logger: Logger,
+  label: string,
+  target: string,
+  result: { created: string[]; updated: string[]; removed: string[]; unchanged: string[] },
+  dryRun: boolean,
+): void {
   const changes = [
     `${result.created.length} created`,
     `${result.updated.length} updated`,
@@ -91,26 +178,21 @@ export async function runOpenApiCommand(
     `${result.unchanged.length} unchanged`,
   ].join(', ');
 
-  options.logger.info(
-    `API contract: ${result.spec.title}${result.spec.version === '' ? '' : ` ${result.spec.version}`} (OpenAPI ${result.spec.specVersion}, ${result.spec.source})`,
-  );
-
-  if (result.dryRun) {
-    options.logger.info(`Dry run: API client in ${target} would be regenerated (${changes}).`);
+  if (dryRun) {
+    logger.info(`Dry run: ${label} in ${target} would be regenerated (${changes}).`);
     return;
   }
-
   if (result.created.length === 0 && result.updated.length === 0 && result.removed.length === 0) {
-    options.logger.success(`API client in ${target} is up to date (${changes}).`);
+    logger.success(`${label} in ${target} is up to date (${changes}).`);
     return;
   }
-
-  options.logger.success(`Generated API client in ${target} (${changes}).`);
+  logger.success(`Generated ${label} in ${target} (${changes}).`);
 }
 
 /** Parses openapi-command arguments into a small, testable shape. */
 export function parseOpenApiCommandArguments(args: string[]): OpenApiCommandArguments {
   const result: OpenApiCommandArguments = {
+    contractFirst: false,
     force: false,
     dryRun: false,
     help: false,
@@ -146,6 +228,9 @@ export function parseOpenApiCommandArguments(args: string[]): OpenApiCommandArgu
       case '--dry-run':
         result.dryRun = parseBooleanFlag(flag, inlineValue, true);
         break;
+      case '--contract-first':
+        result.contractFirst = parseBooleanFlag(flag, inlineValue, true);
+        break;
       case '--input':
       case '--spec':
       case '-i': {
@@ -158,6 +243,18 @@ export function parseOpenApiCommandArguments(args: string[]): OpenApiCommandArgu
       case '-o': {
         const [value, nextIndex] = readValue(flag, inlineValue, args, index);
         result.output = value;
+        index = nextIndex;
+        break;
+      }
+      case '--backend-output': {
+        const [value, nextIndex] = readValue(flag, inlineValue, args, index);
+        result.backendOutput = value;
+        index = nextIndex;
+        break;
+      }
+      case '--spring-generator': {
+        const [value, nextIndex] = readValue(flag, inlineValue, args, index);
+        result.springGenerator = value;
         index = nextIndex;
         break;
       }
@@ -174,6 +271,13 @@ export function parseOpenApiCommandArguments(args: string[]): OpenApiCommandArgu
   }
 
   if (result.help) return result;
+
+  if (
+    !result.contractFirst &&
+    (result.backendOutput !== undefined || result.springGenerator !== undefined)
+  ) {
+    throw new CliOptionError('--backend-output and --spring-generator require --contract-first.');
+  }
 
   if (positionals.length > 1) {
     throw new CliOptionError(`Unexpected argument "${positionals[1]}".`);

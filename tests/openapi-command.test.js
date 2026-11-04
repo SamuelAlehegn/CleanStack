@@ -10,6 +10,7 @@ import {
   generateAngularClient,
   loadOpenApiDocument,
   parseOpenApiDocument,
+  springGeneratorArguments,
   syncOpenApiClient,
 } from '../dist/core/openapi-client.js';
 
@@ -47,7 +48,7 @@ function recordingLogger() {
   };
 }
 
-async function generateProject(cwd, { frontend = true } = {}) {
+async function generateProject(cwd, { frontend = true, backend = true } = {}) {
   await writeFile(
     path.join(cwd, 'cleanstack.config.json'),
     JSON.stringify({
@@ -55,7 +56,7 @@ async function generateProject(cwd, { frontend = true } = {}) {
       packageName: 'com.example',
       entities: [],
       options: {
-        backend: true,
+        backend,
         frontend,
         database: 'h2',
         auth: 'none',
@@ -83,6 +84,23 @@ function fakeGenerator(files) {
   };
 }
 
+/** Fake Spring generator that writes into the configured Java package. */
+function fakeSpringGenerator(files, invocations = []) {
+  return async (invocation) => {
+    invocations.push(invocation);
+    const packageDir = path.join(invocation.outputDir, ...invocation.packageName.split('.'));
+    for (const [relativePath, contents] of Object.entries(files)) {
+      const target = path.join(packageDir, relativePath);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, contents);
+    }
+    await writeFile(path.join(invocation.outputDir, 'README.md'), 'generator readme');
+    await writeFile(path.join(invocation.outputDir, 'pom.xml'), '<project/>');
+    await mkdir(path.join(invocation.outputDir, '.openapi-generator'), { recursive: true });
+    await writeFile(path.join(invocation.outputDir, '.openapi-generator', 'FILES'), 'metadata');
+  };
+}
+
 async function readManifest(projectRoot) {
   return JSON.parse(
     await readFile(
@@ -103,6 +121,7 @@ async function readManifest(projectRoot) {
 
 test('parses openapi defaults and value options', () => {
   assert.deepEqual(parseOpenApiCommandArguments([]), {
+    contractFirst: false,
     force: false,
     dryRun: false,
     help: false,
@@ -122,6 +141,19 @@ test('parses openapi defaults and value options', () => {
   assert.equal(parsed.generator, 'typescript-angular');
   assert.equal(parsed.force, true);
   assert.equal(parsed.dryRun, true);
+  assert.equal(parsed.contractFirst, false);
+});
+
+test('parses contract-first target options', () => {
+  const parsed = parseOpenApiCommandArguments([
+    '--contract-first',
+    '--backend-output',
+    'src/main/java/com/acme/api',
+    '--spring-generator=spring',
+  ]);
+  assert.equal(parsed.contractFirst, true);
+  assert.equal(parsed.backendOutput, 'src/main/java/com/acme/api');
+  assert.equal(parsed.springGenerator, 'spring');
 });
 
 test('accepts a positional spec and short aliases', () => {
@@ -145,11 +177,40 @@ test('rejects ambiguous or malformed openapi arguments', () => {
   );
   assert.throws(() => parseOpenApiCommandArguments(['--input']), /requires a value/);
   assert.throws(() => parseOpenApiCommandArguments(['--nope']), /Unknown option/);
+  assert.throws(
+    () => parseOpenApiCommandArguments(['--backend-output', 'src/main/java/com/acme']),
+    /require --contract-first/,
+  );
+  assert.throws(
+    () => parseOpenApiCommandArguments(['--spring-generator', 'spring']),
+    /require --contract-first/,
+  );
 });
 
 test('openapi help flag is parsed without validation', () => {
   assert.equal(parseOpenApiCommandArguments(['--help']).help, true);
   assert.equal(parseOpenApiCommandArguments(['-h']).help, true);
+});
+
+test('configures the Spring generator for interface-only Spring Boot 4 output', () => {
+  const args = springGeneratorArguments({
+    specPath: '/tmp/spec.yaml',
+    outputDir: '/tmp/spring',
+    generator: 'spring',
+    workingDirectory: '/tmp/demo-ui',
+    packageName: 'com.acme.api.generated',
+    apiPackage: 'com.acme.api.generated.api',
+    modelPackage: 'com.acme.api.generated.model',
+  });
+  const properties = args[args.indexOf('--additional-properties') + 1];
+  assert.match(properties, /apiPackage=com\.acme\.api\.generated\.api/);
+  assert.match(properties, /modelPackage=com\.acme\.api\.generated\.model/);
+  assert.match(properties, /interfaceOnly=true/);
+  assert.match(properties, /useSpringBoot4=true/);
+  assert.match(properties, /skipDefaultInterface=true/);
+  assert.match(properties, /requestMappingMode=api_interface/);
+  assert.match(properties, /hideGenerationTimestamp=true/);
+  assert.match(properties, /sourceFolder=\./);
 });
 
 // ---------------------------------------------------------------------------
@@ -581,5 +642,234 @@ test('generateAngularClient downloads a URL spec and reports a dry run', async (
     );
   } finally {
     await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Contract-first generation
+// ---------------------------------------------------------------------------
+
+const SPRING_CLIENT_FILES = {
+  'api/products-api.java': 'package com.example.api.generated.api; public interface ProductsApi {}',
+  'model/product.java': 'package com.example.api.generated.model; public class Product {}',
+};
+
+function backendClientRoot(projectRoot, packagePath = ['com', 'example', 'api', 'generated']) {
+  return path.join(projectRoot, 'demo-backend', 'src', 'main', 'java', ...packagePath);
+}
+
+test('contract-first generates the Angular client and Spring interfaces', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-openapi-contract-'));
+  try {
+    const projectRoot = await generateProject(cwd);
+    const spec = path.join(projectRoot, 'contract.yaml');
+    await writeFile(spec, OPENAPI_SPEC);
+    const logger = recordingLogger();
+    const invocations = [];
+
+    await runOpenApiCommand(['--contract-first', '--input', spec], {
+      cwd: projectRoot,
+      logger,
+      runGenerator: fakeGenerator({
+        'api/product.service.ts': 'export class ProductService {}',
+        'model/product.ts': 'export interface Product {}',
+      }),
+      runBackendGenerator: fakeSpringGenerator(SPRING_CLIENT_FILES, invocations),
+    });
+
+    const frontendRoot = path.join(projectRoot, 'demo-ui', DEFAULT_OPENAPI_CLIENT_DIRECTORY);
+    assert.match(
+      await readFile(path.join(frontendRoot, 'api', 'product.service.ts'), 'utf8'),
+      /ProductService/,
+    );
+
+    const backendRoot = backendClientRoot(projectRoot);
+    assert.match(
+      await readFile(path.join(backendRoot, 'api', 'products-api.java'), 'utf8'),
+      /interface ProductsApi/,
+    );
+    assert.match(
+      await readFile(path.join(backendRoot, 'model', 'product.java'), 'utf8'),
+      /class Product/,
+    );
+    const manifest = JSON.parse(
+      await readFile(path.join(backendRoot, '.cleanstack-openapi.json'), 'utf8'),
+    );
+    assert.equal(manifest.generator, 'spring');
+    assert.deepEqual(Object.keys(manifest.files).sort(), [
+      'api/products-api.java',
+      'model/product.java',
+    ]);
+    assert.equal(invocations.length, 1);
+    assert.equal(invocations[0].apiPackage, 'com.example.api.generated.api');
+    assert.equal(invocations[0].modelPackage, 'com.example.api.generated.model');
+
+    const messages = logger.messages.join('\n');
+    assert.match(messages, /Generated API client/);
+    assert.match(messages, /Generated Spring API interfaces/);
+    assert.match(messages, /Implement com\.example\.api\.generated\.api interfaces/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('contract-first regeneration is deterministic and preserves custom files', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-openapi-contract-regen-'));
+  try {
+    const projectRoot = await generateProject(cwd);
+    const spec = path.join(projectRoot, 'contract.yaml');
+    await writeFile(spec, OPENAPI_SPEC);
+    const frontendFiles = { 'api/product.service.ts': 'export class ProductService {}' };
+    const backendFiles = { ...SPRING_CLIENT_FILES };
+    const command = (logger = silentLogger) =>
+      runOpenApiCommand(['--contract-first', '--input', spec], {
+        cwd: projectRoot,
+        logger,
+        runGenerator: fakeGenerator(frontendFiles),
+        runBackendGenerator: fakeSpringGenerator(backendFiles),
+      });
+
+    await command();
+    const backendRoot = backendClientRoot(projectRoot);
+    await writeFile(path.join(backendRoot, 'api', 'custom.java'), 'custom implementation');
+
+    const logger = recordingLogger();
+    await command(logger);
+    assert.match(logger.messages.join('\n'), /Spring API interfaces.*up to date/);
+    assert.equal(
+      await readFile(path.join(backendRoot, 'api', 'custom.java'), 'utf8'),
+      'custom implementation',
+    );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('contract-first supports a custom backend package and dry runs', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-openapi-contract-output-'));
+  try {
+    const projectRoot = await generateProject(cwd);
+    const spec = path.join(projectRoot, 'contract.yaml');
+    await writeFile(spec, OPENAPI_SPEC);
+    const invocations = [];
+
+    await runOpenApiCommand(
+      [
+        '--contract-first',
+        '--input',
+        spec,
+        '--backend-output',
+        'src/main/java/com/acme/contract',
+        '--dry-run',
+      ],
+      {
+        cwd: projectRoot,
+        logger: silentLogger,
+        runGenerator: fakeGenerator({ 'client.ts': 'export const client = true;' }),
+        runBackendGenerator: fakeSpringGenerator(
+          { 'api/acme-api.java': 'package com.acme.contract.api;' },
+          invocations,
+        ),
+      },
+    );
+
+    assert.equal(invocations[0].packageName, 'com.acme.contract');
+    assert.equal(invocations[0].apiPackage, 'com.acme.contract.api');
+    const backendRoot = backendClientRoot(projectRoot, ['com', 'acme', 'contract']);
+    await assert.rejects(readFile(path.join(backendRoot, 'api', 'acme-api.java')), {
+      code: 'ENOENT',
+    });
+    await assert.rejects(
+      readFile(path.join(projectRoot, 'demo-ui', DEFAULT_OPENAPI_CLIENT_DIRECTORY, 'client.ts')),
+      { code: 'ENOENT' },
+    );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('contract-first plans both targets before writing either one', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-openapi-contract-safety-'));
+  try {
+    const projectRoot = await generateProject(cwd);
+    const spec = path.join(projectRoot, 'contract.yaml');
+    await writeFile(spec, OPENAPI_SPEC);
+
+    const backendRoot = backendClientRoot(projectRoot);
+    await mkdir(backendRoot, { recursive: true });
+    await writeFile(path.join(backendRoot, 'existing.java'), 'user file');
+
+    await assert.rejects(
+      runOpenApiCommand(['--contract-first', '--input', spec], {
+        cwd: projectRoot,
+        logger: silentLogger,
+        runGenerator: fakeGenerator({ 'client.ts': 'export const client = true;' }),
+        runBackendGenerator: fakeSpringGenerator(SPRING_CLIENT_FILES),
+      }),
+      /unmanaged non-empty directory/,
+    );
+
+    await assert.rejects(
+      readFile(path.join(projectRoot, 'demo-ui', DEFAULT_OPENAPI_CLIENT_DIRECTORY, 'client.ts')),
+      { code: 'ENOENT' },
+    );
+    assert.equal(await readFile(path.join(backendRoot, 'existing.java'), 'utf8'), 'user file');
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('contract-first requires a backend and a valid Java output package', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-openapi-contract-errors-'));
+  try {
+    const projectRoot = await generateProject(cwd, { backend: false });
+    await rm(path.join(projectRoot, 'demo-backend'), { recursive: true, force: true });
+    const spec = path.join(projectRoot, 'contract.yaml');
+    await writeFile(spec, OPENAPI_SPEC);
+
+    await assert.rejects(
+      runOpenApiCommand(['--contract-first', '--input', spec], {
+        cwd: projectRoot,
+        logger: silentLogger,
+        runGenerator: fakeGenerator({ 'client.ts': 'export const client = true;' }),
+        runBackendGenerator: fakeSpringGenerator(SPRING_CLIENT_FILES),
+      }),
+      /needs a Spring Boot project/,
+    );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+
+  const cwdWithBackend = await mkdtemp(
+    path.join(os.tmpdir(), 'cleanstack-openapi-contract-package-'),
+  );
+  try {
+    const projectRoot = await generateProject(cwdWithBackend);
+    const spec = path.join(projectRoot, 'contract.yaml');
+    await writeFile(spec, OPENAPI_SPEC);
+
+    await assert.rejects(
+      runOpenApiCommand(['--contract-first', '--input', spec, '--backend-output', 'libs/api'], {
+        cwd: projectRoot,
+        logger: silentLogger,
+        runGenerator: fakeGenerator({ 'client.ts': 'export const client = true;' }),
+        runBackendGenerator: fakeSpringGenerator(SPRING_CLIENT_FILES),
+      }),
+      /package directory under src\/main\/java/,
+    );
+    await assert.rejects(
+      runOpenApiCommand(
+        ['--contract-first', '--input', spec, '--backend-output', 'src/main/java/com/acme/my-api'],
+        {
+          cwd: projectRoot,
+          logger: silentLogger,
+          runGenerator: fakeGenerator({ 'client.ts': 'export const client = true;' }),
+          runBackendGenerator: fakeSpringGenerator(SPRING_CLIENT_FILES),
+        },
+      ),
+      /valid Java package/,
+    );
+  } finally {
+    await rm(cwdWithBackend, { recursive: true, force: true });
   }
 });

@@ -173,6 +173,7 @@ test('publishes the OpenAPI contract with springdoc', async () => {
     /\/v3\/api-docs\/\*\*/,
   );
   assert.match(files.get('README.md'), /cleanstack openapi/);
+  assert.match(files.get('README.md'), /--contract-first/);
 
   const gradle = await renderProject({ buildTool: 'gradle' });
   assert.match(gradle.get('build.gradle.kts'), /springdoc-openapi-starter-webmvc-ui:3\.2\.0/);

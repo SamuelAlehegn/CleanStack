@@ -8,7 +8,7 @@ import { parse as parseYaml } from 'yaml';
 import { CleanStackError } from '../utils/errors.js';
 import { ensureWithinRoot, isMissingPath, resolveWithinRoot } from '../utils/path-safety.js';
 import type { Logger } from '../utils/logger.js';
-import type { GeneratedProject } from './project.js';
+import type { BackendProject, GeneratedProject } from './project.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -21,8 +21,13 @@ export const DEFAULT_OPENAPI_CLIENT_DIRECTORY = 'src/app/api/generated';
 /** Default openapi-generator generator for Angular applications. */
 export const DEFAULT_OPENAPI_GENERATOR = 'typescript-angular';
 
+/** Default openapi-generator generator for Spring API interfaces. */
+export const DEFAULT_SPRING_GENERATOR = 'spring';
+
 /** Pinned generator used when the generated app has not installed it yet. */
 export const OPENAPI_GENERATOR_PACKAGE = '@openapitools/openapi-generator-cli@2.42.0';
+
+const JAVA_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 const SPEC_CANDIDATES = [
   'openapi/openapi.yaml',
@@ -68,6 +73,21 @@ export interface OpenApiGeneratorInvocation {
 
 export type OpenApiGeneratorRunner = (invocation: OpenApiGeneratorInvocation) => Promise<void>;
 
+export interface SpringGeneratorInvocation {
+  specPath: string;
+  outputDir: string;
+  generator: string;
+  /** Directory used both as the working directory and local binary lookup root. */
+  workingDirectory: string;
+  /** Directory containing node_modules/.bin, when the Angular app has it installed. */
+  localBinDirectory?: string;
+  packageName: string;
+  apiPackage: string;
+  modelPackage: string;
+}
+
+export type SpringGeneratorRunner = (invocation: SpringGeneratorInvocation) => Promise<void>;
+
 export interface GenerateAngularClientOptions {
   project: GeneratedProject;
   logger: Logger;
@@ -88,6 +108,15 @@ export interface GenerateAngularClientOptions {
   cwd?: string;
 }
 
+export interface GenerateContractFirstOptions extends GenerateAngularClientOptions {
+  /** Spring API output directory relative to the backend project. */
+  backendOutput?: string;
+  /** openapi-generator generator for the backend, default "spring". */
+  springGenerator?: string;
+  /** Injectable Spring generator, primarily for tests. */
+  runBackendGenerator?: SpringGeneratorRunner;
+}
+
 export interface OpenApiClientSyncResult {
   created: string[];
   updated: string[];
@@ -103,6 +132,24 @@ export interface GenerateAngularClientResult extends OpenApiClientSyncResult {
   spec: OpenApiDocumentInfo;
   /** Output directory relative to the Angular project. */
   target: string;
+  dryRun: boolean;
+}
+
+export interface SpringControllerGenerationResult extends OpenApiClientSyncResult {
+  spec: OpenApiDocumentInfo;
+  /** Output directory relative to the Spring Boot project. */
+  target: string;
+  /** Base package matching the output directory, for example com.acme.shop.api.generated. */
+  packageName: string;
+  apiPackage: string;
+  modelPackage: string;
+  dryRun: boolean;
+}
+
+export interface GenerateContractFirstResult {
+  spec: OpenApiDocumentInfo;
+  frontend: GenerateAngularClientResult;
+  backend: SpringControllerGenerationResult;
   dryRun: boolean;
 }
 
@@ -126,6 +173,8 @@ export interface SyncOpenApiClientOptions {
   specHash: string;
   force?: boolean;
   dryRun?: boolean;
+  /** Only synchronize files accepted by this predicate. */
+  include?: (relativePath: string) => boolean;
 }
 
 /**
@@ -204,6 +253,171 @@ export async function generateAngularClient(
     );
 
     return { ...sync, spec, target: target.relative, dryRun };
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Generates Spring API interfaces and the Angular client from one contract.
+ *
+ * The Spring generator runs in interface-only mode. It produces API interfaces
+ * annotated with Spring MVC mappings plus request/response models. Projects
+ * implement those interfaces with normal `@RestController` classes, so the
+ * OpenAPI document remains the source of truth for both sides.
+ */
+export async function generateContractFirst(
+  options: GenerateContractFirstOptions,
+): Promise<GenerateContractFirstResult> {
+  const frontend = options.project.frontend;
+  if (frontend === undefined) {
+    throw new CleanStackError('No Angular project was found in this CleanStack workspace.', {
+      suggestions: [
+        'Regenerate the project with a frontend, or run the command inside the Angular project.',
+      ],
+    });
+  }
+  const backend = options.project.backend;
+  if (backend === undefined) {
+    throw new CleanStackError(
+      'Contract-first generation needs a Spring Boot project, but none was found.',
+      {
+        suggestions: [
+          'Regenerate the project with a backend, or run the command inside the Spring Boot project.',
+          'Use "cleanstack openapi" without --contract-first to generate only the Angular client.',
+        ],
+      },
+    );
+  }
+
+  const cwd = path.resolve(options.cwd ?? options.project.rootDir);
+  const spec = await loadOpenApiDocument({
+    project: options.project,
+    cwd,
+    ...(options.input === undefined ? {} : { input: options.input }),
+    ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+  });
+  const frontendTarget = await resolveClientDirectory(frontend.directory, options.output);
+  const backendTarget = await resolveSpringDirectory(backend, options.backendOutput);
+  const frontendGenerator = options.generator ?? DEFAULT_OPENAPI_GENERATOR;
+  const springGenerator = options.springGenerator ?? DEFAULT_SPRING_GENERATOR;
+  const runFrontendGenerator = options.runGenerator ?? runOpenApiGenerator;
+  const runBackendGenerator = options.runBackendGenerator ?? runSpringGenerator;
+  const dryRun = options.dryRun ?? false;
+
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'cleanstack-openapi-contract-'));
+  try {
+    const specPath =
+      spec.filePath ?? path.join(temporaryRoot, `openapi${extensionFor(spec.source)}`);
+    if (spec.filePath === undefined) {
+      await writeFile(specPath, spec.contents, 'utf8');
+    }
+
+    const frontendStaging = path.join(temporaryRoot, 'client');
+    const backendStaging = path.join(temporaryRoot, 'spring');
+    await mkdir(frontendStaging, { recursive: true });
+    await mkdir(backendStaging, { recursive: true });
+
+    await runFrontendGenerator({
+      specPath,
+      outputDir: frontendStaging,
+      generator: frontendGenerator,
+      frontendDirectory: frontend.directory,
+    });
+    await runBackendGenerator({
+      specPath,
+      outputDir: backendStaging,
+      generator: springGenerator,
+      workingDirectory: frontend.directory,
+      localBinDirectory: frontend.directory,
+      packageName: backendTarget.packageName,
+      apiPackage: backendTarget.apiPackage,
+      modelPackage: backendTarget.modelPackage,
+    });
+
+    if ((await listGeneratedFiles(frontendStaging)).length === 0) {
+      throw new CleanStackError(
+        `The OpenAPI generator (${frontendGenerator}) produced no Angular client files for "${spec.source}".`,
+        {
+          suggestions: [
+            'Check that the document contains at least one path or schema.',
+            'Run the generator manually with --verbose to inspect its output.',
+          ],
+        },
+      );
+    }
+
+    const backendPackageDir = path.join(backendStaging, ...backendTarget.packageName.split('.'));
+    if (!(await isDirectory(backendPackageDir))) {
+      throw new CleanStackError(
+        `The OpenAPI generator (${springGenerator}) did not create the expected Java package "${backendTarget.packageName}".`,
+        {
+          suggestions: [
+            'Check the generator output with --verbose.',
+            'Make sure apiPackage and modelPackage use valid Java package names.',
+          ],
+        },
+      );
+    }
+    const backendGenerated = await listRelativeFiles(backendPackageDir);
+    if (!backendGenerated.some((file) => file.endsWith('.java'))) {
+      throw new CleanStackError(
+        `The OpenAPI generator (${springGenerator}) produced no Spring API files for "${spec.source}".`,
+        {
+          suggestions: [
+            'Check that the document contains at least one operation or schema.',
+            'Tag operations to control the generated interface names.',
+          ],
+        },
+      );
+    }
+
+    const frontendSyncOptions: SyncOpenApiClientOptions = {
+      stagingDir: frontendStaging,
+      targetDir: frontendTarget.absolute,
+      generator: frontendGenerator,
+      specSource: spec.source,
+      specHash: spec.hash,
+      ...(options.force === undefined ? {} : { force: options.force }),
+      dryRun,
+    };
+    const backendSyncOptions: SyncOpenApiClientOptions = {
+      stagingDir: backendPackageDir,
+      targetDir: backendTarget.absolute,
+      generator: springGenerator,
+      specSource: spec.source,
+      specHash: spec.hash,
+      ...(options.force === undefined ? {} : { force: options.force }),
+      dryRun,
+      include: (file) => file.endsWith('.java'),
+    };
+
+    // Plan both targets before writing either one so an unmanaged directory or
+    // collision in the backend cannot leave the frontend half-regenerated.
+    const frontendPlan = await syncOpenApiClient({ ...frontendSyncOptions, dryRun: true });
+    const backendPlan = await syncOpenApiClient({ ...backendSyncOptions, dryRun: true });
+    const frontendSync = dryRun ? frontendPlan : await syncOpenApiClient(frontendSyncOptions);
+    const backendSync = dryRun ? backendPlan : await syncOpenApiClient(backendSyncOptions);
+
+    options.logger.debug(
+      `Contract-first ${spec.specVersion} "${spec.title}" ${spec.version}: ` +
+        `${backendTarget.apiPackage} -> ${frontendTarget.relative}, ${backendTarget.relative}`,
+    );
+
+    return {
+      spec,
+      frontend: { ...frontendSync, spec, target: frontendTarget.relative, dryRun },
+      backend: {
+        ...backendSync,
+        spec,
+        target: backendTarget.relative,
+        packageName: backendTarget.packageName,
+        apiPackage: backendTarget.apiPackage,
+        modelPackage: backendTarget.modelPackage,
+        dryRun,
+      },
+      dryRun,
+    };
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
@@ -368,8 +582,9 @@ export async function syncOpenApiClient(
     exclude: (file) =>
       file === GENERATOR_IGNORE_FILE || file.startsWith(`${GENERATOR_METADATA_DIRECTORY}/`),
   });
+  const includedFiles = generatedFiles.filter((file) => options.include?.(file) ?? true);
   const generated = new Map<string, { contents: string; hash: string }>();
-  for (const file of generatedFiles) {
+  for (const file of includedFiles) {
     const contents = await readFile(path.join(options.stagingDir, file), 'utf8');
     generated.set(file, { contents, hash: sha256(contents) });
   }
@@ -468,7 +683,7 @@ export async function syncOpenApiClient(
   return { created, updated, unchanged, removed, preserved, warnings, manifestPath };
 }
 
-/** Builds the argument list passed to openapi-generator-cli. */
+/** Builds the argument list passed to openapi-generator-cli for Angular. */
 export function openApiGeneratorArguments(invocation: OpenApiGeneratorInvocation): string[] {
   return [
     'generate',
@@ -479,7 +694,47 @@ export function openApiGeneratorArguments(invocation: OpenApiGeneratorInvocation
     '-o',
     invocation.outputDir,
     '--additional-properties',
-    'providedIn=root,useSingleRequestParameter=true,fileNaming=kebab-case',
+    'providedIn=root,useSingleRequestParameter=true,fileNaming=kebab-case,hideGenerationTimestamp=true',
+    '--global-property',
+    'apiTests=false,modelTests=false,apiDocs=false,modelDocs=false',
+  ];
+}
+
+/**
+ * Builds the argument list for the Spring generator in interface-only mode.
+ * Generated sources declare packages matching the configured target directory.
+ */
+export function springGeneratorArguments(invocation: SpringGeneratorInvocation): string[] {
+  return [
+    'generate',
+    '-i',
+    invocation.specPath,
+    '-g',
+    invocation.generator,
+    '-o',
+    invocation.outputDir,
+    '--additional-properties',
+    [
+      `apiPackage=${invocation.apiPackage}`,
+      `modelPackage=${invocation.modelPackage}`,
+      'interfaceOnly=true',
+      'useSpringBoot4=true',
+      'useJackson3=true',
+      'useJspecify=true',
+      'useTags=true',
+      'skipDefaultInterface=true',
+      'requestMappingMode=api_interface',
+      'useBeanValidation=true',
+      'useResponseEntity=true',
+      'openApiNullable=false',
+      'documentationProvider=none',
+      'annotationLibrary=none',
+      'useSpringController=false',
+      'generateJsonIncludeAnnotations=false',
+      'generateJsonSetterNullsAnnotations=false',
+      'hideGenerationTimestamp=true',
+      'sourceFolder=.',
+    ].join(','),
     '--global-property',
     'apiTests=false,modelTests=false,apiDocs=false,modelDocs=false',
   ];
@@ -490,39 +745,78 @@ export function openApiGeneratorArguments(invocation: OpenApiGeneratorInvocation
  * generator is used first; otherwise npx downloads the pinned package.
  */
 export const runOpenApiGenerator: OpenApiGeneratorRunner = async (invocation) => {
-  const localBinary = path.join(
-    invocation.frontendDirectory,
-    'node_modules',
-    '.bin',
-    process.platform === 'win32' ? 'openapi-generator-cli.cmd' : 'openapi-generator-cli',
-  );
-  const useLocalBinary = await isFile(localBinary);
-  const command = useLocalBinary ? localBinary : process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  await runGeneratorCli({
+    args: openApiGeneratorArguments(invocation),
+    workingDirectory: invocation.frontendDirectory,
+    localBinDirectory: invocation.frontendDirectory,
+    label: 'the Angular client',
+    manualCommand: `npx --yes ${OPENAPI_GENERATOR_PACKAGE} generate -i <spec> -g typescript-angular -o <output>`,
+  });
+};
+
+/** Runs the Spring generator through the same local-or-npx strategy. */
+export const runSpringGenerator: SpringGeneratorRunner = async (invocation) => {
+  await runGeneratorCli({
+    args: springGeneratorArguments(invocation),
+    workingDirectory: invocation.workingDirectory,
+    ...(invocation.localBinDirectory === undefined
+      ? {}
+      : { localBinDirectory: invocation.localBinDirectory }),
+    label: 'the Spring API interfaces',
+    manualCommand: `npx --yes ${OPENAPI_GENERATOR_PACKAGE} generate -i <spec> -g spring -o <output> --additional-properties interfaceOnly=true`,
+  });
+};
+
+interface GeneratorCliOptions {
+  args: string[];
+  workingDirectory: string;
+  localBinDirectory?: string;
+  label: string;
+  manualCommand: string;
+}
+
+async function runGeneratorCli(options: GeneratorCliOptions): Promise<void> {
+  const localBinary =
+    options.localBinDirectory === undefined
+      ? undefined
+      : path.join(
+          options.localBinDirectory,
+          'node_modules',
+          '.bin',
+          process.platform === 'win32' ? 'openapi-generator-cli.cmd' : 'openapi-generator-cli',
+        );
+  const useLocalBinary = localBinary !== undefined && (await isFile(localBinary));
+  const command =
+    useLocalBinary && localBinary !== undefined
+      ? localBinary
+      : process.platform === 'win32'
+        ? 'npx.cmd'
+        : 'npx';
   const args = useLocalBinary
-    ? openApiGeneratorArguments(invocation)
-    : ['--yes', OPENAPI_GENERATOR_PACKAGE, ...openApiGeneratorArguments(invocation)];
+    ? options.args
+    : ['--yes', OPENAPI_GENERATOR_PACKAGE, ...options.args];
 
   try {
     await execFileAsync(command, args, {
-      cwd: invocation.frontendDirectory,
+      cwd: options.workingDirectory,
       encoding: 'utf8',
       maxBuffer: 20 * 1024 * 1024,
     });
   } catch (error) {
     const output = generatorFailureDetail(error);
     throw new CleanStackError(
-      `Generating the Angular client with openapi-generator-cli failed${output === '' ? '.' : `:\n${output}`}`,
+      `Generating ${options.label} with openapi-generator-cli failed${output === '' ? '.' : `:\n${output}`}`,
       {
         suggestions: [
           'Make sure Java 11 or later is installed and available on PATH.',
-          `Run the generator manually from the Angular project: npx --yes ${OPENAPI_GENERATOR_PACKAGE} generate -i <spec> -g typescript-angular -o <output>`,
+          `Run the generator manually from the generated project: ${options.manualCommand}`,
           'Run "cleanstack doctor" to check the local environment.',
         ],
         cause: error,
       },
     );
   }
-};
+}
 
 async function discoverSpecFile(project: GeneratedProject, cwd: string): Promise<string> {
   const roots = [
@@ -567,6 +861,72 @@ async function resolveClientDirectory(
     });
   }
   return { absolute, relative };
+}
+
+interface SpringTargetDirectory {
+  absolute: string;
+  relative: string;
+  packageName: string;
+  apiPackage: string;
+  modelPackage: string;
+}
+
+async function resolveSpringDirectory(
+  backend: BackendProject,
+  output: string | undefined,
+): Promise<SpringTargetDirectory> {
+  const packagePath = backend.packageName.split('.');
+  const requested =
+    output ?? path.posix.join('src', 'main', 'java', ...packagePath, 'api', 'generated');
+  if (path.isAbsolute(requested)) {
+    throw new CleanStackError('The Spring API output must be inside the Spring Boot project.', {
+      suggestions: ['Pass a relative path such as --backend-output src/main/java/com/acme/api.'],
+    });
+  }
+
+  const absolute = path.resolve(backend.directory, requested);
+  await ensureWithinRoot(backend.directory, absolute, requested);
+
+  const sourceRoot = path.join(backend.directory, 'src', 'main', 'java');
+  const relativeToSource = path.relative(sourceRoot, absolute);
+  if (
+    relativeToSource === '' ||
+    relativeToSource === '..' ||
+    relativeToSource.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativeToSource)
+  ) {
+    throw new CleanStackError(
+      'The Spring API output must be a package directory under src/main/java.',
+      {
+        suggestions: [
+          'Use --backend-output src/main/java/com/acme/api/generated.',
+          'The generated directory name becomes the base Java package.',
+        ],
+      },
+    );
+  }
+
+  const segments = relativeToSource.split(path.sep).filter((segment) => segment !== '');
+  if (segments.length === 0 || segments.some((segment) => !JAVA_IDENTIFIER_PATTERN.test(segment))) {
+    throw new CleanStackError(
+      `The Spring API output path does not form a valid Java package: ${relativeToSource}`,
+      {
+        suggestions: [
+          'Use only letters, digits, and underscores in each directory name.',
+          'Java package segments cannot start with a digit or contain hyphens.',
+        ],
+      },
+    );
+  }
+
+  const packageName = segments.join('.');
+  return {
+    absolute,
+    relative: path.relative(backend.directory, absolute).split(path.sep).join('/'),
+    packageName,
+    apiPackage: `${packageName}.api`,
+    modelPackage: `${packageName}.model`,
+  };
 }
 
 async function listGeneratedFiles(stagingDir: string): Promise<string[]> {
