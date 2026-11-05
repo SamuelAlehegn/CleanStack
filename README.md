@@ -1,361 +1,165 @@
 # CleanStack Generator
 
-> A clean, maintainable generator for Angular and Spring Boot applications.
+CleanStack is a local project generator for **Spring Boot + Angular**
+applications. It creates a Spring Boot 4.1 / Java 21 backend and an Angular 22
+frontend from one configuration, then keeps them maintainable with entity
+descriptors, safe regeneration, template overrides, and OpenAPI client
+generation.
 
-<!-- TODO: Add npm, CI, and license badges when publishing is configured. -->
+The generated code is intentionally plain: constructor injection, explicit
+layers, manual DTO mapping, standard Flyway migrations, standalone Angular
+components, and signals. There is no CleanStack runtime dependency and no
+generated abstraction layer to learn.
 
-CleanStack helps developers start full-stack projects with a clear structure and
-readable generated code.
+## Why CleanStack
+
+- **One command, two applications.** Generate a Spring Boot service and an
+  Angular app that already agree on the API shape and development proxy.
+- **Entities, not scaffolding exercises.** Describe an entity once and get the
+  JPA model, repository, service, controller, DTOs, mapper, migration, Angular
+  model, HTTP service, and list/detail/form pages.
+- **Safe regeneration.** Hand-written code lives inside protected regions with
+  checksums. Re-running a generator updates the generated code without
+  silently deleting your work.
+- **Template overrides.** Replace one file or a whole template pack at the
+  project or user level. Built-in templates remain the fallback.
+- **OpenAPI when you need it.** Generate a typed Angular client from a running
+  backend or a saved contract, optionally with Spring API interfaces.
+- **CLI and local Studio.** CleanStack Studio is a local web UI over the same
+  engine, not a second implementation.
+- **No telemetry, no hosted service.** Everything runs on your machine and
+  writes to the paths you choose.
 
 ## Requirements
 
-- Node.js 22 or later
-- npm
+| Tool              | Version                                                       |
+| ----------------- | ------------------------------------------------------------- |
+| Node.js           | 22 or later for the generator                                 |
+| npm               | Bundled with Node.js 22 or later                              |
+| JDK               | 21 or later for generated Spring Boot projects                |
+| Maven or Gradle   | Maven 3.9+ or Gradle 8.14+, matching the generated project    |
+| Angular Node.js   | `^22.22.3`, `^24.15.0`, or `^26.0.0` for the generated app    |
+| openapi-generator | Java 11+ when generating API clients (run locally or via npx) |
 
-## Getting started
+Run `cleanstack doctor` to check the tools on the current machine and get
+suggested fixes for anything missing.
+
+## Quick start
+
+CleanStack is currently installed from a checkout. The CLI is not required to
+be published to npm for local use.
 
 ```sh
+git clone https://github.com/SamuelAlehegn/CleanStack.git
+cd CleanStack
 npm install
 npm run build
+npm link
+
+cleanstack new demo --db h2 --auth none --no-entities --yes
+cd demo
+```
+
+Start the backend in one terminal:
+
+```sh
+cd demo-backend
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+Start the frontend in another terminal:
+
+```sh
+cd demo-ui
+npm install
 npm start
 ```
 
-Run the built CLI with `node dist/cli/index.js <command>`, or install it globally
-with `npm link` and use `cleanstack`.
+Open:
+
+- Frontend: <http://localhost:4200>
+- Backend API: <http://localhost:8080/api/greetings>
+- Swagger UI: <http://localhost:8080/swagger-ui.html>
+- Health check: <http://localhost:8080/actuator/health>
+
+This quick start uses H2 and disables authentication so the first run needs no
+database or identity provider. The defaults are PostgreSQL, JWT, Maven, and an
+Angular frontend; run `cleanstack new demo` without `--yes` for an interactive
+wizard, or pass flags explicitly.
+
+If you prefer not to install a global link, run the built CLI directly:
+
+```sh
+node /path/to/CleanStack/dist/cli/index.js new demo --db h2 --auth none --no-entities --yes
+```
+
+## What you get
+
+```text
+demo/
+├── demo-backend/            Spring Boot 4.1 service
+│   ├── mvnw                 Maven wrapper (Maven projects)
+│   ├── pom.xml              or build.gradle.kts for Gradle
+│   └── src/main/java/...
+├── demo-ui/                 Angular 22 application (optional)
+│   └── src/app/...
+└── .cleanstack/
+    └── project.json         Generation metadata used by regeneration
+```
+
+The Spring Boot backend is always generated. Pass `--frontend none` to create
+only the backend.
+
+### Backend
+
+- Java 21 and Spring Boot 4.1.2 with Spring Web MVC, Spring Data JPA, and
+  Bean Validation
+- PostgreSQL, MySQL, or H2 configuration with Flyway migrations
+- Layered packages: `controller`, `service`, `domain`, `repository`,
+  `web/dto`, `web/mapper`, `config`, and `security`
+- CRUD endpoints for each entity with validation and consistent HTTP statuses
+- JWT resource-server security, Keycloak, or no authentication
+- springdoc OpenAPI/Swagger UI and Actuator health endpoints
+- Virtual threads enabled by default
+- Optional Dockerfile and Docker Compose environment
+
+### Frontend
+
+- Angular 22 standalone components, signals, and zoneless change detection
+- Page-first structure with lazy-loaded routes and a responsive application shell
+- Entity list, detail, and create/edit pages backed by typed HTTP services
+- Development proxy from `/api` to `http://localhost:8080`
+- SCSS design tokens and no runtime UI framework dependency
+
+Authentication is a backend concern. Generated Angular apps do **not** include a
+login screen, token-acquisition flow, or HTTP interceptor. Add those in the
+frontend when your identity provider and UX are decided; the backend validates
+bearer tokens according to the selected mode.
 
 ## Commands
 
-```text
-cleanstack
-  new                        Create a new project skeleton
-  entity                     Generate an entity in an existing project
-    generate entity          Alias for `entity`
-    g e                      Alias for `entity`
-  regenerate | r             Re-generate files, preserving protected regions
-  openapi | api              Generate API artifacts from OpenAPI
-  templates                  List, copy, diff, and reset template overrides
-  config                     Inspect the resolved configuration
-  doctor                     Check the environment for common problems
-  ui                         Start the local web UI
-  --version, -V              Print the version
-  --help, -h                 Show help
-  --verbose, -v              Show debug output
-  --quiet, -q                Suppress non-error output
-```
-
-Global flags may appear before or after a command, so `cleanstack new demo
---verbose` and `cleanstack --verbose new demo` are equivalent. Run
-`cleanstack <command> --help` for the full option list of any command.
-
-## Web UI
-
-The project includes CleanStack Studio, a local React UI for creating projects,
-modeling entities, and previewing generated files. It is a thin client over the
-same engine as the CLI: project creation calls `runNewCommand`, entity
-generation calls `runEntityCommand`, and neither templates nor validation rules
-are duplicated in the UI.
-
-```sh
-# Development server with Vite hot reload and the local engine API
-npm run ui:dev
-
-# Build the CLI and UI, then start the studio with the local engine API
-npm run ui
-
-# Type-check the UI sources
-npm run ui:check
-```
-
-With the CLI built or installed globally, start the studio directly:
-
-```sh
-cleanstack ui
-cleanstack ui --workspace ~/projects --port 5180
-cleanstack ui --host 0.0.0.0
-```
-
-The server listens on `http://127.0.0.1:5173` by default. It discovers generated
-projects in the current directory, or in the directory set by
-`CLEANSTACK_WEB_WORKSPACE` (or `--workspace`). The API is local-only and every
-generation action writes to the local filesystem, exactly like the CLI. Use
-`--port` (including `0` for any free port) and `--host` to change the bind
-address, and `--dev` to serve through Vite.
-
-### Static demo mode
-
-`cleanstack ui --static` serves only the built UI on a local port, without the
-engine API:
-
-```sh
-cleanstack ui --static
-npm run ui:static   # rebuild the CLI and UI first
-```
-
-The frontend notices that `/api` is unavailable and switches to a bundled sample
-workspace marked **Static demo**. Generation, file previews, ZIP downloads, and
-YAML saves are disabled because the shared engine is not running; the entity
-editor still renders YAML descriptors in the browser. Static mode never reads or
-writes the local filesystem.
-
-The same bundle can be hosted on any static file server. Build it with
-`npm run ui:build` and publish `web/dist`; relative asset paths let it run under
-a subpath. Opening `index.html` directly from disk works too and falls back to
-the demo data.
-
-The **Create a new project** flow is a four-step wizard that mirrors the options
-accepted by `cleanstack new`:
-
-1. **Project** – folder name and Java package.
-2. **Stack** – database, authentication, build tool, Angular frontend, and Docker files.
-3. **Options** – output directory, entities from the workspace, `git init`, and forced overwrites.
-4. **Review** – inspect the settings and choose a destination.
-
-On the final step you can **Download ZIP** or **Generate into workspace**.
-Downloads are built by the same `runNewCommand` engine in a hidden temporary
-folder inside the workspace, streamed as `<project>.zip`, and then cleaned up;
-the workspace itself is left untouched. Local generation is offered when the UI
-is opened on the machine running the server (a loopback connection). ZIP
-downloads work for any browser that can reach the server. The `/api/meta`
-response reports these capabilities so the UI can disable local generation for
-remote clients.
-
-The underlying routes are `POST /api/projects` for local generation and
-`POST /api/projects/download` for ZIP archives. Both honor the workspace
-configuration file and the workspace `entities/` directory, so the wizard and
-the CLI produce the same project.
-
-The **Entities** page is a visual editor for the descriptor format. Add and
-remove fields, choose types, set length/number/pattern constraints and Bean
-Validation annotations, and define `many-to-one`, `one-to-many`, `one-to-one`,
-or `many-to-many` relations. Existing entities can be loaded from the project
-catalog and regenerated without renaming them. A debounced preview shows the
-YAML descriptor plus representative backend and frontend files rendered by the
-shared templates. **Save as YAML** writes `entities/<Name>.yaml` in the studio
-workspace and asks before replacing an existing file.
-
-Entity generation uses `POST /api/entities`; preview and descriptor saves use
-`POST /api/entities/preview` and `POST /api/entities/yaml`. Relation-aware
-generation stages the project's entities plus the draft in a temporary
-descriptor directory, then calls the same `runEntityCommand --descriptor` path
-as the CLI.
-
-## Configuration
-
-CleanStack reads defaults from the first supported configuration file in the
-current directory or up to four parent directories:
-
-- `cleanstack.config.ts`, `.mts`, `.js`, `.mjs`
-- `cleanstack.config.json`, `.yml`, `.yaml`
-- `.cleanstackrc`, `.cleanstackrc.json`, `.cleanstackrc.yml`, `.cleanstackrc.yaml`
-
-TypeScript and JavaScript files default-export an object; JSON and YAML files
-contain the same object. A file checked into the repository root acts as
-team-wide defaults, so `cleanstack new demo` picks it up from any subdirectory.
-
-```ts
-// cleanstack.config.ts
-export default {
-  packageName: 'com.acme',
-  options: {
-    database: 'postgresql',
-    auth: 'jwt',
-    buildTool: 'maven',
-    docker: false,
-  },
-};
-```
-
-```yaml
-# .cleanstackrc.yml
-packageName: com.acme
-options:
-  database: postgresql
-  auth: jwt
-  buildTool: maven
-```
-
-A team defaults file may omit `name`; the name passed to `cleanstack new` (or
-`--name`) supplies it. Files may also list `entities` using the same format as a
-generated project configuration.
-
-### Environment variables
-
-Every setting can also be supplied through a `CLEANSTACK_` environment
-variable. Precedence, highest first:
-
-1. Command-line options
-2. Environment variables
-3. Configuration file
-4. Built-in defaults
-
-| Variable                                        | Setting                            |
-| ----------------------------------------------- | ---------------------------------- |
-| `CLEANSTACK_NAME`                               | Project name                       |
-| `CLEANSTACK_PACKAGE`, `CLEANSTACK_PACKAGE_NAME` | Java package                       |
-| `CLEANSTACK_BACKEND`                            | Generate backend files             |
-| `CLEANSTACK_FRONTEND`                           | Generate frontend files            |
-| `CLEANSTACK_DATABASE`, `CLEANSTACK_DB`          | `postgresql`, `mysql`, or `h2`     |
-| `CLEANSTACK_AUTH`                               | `jwt`, `none`, or `keycloak`       |
-| `CLEANSTACK_BUILD`, `CLEANSTACK_BUILD_TOOL`     | `maven` or `gradle`                |
-| `CLEANSTACK_DOCKER`                             | Emit Docker files                  |
-| `CLEANSTACK_DRY_RUN`                            | Report changes without writing     |
-| `CLEANSTACK_OUTPUT_DIR`                         | Output directory                   |
-| `CLEANSTACK_CONFIG`                             | Explicit configuration file to use |
-
-Boolean variables accept `true`/`false`, `1`/`0`, `yes`/`no`, and `on`/`off`.
-Empty variables are ignored, and setting two aliases for the same option (for
-example both `CLEANSTACK_DB` and `CLEANSTACK_DATABASE`) is an error.
-
-```sh
-CLEANSTACK_DATABASE=h2 cleanstack new demo
-CLEANSTACK_CONFIG=./ci/team.yml cleanstack config validate
-```
-
-The `config` command reports the effective values for the discovered file,
-including environment overrides:
-
-```sh
-cleanstack config             # print the effective configuration (alias: show)
-cleanstack config show --json # print it as JSON
-cleanstack config path        # print the configuration file path
-cleanstack config validate    # validate the configuration and report problems
-```
-
-## Doctor
-
-`cleanstack doctor` checks the tools and files needed to build generated
-projects and prints a suggested fix for anything that is missing or outdated:
-
-- Node.js 22+
-- Java 21+
-- Maven or Gradle, matching the detected project
-- Angular CLI (optional, only needed for frontend work)
-- Git
-- Free disk space
-- Configuration file validity
-- Built-in template integrity (manifests and referenced template files)
-
-```sh
-cleanstack doctor
-```
-
-Doctor exits non-zero when a hard requirement fails. Warnings, such as a missing
-optional tool, do not block generation but may prevent a generated project from
-building.
-
-## Error messages
-
-Configuration and entity validation errors are reported field by field with
-their full paths, expected values, and a suggested fix:
-
-```text
-✖ Invalid configuration in /work/app/.cleanstackrc.yml:
-  • options.database: Invalid value. Expected one of: "postgresql", "mysql", "h2".
-  • options.auth: Invalid value. Expected one of: "jwt", "none", "keycloak".
-
-  Hint: Fix the highlighted fields and run "cleanstack config validate" again.
-```
-
-Missing entity descriptors list the directories that were searched, suggest a
-similar file name when one exists, and show the inline `--field` alternative.
-Use `--verbose` to include stack traces for unexpected failures.
-
-## Safe regeneration
-
-Generated files that are meant to be customized contain protected regions. Run the
-same command again to update the generated code without losing anything you wrote
-inside those regions. The generator reports every region it updated or preserved.
-
-```sh
-cleanstack new demo --yes
-cleanstack new demo --yes --dry-run   # show what would change
-cleanstack new demo --yes --force     # replace files, including protected regions
-```
-
-`--force` is the explicit escape hatch: it overwrites generated files completely.
-`--dry-run` performs the same merge decisions and reports them without writing.
-
-## Regenerating
-
-The `regenerate` command re-runs generation on an existing project without
-touching code inside protected regions:
-
-```sh
-cleanstack regenerate                    # project skeleton only
-cleanstack regenerate entity Product     # one entity
-cleanstack regenerate --all              # skeleton and every known entity
-```
-
-It decides what to regenerate from the generation metadata stored in
-`.cleanstack/project.json` (written by `cleanstack new`), the configuration file
-searched next to the generated project, and every descriptor in `entities/`.
-When metadata is missing, options are recovered from the configuration file or
-detected from the generated files themselves.
-
-Options:
-
-| Option                       | Meaning                                         |
-| ---------------------------- | ----------------------------------------------- |
-| `--all`                      | Regenerate the skeleton and all known entities. |
-| `--backend / --no-backend`   | Regenerate or skip backend artifacts.           |
-| `--frontend / --no-frontend` | Regenerate or skip frontend artifacts.          |
-| `--force`                    | Overwrite generated files completely.           |
-| `--dry-run`                  | Report what would change without writing files. |
-
-Existing migrations keep their `V<n>` numbers during `--all`; only files that
-changed are rewritten, and conflicts are reported with their region ids.
-
-## Generating an entity
-
-The `entity` command adds an entity to a project that was already generated with
-`cleanstack new`. Run it from the project root, from the backend or frontend
-directory, or from a directory that contains exactly one generated project.
-
-```sh
-cleanstack entity Product
-cleanstack generate entity Product
-cleanstack g e Product
-```
-
-By default the command reads `entities/Product.yaml` (or `.yml` / `.json`) and
-generates both the Spring Boot and Angular artifacts. It also searches for the
-descriptor in `<project>/entities` and in `entities/` next to the project.
-
-To define an entity without a descriptor, pass one or more `--field` options:
-
-```sh
-cleanstack entity Product \
-  --field 'name:String:required:maxLength=120' \
-  --field 'price:BigDecimal:required:min=0' \
-  --field 'active:boolean:default=true'
-```
-
-Generate only one side with `--backend` or `--frontend`, and skip a side with
-`--no-backend` or `--no-frontend`. Other options:
-
-| Option                    | Meaning                                         |
-| ------------------------- | ----------------------------------------------- |
-| `-d, --descriptor <path>` | Use a specific descriptor file.                 |
-| `--field <spec>`          | Inline field definition; repeatable.            |
-| `--table <name>`          | Table name for an inline entity.                |
-| `--package <name>`        | Override the detected Java package.             |
-| `--force`                 | Overwrite generated files completely.           |
-| `--dry-run`               | Report what would change without writing files. |
-
-Running the command again merges the generated code with the protected regions
-in the existing files, so custom code survives. It adds the Angular routes and
-navigation link automatically and picks the next Flyway migration version from
-the existing migrations. See
-[docs/entity-descriptor.md](docs/entity-descriptor.md) for the descriptor
-format and the inline field syntax.
-
-### Relations
-
-Descriptors support `ManyToOne`, `OneToMany`, `ManyToMany` (with a join table),
-and `OneToOne` relations. Generated entities use the matching JPA annotations,
-migrations add foreign keys or join tables, requests accept relation ids, and
-responses include readable labels. Angular forms render selects for the owning
-side of each relation.
+| Command                             | Purpose                                                    |
+| ----------------------------------- | ---------------------------------------------------------- |
+| `cleanstack new <name>`             | Create a project skeleton and optionally its entities      |
+| `cleanstack entity <name>`          | Add an entity to an existing generated project             |
+| `cleanstack generate entity <name>` | Alias for `cleanstack entity`                              |
+| `cleanstack g e <name>`             | Short alias for `cleanstack entity`                        |
+| `cleanstack regenerate`             | Re-render project files while preserving protected regions |
+| `cleanstack regenerate --all`       | Re-render the skeleton and every known entity              |
+| `cleanstack openapi [spec]`         | Generate Angular and optionally Spring API artifacts       |
+| `cleanstack api [spec]`             | Alias for `cleanstack openapi`                             |
+| `cleanstack templates ...`          | List, copy, diff, and reset template overrides             |
+| `cleanstack config ...`             | Inspect and validate the resolved configuration            |
+| `cleanstack doctor`                 | Check tool versions, configuration, and built-in templates |
+| `cleanstack ui`                     | Start CleanStack Studio on a local port                    |
+
+Global flags work before or after a command: `--verbose`/`-v`, `--quiet`/`-q`,
+`--version`/`-V`, and `--help`/`-h`. Run `cleanstack <command> --help` for the
+full option list.
+
+## Entities in a minute
+
+Add `entities/Product.yaml` in the workspace:
 
 ```yaml
 name: Product
@@ -363,209 +167,99 @@ fields:
   - name: name
     type: String
     required: true
-relations:
-  - type: ManyToOne
-    target: Category
-    field: category
+    maxLength: 120
+  - name: price
+    type: BigDecimal
     required: true
-  - type: ManyToMany
-    target: Tag
-    field: tags
+    min: 0
 ```
 
-Related descriptors must be present in `entities/`, and the target entity
-should be generated before the entity that owns the foreign key or join table.
-See [docs/entity-descriptor.md](docs/entity-descriptor.md#relations) for the
-owning and inverse side rules.
-
-## Generating API artifacts from OpenAPI
-
-Generated Spring Boot projects include springdoc. While the backend is running it
-publishes the contract at:
-
-- Swagger UI: `http://localhost:8080/swagger-ui.html`
-- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
-- OpenAPI YAML: `http://localhost:8080/v3/api-docs.yaml`
-
-Generate or refresh the typed Angular client from the workspace root:
+Then generate it:
 
 ```sh
-cleanstack openapi --input http://localhost:8080/v3/api-docs
-cleanstack api --input openapi/openapi.json
+cleanstack entity Product
 ```
 
-Without `--input`, the command looks for `openapi/openapi.yaml`, `.yml`, or
-`.json`, then a few common locations such as `openapi.yaml` and
-`docs/openapi.yaml`. The default output is
-`<name>-ui/src/app/api/generated`.
-
-| Option                      | Meaning                                                           |
-| --------------------------- | ----------------------------------------------------------------- |
-| `-i, --input <path\|url>`   | OpenAPI 3 document. URLs are downloaded and validated.            |
-| `-o, --output <path>`       | Angular output inside the frontend project.                       |
-| `-g, --generator <name>`    | openapi-generator client generator, default `typescript-angular`. |
-| `--contract-first`          | Also generate Spring API interfaces and models.                   |
-| `--backend-output <path>`   | Spring output inside `src/main/java`; defaults to the package.    |
-| `--spring-generator <name>` | Spring generator, default `spring`.                               |
-| `--force`                   | Replace collisions with unmanaged files (unknown files remain).   |
-| `--dry-run`                 | Generate in a temporary directory and report without writing.     |
-
-Client regeneration is safe by design:
-
-1. The generator writes into a temporary directory, so a failed generation
-   never leaves a half-written client.
-2. `src/app/api/generated/.cleanstack-openapi.json` records every generated
-   file and its hash.
-3. Only tracked files can be replaced or removed. Stale generated files are
-   deleted; custom files in the same directory are preserved.
-4. Files edited after generation produce warnings before they are replaced.
-   Collisions with untracked files stop the command unless `--force` is used.
-5. The spec is validated as OpenAPI 3 before the generator runs.
-
-### Contract-first mode
-
-Pass `--contract-first` when the OpenAPI document is the source of truth. The
-command generates the Angular client and Spring API interfaces from the same
-document:
+CleanStack creates the backend model, persistence, service, HTTP layer, Flyway
+migration, and the Angular model, service, and pages. Descriptors can also be
+built inline with repeatable `--field` options:
 
 ```sh
-cleanstack openapi --contract-first --input openapi/openapi.yaml
+cleanstack entity Product \
+  --field 'name:String:required:maxLength=120' \
+  --field 'price:BigDecimal:required:min=0'
 ```
 
-Spring artifacts are written to
-`<name>-backend/src/main/java/<package>/api/generated` by default:
+See [Entity descriptors](docs/entity-descriptor.md) for field types,
+validations, inline syntax, and relation ownership rules.
 
-```text
-com/example/demo/api/generated/
-  api/ProductsApi.java       interfaces with @RequestMapping operations
-  model/Product.java         request and response models
-  .cleanstack-openapi.json   ownership manifest
-```
+## Safe regeneration
 
-The Spring generator runs in interface-only mode. Implement each generated
-interface with a normal controller:
-
-```java
-@RestController
-public class ProductsController implements ProductsApi {
-    @Override
-    public ResponseEntity<List<Product>> listProducts() {
-        // call a service, map domain objects, return the response model
-    }
-}
-```
-
-Do not add a class-level `@RequestMapping` to the implementation; the generated
-interface already declares the path. Use `--backend-output` to choose a
-different package directory under `src/main/java`, and `--spring-generator` to
-override the generator. Both outputs are staged and planned before either is
-written, so a collision in one target does not leave the other half-updated.
-The same manifest rules apply to the backend directory.
-
-The command uses the `@openapitools/openapi-generator-cli` dev dependency
-installed in the generated Angular app, or downloads a pinned version with
-`npx`. openapi-generator requires Java 11 or later; run `cleanstack doctor` to
-check the local environment. See [docs/OPENAPI.md](docs/OPENAPI.md) for the
-manifest format and design details.
-
-## Template overrides
-
-Every generated file comes from a Handlebars template. Templates resolve through
-a three-level priority chain:
-
-1. `.cleanstack/templates/` in the project (or the workspace root for
-   `cleanstack new`)
-2. `~/.cleanstack/templates/` in your home directory
-3. Built-in templates shipped with CleanStack
-
-The chain mirrors the template directory layout: to override a single file, copy
-only that file and keep its relative path. For example, to replace the backend
-README of the Spring Boot templates:
-
-```text
-.cleanstack/templates/spring-boot/root/README.md.hbs
-```
-
-A partial override affects just that file. Everything not overridden continues
-to render from the built-in templates, so you never copy a whole template pack
-to change one file. A template can also replace a template set's file list: put
-a `manifest.json` with a `files` array in an override directory, and it fully
-controls which files that set writes (built-in files you leave out are not
-generated).
-
-Which project level applies depends on the command:
-
-| Command                           | Project override location                              |
-| --------------------------------- | ------------------------------------------------------ |
-| `cleanstack new`                  | `.cleanstack/templates/` next to the generated project |
-| `cleanstack entity`, `regenerate` | `.cleanstack/templates/` inside the generated project  |
-
-Keep override templates safe to regenerate: include the
-`<cleanstack:user-code ...>` region markers where the built-in template has
-them. Without a matching region the safe writer preserves the existing file on
-reruns (see [Safe regeneration](#safe-regeneration)); `--force` overwrites.
-`manifest.json` itself participates in the chain, and a manifest override must
-declare a `files` array.
-
-## Managing templates
-
-The `templates` command inspects and manages the override directory of the
-current project (`.cleanstack/templates`):
+Generated files contain protected regions. Each region records a checksum of
+the template body it was generated from, so CleanStack can tell whether the
+template changed, whether you changed the region, or both.
 
 ```sh
-cleanstack templates list            # every template and where it resolves from
-cleanstack templates init            # copy built-in templates into the project
-cleanstack templates diff            # show differences from the built-in
-cleanstack templates reset <name>    # remove one override, fall back to built-in
+cleanstack regenerate --dry-run     # show what would change
+cleanstack regenerate --all         # skeleton plus every known entity
+cleanstack regenerate --force       # replace files completely, including regions
 ```
 
-`list` annotates each template with its source (`project`, `user`, or
-`built-in`) and flags override-only files. A pack name can narrow the output:
-`cleanstack templates list spring-boot`.
+Files without protected regions are preserved on rerun unless `--force` is
+passed. Conflicts leave the file untouched and are reported with the region
+ids; generation stops rather than writing a partially merged file. See
+[Protected regions](docs/protected-regions.md) for the full contract.
 
-`init` copies the built-in templates so you can edit them locally. Existing
-override files are kept unless you pass `--force`; `--dry-run` reports what
-would be copied without writing.
+## CleanStack Studio
 
-`diff` compares every override file with its built-in counterpart and prints
-line differences (context collapsed around changes). Files that exist only in
-an override are reported as added.
+```sh
+cleanstack ui
+```
 
-`reset` deletes an override file so the built-in template applies again. The
-name is the pack-qualified template path (with or without the `.hbs`
-extension), for example `spring-boot/root/README.md`. Without a project or user
-override the command reports that nothing needs resetting; `--dry-run` only
-reports what it would delete.
+Studio opens on <http://127.0.0.1:5173>. It provides a four-step project wizard,
+a visual entity editor with generated-code previews, and YAML save support. It
+uses the same `runNewCommand` and `runEntityCommand` engine as the CLI, so the
+wizard and terminal produce the same files.
 
-For the complete template catalog, context variables, helpers, manifest format,
-and best practices, see [docs/TEMPLATES.md](docs/TEMPLATES.md).
+```sh
+cleanstack ui --workspace ~/projects --port 5180
+cleanstack ui --host 0.0.0.0
+cleanstack ui --static     # built UI only, bundled demo data, no API
+```
+
+Studio is local-first: local generation is restricted to loopback clients, and
+ZIP downloads work without writing to the workspace. Static mode serves the
+built bundle and demo data without accessing project files.
+
+## Documentation
+
+| Document                                        | Contents                                                                        |
+| ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| [User guide](docs/GUIDE.md)                     | Installation, project creation, entities, regeneration, Studio, troubleshooting |
+| [Architecture](docs/ARCHITECTURE.md)            | Generator modules, pipelines, template engine, generated application design     |
+| [Templates](docs/TEMPLATES.md)                  | Template catalog, context variables, helpers, manifests, overrides              |
+| [Entity descriptors](docs/entity-descriptor.md) | YAML format, field types, validations, relations                                |
+| [Protected regions](docs/protected-regions.md)  | Marker syntax, checksums, merge strategies, error codes                         |
+| [OpenAPI integration](docs/OPENAPI.md)          | springdoc, client generation, contract-first workflows, manifests               |
+| [Comparison](docs/COMPARISON.md)                | CleanStack versus JHipster, Spring Initializr, Bootify, and Seed4J              |
+| [Contributing](docs/CONTRIBUTING.md)            | Development setup, tests, conventions, pull request checklist                   |
 
 ## Development
 
 ```sh
-npm run build
-npm test
-npm run lint
-npm run format:check
+npm run build          # compile the CLI and library to dist/
+npm test               # build, then run the Node test suite
+npm run test:e2e       # opt-in full-stack test; needs Java 21, Maven, network
+npm run lint           # ESLint
+npm run format:check   # Prettier check
+npm run ui:check       # type-check the Studio sources
+npm run ui             # build and start Studio with the local API
+npm run ui:dev         # Vite hot reload plus the local API
 ```
 
-## Project structure
-
-- `src/cli` — command-line entry points and commands
-- `src/core` — generator logic and shared domain behavior
-- `src/templates` — template loading and rendering code
-- `src/utils` — shared utilities
-- `templates` — built-in project templates
-- `tests` — automated tests
-- `docs` — design and usage documentation
-- `examples` — example configurations and generated projects
-
-## Roadmap
-
-- Add project configuration and validation
-- Add built-in Spring Boot and Angular templates
-- Generate projects from the command line
+See [Contributing](docs/CONTRIBUTING.md) for the test strategy, repository
+layout, and template authoring rules.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
