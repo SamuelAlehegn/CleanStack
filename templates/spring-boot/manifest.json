@@ -7,6 +7,22 @@
   },
   "files": [
     { "template": "build/pom.xml.hbs", "destination": "pom.xml", "when": { "buildTool": "maven" } },
+    {
+      "template": "build/mvnw.hbs",
+      "destination": "mvnw",
+      "when": { "buildTool": "maven" },
+      "executable": true
+    },
+    {
+      "template": "build/mvnw.cmd.hbs",
+      "destination": "mvnw.cmd",
+      "when": { "buildTool": "maven" }
+    },
+    {
+      "template": "build/maven-wrapper.properties.hbs",
+      "destination": ".mvn/wrapper/maven-wrapper.properties",
+      "when": { "buildTool": "maven" }
+    },
     { "template": "build/build.gradle.kts.hbs", "destination": "build.gradle.kts", "when": { "buildTool": "gradle" } },
     { "template": "build/settings.gradle.kts.hbs", "destination": "settings.gradle.kts", "when": { "buildTool": "gradle" } },
     { "template": "root/.gitignore.hbs", "destination": ".gitignore" },
@@ -21,6 +37,7 @@
     { "template": "resources/db/migration/V1__baseline.sql.hbs", "destination": "src/main/resources/db/migration/V1__baseline.sql" },
     { "template": "resources/db/migration/Entity.sql.hbs", "destination": "src/main/resources/db/migration/V{{entity.migrationVersion}}__create_{{entity.tableName}}_table.sql", "forEach": "entities" },
     { "template": "java/Application.java.hbs", "destination": "src/main/java/{{package}}/{{ApplicationName}}Application.java" },
+    { "template": "java/ApplicationTests.java.hbs", "destination": "src/test/java/{{package}}/{{ApplicationName}}Tests.java" },
     { "template": "java/domain/package-info.java.hbs", "destination": "src/main/java/{{package}}/domain/package-info.java" },
     { "template": "java/domain/Greeting.java.hbs", "destination": "src/main/java/{{package}}/domain/Greeting.java" },
     { "template": "java/domain/Entity.java.hbs", "destination": "src/main/java/{{package}}/domain/{{entity.className}}.java", "forEach": "entities" },
