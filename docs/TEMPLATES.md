@@ -14,10 +14,12 @@ This document covers:
 
 See also:
 
-- [README: Template overrides](../README.md#template-overrides) — user-facing
+- [User guide: template overrides](GUIDE.md#template-overrides) — user-facing
   override behavior and the `templates` commands
 - [Protected regions](protected-regions.md) — the merge contract referenced
   throughout this document
+- [Architecture](ARCHITECTURE.md#templates-and-manifests) — how manifests and
+  the template engine fit into the generation pipeline
 
 ## How templates are loaded
 
@@ -37,8 +39,10 @@ Which directory is "the project" depends on the command:
 
 - `cleanstack new` uses the directory it runs in (the workspace that contains
   the generated `<name>-backend` and `<name>-ui` folders).
-- `cleanstack entity` and `cleanstack regenerate` use the generated project
-  root, so their overrides live inside the generated project.
+- `cleanstack entity` and `cleanstack regenerate` use the command's workspace
+  root: the generated project root, or the subdirectory where you run them when
+  it is inside the project. Their overrides live under that directory's
+  `.cleanstack/templates`.
 
 Inspect and manage overrides with:
 
@@ -55,10 +59,16 @@ slashes. Template names on disk keep their `.hbs` suffix; the engine appends
 
 ## Built-in packs
 
-| Pack          | Generated into   | When generated             | Description                                                      |
-| ------------- | ---------------- | -------------------------- | ---------------------------------------------------------------- |
-| `spring-boot` | `<name>-backend` | `options.backend` is true  | Spring Boot service with layered packages, JPA, Flyway, and auth |
-| `angular`     | `<name>-ui`      | `options.frontend` is true | Standalone Angular app with routing, signals, and entity screens |
+| Pack          | Generated into   | When generated                                                    | Description                                                      |
+| ------------- | ---------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `spring-boot` | `<name>-backend` | Always by `new`; when the backend side is enabled for the command | Spring Boot service with layered packages, JPA, Flyway, and auth |
+| `angular`     | `<name>-ui`      | `options.frontend` is true                                        | Standalone Angular app with routing, signals, and entity screens |
+
+`cleanstack new` always generates the Spring Boot backend; only the Angular
+frontend is optional (`--frontend none`). Entity and regeneration commands
+generate the backend and frontend sides that exist in the target project unless
+explicitly restricted with `--backend`/`--no-backend` or
+`--frontend`/`--no-frontend`.
 
 Individual manifest entries can be disabled by project options. Entries marked
 **entity** are rendered once per configured entity (`forEach: "entities"`).
@@ -69,14 +79,17 @@ Manifest: `templates/spring-boot/manifest.json`.
 
 ### Build and project files
 
-| Template                        | Destination           | Condition | Purpose                                                    |
-| ------------------------------- | --------------------- | --------- | ---------------------------------------------------------- |
-| `build/pom.xml.hbs`             | `pom.xml`             | Maven     | Spring Boot, JPA, Flyway, validation, springdoc, auth deps |
-| `build/build.gradle.kts.hbs`    | `build.gradle.kts`    | Gradle    | Kotlin DSL build file with the same dependencies           |
-| `build/settings.gradle.kts.hbs` | `settings.gradle.kts` | Gradle    | Gradle project name and repositories                       |
-| `root/.gitignore.hbs`           | `.gitignore`          | —         | Java/Maven/Gradle ignore rules                             |
-| `root/README.md.hbs`            | `README.md`           | —         | Stack, run/build commands, configuration, structure        |
-| `root/ARCHITECTURE.md.hbs`      | `ARCHITECTURE.md`     | —         | Layering rules and package conventions                     |
+| Template                             | Destination                             | Condition | Purpose                                                    |
+| ------------------------------------ | --------------------------------------- | --------- | ---------------------------------------------------------- |
+| `build/pom.xml.hbs`                  | `pom.xml`                               | Maven     | Spring Boot, JPA, Flyway, validation, springdoc, auth deps |
+| `build/mvnw.hbs`                     | `mvnw`                                  | Maven     | Maven wrapper script (generated executable)                |
+| `build/mvnw.cmd.hbs`                 | `mvnw.cmd`                              | Maven     | Maven wrapper script for Windows                           |
+| `build/maven-wrapper.properties.hbs` | `.mvn/wrapper/maven-wrapper.properties` | Maven     | Maven distribution and wrapper version                     |
+| `build/build.gradle.kts.hbs`         | `build.gradle.kts`                      | Gradle    | Kotlin DSL build file with the same dependencies           |
+| `build/settings.gradle.kts.hbs`      | `settings.gradle.kts`                   | Gradle    | Gradle project name and repositories                       |
+| `root/.gitignore.hbs`                | `.gitignore`                            | —         | Java/Maven/Gradle ignore rules                             |
+| `root/README.md.hbs`                 | `README.md`                             | —         | Stack, run/build commands, configuration, structure        |
+| `root/ARCHITECTURE.md.hbs`           | `ARCHITECTURE.md`                       | —         | Layering rules and package conventions                     |
 
 ### Local infrastructure
 
@@ -95,6 +108,7 @@ Manifest: `templates/spring-boot/manifest.json`.
 | Template                                            | Destination                                                                      | Condition | Purpose                                           |
 | --------------------------------------------------- | -------------------------------------------------------------------------------- | --------- | ------------------------------------------------- |
 | `java/Application.java.hbs`                         | `src/main/java/{{package}}/{{ApplicationName}}Application.java`                  | —         | Spring Boot entry point                           |
+| `java/ApplicationTests.java.hbs`                    | `src/test/java/{{package}}/{{ApplicationName}}Tests.java`                        | —         | Context-load smoke test for the application       |
 | `java/domain/package-info.java.hbs`                 | `src/main/java/{{package}}/domain/package-info.java`                             | —         | Domain package documentation                      |
 | `java/domain/Greeting.java.hbs`                     | `src/main/java/{{package}}/domain/Greeting.java`                                 | —         | Sample domain record used by the greeting API     |
 | `java/domain/Entity.java.hbs`                       | `src/main/java/{{package}}/domain/{{entity.className}}.java`                     | entity    | JPA entity with fields, relations, and validation |
@@ -276,12 +290,17 @@ Entity-scoped templates additionally receive `entity` for the current entity.
 | `field.minLength` / `maxLength` | `2` / `120`  | Length constraints                               |
 | `field.min` / `max`             | `0`          | Numeric bounds                                   |
 | `field.pattern`                 | `^[A-Z]+$`   | Regular-expression constraint                    |
-| `field.validations`             | `['email']`  | Extra named validations                          |
+| `field.validations`             | `['Email']`  | Extra named Bean Validation constraints          |
 | `field.javaType`                | `BigDecimal` | Java type used by backend templates              |
-| `field.typescriptType`          | `number`     | TypeScript type used by Angular templates        |
-| `field.typescriptDefault`       | `0`          | TypeScript literal used when the value is absent |
+| `field.typescriptType`          | `string`     | TypeScript type used by Angular templates        |
+| `field.typescriptDefault`       | `''`         | TypeScript literal used when the value is absent |
 | `field.columnName`              | `price`      | Snake-case database column                       |
 | `field.validationAnnotations`   | string[]     | Fully qualified Jakarta validation annotations   |
+
+`BigDecimal` and `BigInteger` map to TypeScript `string` so their precision is
+not lost; all other numeric types map to `number`. The TypeScript default
+depends only on `typescriptType` (`false` for booleans, `0` for numbers, `''`
+for strings); a descriptor-level numeric default does not change it.
 
 ### Relation model
 
@@ -391,6 +410,7 @@ Manifest fields:
 | `files[].destination` | yes      | Output path relative to the generated project subset                                |
 | `files[].when`        | no       | Equality conditions checked against `project.options` (or top-level project fields) |
 | `files[].forEach`     | no       | Only `"entities"` today: render once per entity with `entity` in context            |
+| `files[].executable`  | no       | Mark the generated file executable (`0755`); used by the Maven wrapper script       |
 
 Destination interpolation is intentionally limited to:
 
@@ -436,16 +456,23 @@ project partial shadows the user and built-in partials of the same name.
    To override a single file without copying the rest, create only that file
    under `.cleanstack/templates/<pack>/` with the same relative path.
 
-2. Keep the protected-region markers, then customize the surrounding template:
+2. Keep the protected-region markers, then customize the surrounding template.
+   This trimmed version of the built-in model template adds a view-model note
+   inside the existing region:
 
+   <!-- prettier-ignore -->
    ```hbs
-   export interface
-   {{entity.className}}
-   { id: number; //
-   <cleanstack:user-code id='model.{{entity.variableName}}.custom'>
-     //
-   </cleanstack:user-code>
+   /** A {{entity.className}} as returned by the API. */
+   export interface {{entity.className}} {
+     id: string;
+   {{#each entity.fields}}
+     {{name}}{{#unless required}}?{{/unless}}: {{typescriptType}};
+   {{/each}}
    }
+
+   // <cleanstack:user-code id="model.{{entity.variableName}}.custom">
+   // Add view-model helpers here.
+   // </cleanstack:user-code>
    ```
 
 3. Regenerate and verify the merge:
@@ -460,8 +487,9 @@ project partial shadows the user and built-in partials of the same name.
 **Treat protected regions as part of the API.** Keep the region ids and comment
 syntax from the built-in template. `checksum` attributes are written by the
 generator; never put them in a template. If you remove a region from a custom
-template, the safe writer will preserve existing user content instead of
-overwriting it, which can make the new template look ignored. See
+template, the existing region becomes an orphan: under the default `manual`
+strategy the merge reports a conflict and leaves the file unchanged, so the
+template change can look ignored. Re-add the region or use `--force`. See
 [Protected regions](protected-regions.md).
 
 **Guard optional context.** Rendering is strict: a missing variable throws.
@@ -503,11 +531,11 @@ else.
 
 ## Troubleshooting
 
-| Symptom                                            | Cause and fix                                                                                                                                  |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| A custom template is ignored on rerun              | The template has no protected region matching the existing file, so the safe writer preserved it. Re-add the region or use `--force`.          |
-| `TemplateNotFoundError` lists only built-in paths  | The override path is wrong; it must be `<root>/<pack>/<template>.hbs`. Run `cleanstack templates list` to compare.                             |
-| `manifest.json` error about a `files` array        | A manifest override is malformed. The error names the source (`project: ...` / `user: ...`).                                                   |
-| Changes do not appear for `entity`                 | Overrides for `entity` live inside the generated project (`.cleanstack/templates` in the project root), not in the workspace that contains it. |
-| `cleanstack templates reset` says nothing to reset | The template resolves from the built-in pack; there is no project or user override to delete.                                                  |
-| Rendered output shows literal `{{...}}`            | The placeholder is outside the supported destination subset (helpers are not evaluated in `destination`) or a partial is missing.              |
+| Symptom                                            | Cause and fix                                                                                                                                                              |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A custom template is ignored on rerun              | The new template no longer contains an existing region, so the merge reported an orphaned-region conflict and left the file unchanged. Re-add the region or use `--force`. |
+| `TemplateNotFoundError` lists only built-in paths  | The override path is wrong; it must be `<root>/<pack>/<template>.hbs`. Run `cleanstack templates list` to compare.                                                         |
+| `manifest.json` error about a `files` array        | A manifest override is malformed. The error names the source (`project: ...` / `user: ...`).                                                                               |
+| Changes do not appear for `entity`                 | Overrides for `entity` resolve from the command's workspace root (normally the generated project), not necessarily the workspace that contains it.                         |
+| `cleanstack templates reset` says nothing to reset | The template resolves from the built-in pack; there is no project or user override to delete.                                                                              |
+| Rendered output shows literal `{{...}}`            | The placeholder is outside the supported destination subset (helpers are not evaluated in `destination`) or a partial is missing.                                          |
