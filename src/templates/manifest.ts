@@ -15,6 +15,8 @@ export interface ManifestEntry {
   destination: string;
   when?: Record<string, unknown>;
   forEach?: 'entities';
+  /** Marks the generated file as executable on platforms that support it. */
+  executable?: boolean;
 }
 
 export interface TemplateManifest {
@@ -208,6 +210,9 @@ export async function renderManifest(
     });
     options.onFile?.(result);
     if (result.status !== 'conflict' && result.status !== 'preserved') {
+      if (item.entry.executable && !output.dryRun) {
+        await output.chmod(item.destination, 0o755);
+      }
       written.push(item.destination);
     }
   }

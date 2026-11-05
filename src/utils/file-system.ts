@@ -1,5 +1,6 @@
 import {
   access as nodeAccess,
+  chmod as nodeChmod,
   cp as nodeCopy,
   mkdir as nodeMkdir,
   readFile as nodeReadFile,
@@ -19,6 +20,7 @@ export interface FileSystemEntry {
 
 export interface FileSystemAdapter {
   access(filePath: string): Promise<void>;
+  chmod(filePath: string, mode: number): Promise<void>;
   copy(sourcePath: string, destinationPath: string, options: { overwrite: boolean }): Promise<void>;
   mkdir(directoryPath: string): Promise<void>;
   readFile(filePath: string): Promise<string>;
@@ -31,6 +33,7 @@ export interface FileSystemAdapter {
 export type FileSystemOperation =
   | 'createDirectory'
   | 'writeFile'
+  | 'chmod'
   | 'readFile'
   | 'exists'
   | 'copy'
@@ -104,6 +107,9 @@ export class InvalidOperationError extends Error {
 const nodeFileSystemAdapter: FileSystemAdapter = {
   async access(filePath) {
     await nodeAccess(filePath);
+  },
+  async chmod(filePath, mode) {
+    await nodeChmod(filePath, mode);
   },
   async copy(sourcePath, destinationPath, options) {
     await nodeCopy(sourcePath, destinationPath, {
@@ -192,6 +198,11 @@ export class FileSystemService {
       },
       true,
     );
+  }
+
+  async chmod(filePath: string, mode: number): Promise<void> {
+    const target = await this.resolvePath(filePath);
+    await this.perform('chmod', filePath, () => this.adapter.chmod(target, mode), true);
   }
 
   async readFile(filePath: string): Promise<string> {
