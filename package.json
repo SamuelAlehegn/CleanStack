@@ -4,6 +4,14 @@
   "description": "A clean, maintainable Angular and Spring Boot project generator.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SamuelAlehegn/CleanStack.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SamuelAlehegn/CleanStack/issues"
+  },
+  "homepage": "https://github.com/SamuelAlehegn/CleanStack#readme",
   "engines": {
     "node": ">=22.0.0"
   },
@@ -64,6 +72,7 @@
     "templates",
     "web/dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -80,6 +89,11 @@
     "ui:check": "tsc -p web/tsconfig.json",
     "start": "npm run build && node dist/cli/index.js hello",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "commitlint": "commitlint",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "changeset publish",
+    "prepare": "husky",
     "prepublishOnly": "npm run build && npm run ui:build"
   },
   "keywords": [
@@ -91,11 +105,15 @@
     "cli"
   ],
   "devDependencies": {
+    "@changesets/cli": "^3.0.3",
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
     "@types/node": "^22.10.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "eslint": "^9.17.0",
+    "husky": "^9.1.7",
     "prettier": "^3.4.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

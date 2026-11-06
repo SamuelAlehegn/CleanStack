@@ -38,20 +38,24 @@ development workflow. Use `npm link`, `node dist/cli/index.js`, or
 
 ## Scripts
 
-| Script                 | Purpose                                                    |
-| ---------------------- | ---------------------------------------------------------- |
-| `npm run build`        | Compile `src/` to `dist/` with TypeScript                  |
-| `npm test`             | Build, then run the Node test suite                        |
-| `npm run test:e2e`     | Build, then run the opt-in full-stack end-to-end test      |
-| `npm run lint`         | Run ESLint over the repository                             |
-| `npm run format`       | Format supported files with Prettier                       |
-| `npm run format:check` | Check formatting without writing                           |
-| `npm run clean`        | Remove `dist/`                                             |
-| `npm run ui`           | Build CLI and Studio, then start Studio with the local API |
-| `npm run ui:dev`       | Start Vite with hot reload and the local engine API        |
-| `npm run ui:build`     | Build the Studio bundle into `web/dist`                    |
-| `npm run ui:check`     | Type-check the Studio sources                              |
-| `npm run ui:static`    | Build CLI and Studio, then serve static demo mode          |
+| Script                 | Purpose                                                     |
+| ---------------------- | ----------------------------------------------------------- |
+| `npm run build`        | Compile `src/` to `dist/` with TypeScript                   |
+| `npm test`             | Build, then run the Node test suite                         |
+| `npm run test:e2e`     | Build, then run the opt-in full-stack end-to-end test       |
+| `npm run lint`         | Run ESLint over the repository                              |
+| `npm run format`       | Format supported files with Prettier                        |
+| `npm run format:check` | Check formatting without writing                            |
+| `npm run clean`        | Remove `dist/`                                              |
+| `npm run ui`           | Build CLI and Studio, then start Studio with the local API  |
+| `npm run ui:dev`       | Start Vite with hot reload and the local engine API         |
+| `npm run ui:build`     | Build the Studio bundle into `web/dist`                     |
+| `npm run ui:check`     | Type-check the Studio sources                               |
+| `npm run ui:static`    | Build CLI and Studio, then serve static demo mode           |
+| `npm run commitlint`   | Lint commit messages (also runs from the `commit-msg` hook) |
+| `npm run changeset`    | Record a release note for a user-visible change             |
+| `npm run version`      | Apply pending changesets and update `CHANGELOG.md`          |
+| `npm run release`      | Publish the package and create the GitHub release           |
 
 Prettier is the source of truth for formatting: single quotes, trailing commas,
 100-column lines, LF endings. Do not hand-format around it. The template packs
@@ -88,6 +92,43 @@ See [Architecture](ARCHITECTURE.md) for the pipelines and data flow.
    [TEMPLATES.md](TEMPLATES.md).
 6. Open a pull request against `main` with a short description of the behavior
    change and how it was verified.
+
+## Commit messages
+
+This repository follows [Conventional Commits](https://www.conventionalcommits.org/).
+The format is `type(scope): subject`, for example:
+
+```text
+feat(cli): add --dry-run to the entity command
+fix(templates): preserve CRLF line endings on Windows
+docs: explain protected-region checksums
+```
+
+Use one of `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`,
+`revert`, `style`, or `test`. Keep the subject imperative and under 100
+characters; put context in the body. A `commit-msg` hook runs commitlint
+locally, and CI lints every commit in a pull request.
+
+## Changesets and releases
+
+User-visible changes need a changeset. Run `npm run changeset`, choose the
+semantic-version bump, and write the summary for users:
+
+- `patch` for backwards-compatible fixes
+- `minor` for backwards-compatible features
+- `major` for breaking changes
+
+Commit the generated `.changeset/*.md` file with the rest of the change. Do not
+edit the version in `package.json` or `CHANGELOG.md` by hand; `changeset version`
+owns both.
+
+On every push to `main`, the release workflow opens or updates a
+`chore(release): version packages` pull request. Merging it bumps the version,
+regenerates `CHANGELOG.md`, publishes to npm, and creates the GitHub release.
+The workflow can also be started manually from the Actions tab. Publishing
+requires an `NPM_TOKEN` repository secret with publish access to the
+`cleanstack-generator` package; provenance is enabled through `id-token: write`.
+The release and CI workflows live in `.github/workflows/`.
 
 ## TypeScript conventions
 
@@ -294,6 +335,7 @@ change.
 - [ ] `npm run lint` passes.
 - [ ] `npm run format:check` passes.
 - [ ] New behavior has tests, including a failure case.
+- [ ] User-visible changes include a changeset; internal-only changes do not.
 - [ ] Template changes still regenerate safely and preserve protected regions.
 - [ ] Generated files were not committed by accident.
 - [ ] User-facing docs and command help are updated.
