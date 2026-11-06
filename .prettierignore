@@ -2,4 +2,5 @@ dist/
 node_modules/
 templates/
 LICENSE
+CHANGELOG.md
 web/dist/
