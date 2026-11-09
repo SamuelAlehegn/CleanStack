@@ -29,11 +29,11 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-flyway")
 {{/if}}
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
-{{#if (eq project.options.auth "jwt")}}
+{{#if (or (eq project.options.auth "jwt") (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
 {{/if}}
-{{#if (eq project.options.auth "keycloak")}}
-    implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+{{#if (eq project.options.auth "session")}}
+    implementation("org.springframework.boot:spring-boot-starter-security")
 {{/if}}
 {{#if (eq project.options.database "postgresql")}}
 

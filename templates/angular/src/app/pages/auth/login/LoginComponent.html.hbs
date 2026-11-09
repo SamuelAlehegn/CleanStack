@@ -1,0 +1,86 @@
+<section class="auth-page">
+  <div class="auth-card">
+    <span class="auth-brand">
+      <span class="brand-mark" aria-hidden="true">C</span>
+      <span>{{pascalCase project.name}}</span>
+    </span>
+
+{{#if (eq project.options.auth "session")}}
+    <p class="eyebrow">Welcome back</p>
+    <h1>Sign in</h1>
+    <p class="intro">Use your account to continue to your workspace.</p>
+
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      <label class="field">
+        <span>Username</span>
+        <input formControlName="username" autocomplete="username" />
+      </label>
+
+      <label class="field">
+        <span>Password</span>
+        <input type="password" formControlName="password" autocomplete="current-password" />
+      </label>
+
+      @if (error()) {
+        <p class="form-error" role="alert">\{{ error() }}</p>
+      }
+
+      <button class="primary-button" type="submit" [disabled]="submitting()">
+        \{{ submitting() ? 'Signing in…' : 'Sign in' }}
+      </button>
+    </form>
+
+    <p class="hint">
+      Starter account: <code>demo</code> / <code>demo</code>. Override it with
+      <code>APP_SECURITY_USERNAME</code> and <code>APP_SECURITY_PASSWORD</code>.
+    </p>
+{{/if}}
+{{#if (eq project.options.auth "jwt")}}
+    <p class="eyebrow">Token access</p>
+    <h1>Sign in</h1>
+    <p class="intro">Paste an access token issued by your JWT provider.</p>
+
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      <label class="field">
+        <span>Access token</span>
+        <textarea
+          formControlName="token"
+          rows="5"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="eyJhbGciOi…"
+        ></textarea>
+      </label>
+
+      @if (error()) {
+        <p class="form-error" role="alert">\{{ error() }}</p>
+      }
+
+      <button class="primary-button" type="submit" [disabled]="submitting()">
+        \{{ submitting() ? 'Signing in…' : 'Sign in' }}
+      </button>
+    </form>
+
+    <p class="hint">
+      The token is stored in this browser for local development. Use the OIDC option
+      for a production browser login flow.
+    </p>
+{{/if}}
+{{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+    <p class="eyebrow">Single sign-on</p>
+    <h1>Sign in</h1>
+    <p class="intro">Continue with \{{ provider }} to access your workspace.</p>
+
+    <button class="primary-button" type="button" (click)="login()">
+      Continue with \{{ provider }}
+    </button>
+
+    <p class="hint">
+      You will be redirected to your identity provider and returned here after signing in.
+    </p>
+{{/if}}
+  </div>
+</section>
+
+<!-- <cleanstack:user-code id="component.login.custom"> -->
+<!-- </cleanstack:user-code> -->

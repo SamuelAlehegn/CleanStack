@@ -1,0 +1,40 @@
+import { Component, computed, inject } from '@angular/core';
+{{#unless (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+import { Router } from '@angular/router';
+{{/unless}}
+
+import { AuthService } from '../../../core/auth/auth.service';
+
+@Component({
+  selector: 'app-profile',
+  templateUrl: './profile.component.html',
+  styleUrl: './profile.component.scss',
+})
+export class ProfileComponent {
+  private readonly auth = inject(AuthService);
+{{#unless (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+  private readonly router = inject(Router);
+{{/unless}}
+
+  readonly user = this.auth.user;
+  readonly modeLabel = '{{#if (eq project.options.auth "jwt")}}JWT{{/if}}{{#if (eq project.options.auth "session")}}Session{{/if}}{{#if (eq project.options.auth "oidc")}}OIDC{{/if}}{{#if (eq project.options.auth "keycloak")}}Keycloak OIDC{{/if}}{{#if (eq project.options.auth "auth0")}}Auth0 OIDC{{/if}}';
+  readonly initials = computed(() => initialsOf(this.user()?.name));
+
+  async signOut(): Promise<void> {
+    await this.auth.logout();
+{{#unless (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+    await this.router.navigate(['/login']);
+{{/unless}}
+  }
+}
+
+function initialsOf(name: string | undefined): string {
+  return (
+    name
+      ?.split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('') || '?'
+  );
+}

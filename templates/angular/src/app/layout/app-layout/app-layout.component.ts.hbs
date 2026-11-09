@@ -1,5 +1,17 @@
+{{#if (eq project.options.auth "none")}}
 import { Component, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+{{else}}
+{{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+import { Component, computed, inject, signal } from '@angular/core';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+{{else}}
+import { Component, computed, inject, signal } from '@angular/core';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+{{/if}}
+
+import { AuthService } from '../../core/auth/auth.service';
+{{/if}}
 
 @Component({
   selector: 'app-layout',
@@ -8,6 +20,15 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
   styleUrl: './app-layout.component.scss',
 })
 export class AppLayoutComponent {
+{{#unless (eq project.options.auth "none")}}
+  private readonly auth = inject(AuthService);
+{{#unless (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+  private readonly router = inject(Router);
+{{/unless}}
+
+  readonly user = this.auth.user;
+  readonly initials = computed(() => initialsOf(this.user()?.name));
+{{/unless}}
   readonly menuOpen = signal(false);
 
   closeMenu(): void {
@@ -18,6 +39,28 @@ export class AppLayoutComponent {
     this.menuOpen.update((isOpen) => !isOpen);
   }
 
+{{#unless (eq project.options.auth "none")}}
+  async signOut(): Promise<void> {
+    await this.auth.logout();
+{{#unless (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+    await this.router.navigate(['/login']);
+{{/unless}}
+  }
+
+{{/unless}}
   // <cleanstack:user-code id="layout.app.custom">
   // </cleanstack:user-code>
 }
+{{#unless (eq project.options.auth "none")}}
+
+function initialsOf(name: string | undefined): string {
+  return (
+    name
+      ?.split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('') || '?'
+  );
+}
+{{/unless}}

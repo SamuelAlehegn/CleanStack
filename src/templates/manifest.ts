@@ -172,10 +172,7 @@ export async function planManifest(
   for (const entry of manifest.files) {
     if (filter && !filter(entry)) continue;
     if (entry.internal === true) continue;
-    if (
-      entry.when &&
-      !Object.entries(entry.when).every(([key, value]) => getCondition(project, key) === value)
-    ) {
+    if (entry.when && !matchesConditions(project, entry.when)) {
       continue;
     }
 
@@ -239,6 +236,13 @@ function resolveDestination(
       const entity = item as Record<string, unknown>;
       return String(entity[key] ?? '');
     });
+}
+
+function matchesConditions(project: ProjectConfig, when: Record<string, unknown>): boolean {
+  return Object.entries(when).every(([key, expected]) => {
+    const actual = getCondition(project, key);
+    return Array.isArray(expected) ? expected.includes(actual) : actual === expected;
+  });
 }
 
 function getCondition(project: ProjectConfig, key: string): unknown {

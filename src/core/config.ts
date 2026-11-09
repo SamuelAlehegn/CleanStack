@@ -210,7 +210,7 @@ export const GenerationOptionsSchema = z
     backend: z.boolean().default(true),
     frontend: z.boolean().default(true),
     database: z.enum(['postgresql', 'mysql', 'h2']).default('postgresql'),
-    auth: z.enum(['jwt', 'none', 'keycloak']).default('jwt'),
+    auth: z.enum(['jwt', 'session', 'oidc', 'keycloak', 'auth0', 'none']).default('jwt'),
     buildTool: z.enum(['maven', 'gradle']).default('maven'),
     docker: z.boolean().default(false),
     /** Schema migration tool used by the generated Spring Boot backend. */

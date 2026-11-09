@@ -118,7 +118,8 @@ only the backend.
 - Layered packages: `controller`, `service`, `domain`, `repository`,
   `web/dto`, `web/mapper`, `config`, and `security`
 - CRUD endpoints for each entity with validation and consistent HTTP statuses
-- JWT resource-server security, Keycloak, or no authentication
+- JWT resource-server security, cookie-based sessions, OIDC
+  (Keycloak/Auth0), or no authentication
 - springdoc OpenAPI/Swagger UI and Actuator health endpoints
 - Virtual threads enabled by default
 - Optional Dockerfile and Docker Compose environment
@@ -131,10 +132,10 @@ only the backend.
 - Development proxy from `/api` to `http://localhost:8080`
 - SCSS design tokens and no runtime UI framework dependency
 
-Authentication is a backend concern. Generated Angular apps do **not** include a
-login screen, token-acquisition flow, or HTTP interceptor. Add those in the
-frontend when your identity provider and UX are decided; the backend validates
-bearer tokens according to the selected mode.
+Authenticated projects include a matching Angular login page, profile page,
+route guard, and HTTP interceptor. JWT mode accepts an access token for local
+development, session mode signs in with a username and password, and OIDC modes
+use the authorization-code flow with PKCE.
 
 ## Commands
 

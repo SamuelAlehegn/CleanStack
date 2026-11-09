@@ -46,7 +46,19 @@
       <div class="breadcrumb"><span>Workspace</span><span class="breadcrumb-divider">/</span><strong>Overview</strong></div>
       <div class="topbar-actions">
         <span class="status-pill"><span class="status-dot"></span>All systems normal</span>
+{{#if (eq project.options.auth "none")}}
         <button class="avatar-button" type="button" aria-label="Account menu">{{capitalize (pascalCase project.name)}}</button>
+{{else}}
+        @if (user(); as user) {
+          <a class="account-button" routerLink="/profile" [attr.aria-label]="'Open profile for ' + user.name">
+            <span class="avatar-button" aria-hidden="true">\{{ initials() }}</span>
+            <span class="account-name">\{{ user.name }}</span>
+          </a>
+          <button class="sign-out-button" type="button" (click)="signOut()">Sign out</button>
+        } @else {
+          <a class="sign-in-button" routerLink="/login">Sign in</a>
+        }
+{{/if}}
       </div>
     </header>
 

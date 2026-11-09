@@ -1,0 +1,44 @@
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">Account</p>
+    <h1>Profile</h1>
+    <p class="page-description">Your signed-in identity and roles.</p>
+  </div>
+  <button class="secondary-button" type="button" (click)="signOut()">Sign out</button>
+</section>
+
+<section class="profile-card">
+  @if (user(); as user) {
+    <div class="avatar" aria-hidden="true">\{{ initials() }}</div>
+    <div class="profile-copy">
+      <h2>\{{ user.name }}</h2>
+      @if (user.email) {
+        <p class="email">\{{ user.email }}</p>
+      }
+
+      <dl class="profile-meta">
+        <div>
+          <dt>Authentication</dt>
+          <dd>\{{ modeLabel }}</dd>
+        </div>
+        <div>
+          <dt>Roles</dt>
+          <dd>
+            @if (user.roles.length > 0) {
+              @for (role of user.roles; track role) {
+                <span class="role-chip">\{{ role }}</span>
+              }
+            } @else {
+              <span class="muted">No roles assigned</span>
+            }
+          </dd>
+        </div>
+      </dl>
+    </div>
+  } @else {
+    <p class="empty-state">No signed-in user.</p>
+  }
+</section>
+
+<!-- <cleanstack:user-code id="component.profile.custom"> -->
+<!-- </cleanstack:user-code> -->

@@ -61,8 +61,8 @@ What it does not do:
   Kubernetes manifests.
 - No reverse engineering from an existing database. Entity descriptors are the
   input.
-- No frontend authentication UI. JWT and Keycloak modes configure backend
-  resource-server validation only.
+- Frontend authentication covers JWT token login, cookie sessions, and OIDC
+  with Keycloak or Auth0, but there is no pluggable identity or permission layer.
 - To-many relations are eager in the current version, and the generated CRUD
   layer is intentionally simple.
 
@@ -166,7 +166,7 @@ modules, but it is not the tool's primary job.
 | Regeneration safety       | Checksum-based protected regions               | Upgrade/regeneration workflows | None                         | Browser regeneration              | Module history and upgrade recipes |
 | Template overrides        | Any template or manifest                       | Blueprints                     | No                           | Custom app templates (paid tiers) | Modules/extensions                 |
 | OpenAPI client generation | Angular client, optional contract-first Spring | Ecosystem support              | Dependency only              | Swagger UI in generated apps      | Not documented in quick start      |
-| Auth modes                | JWT, Keycloak, none (resource server)          | JWT, OAuth2/OIDC, session      | Dependencies only            | Spring Security in paid tiers     | Modules                            |
+| Auth modes                | JWT, session, OIDC (Keycloak/Auth0), none      | JWT, OAuth2/OIDC, session      | Dependencies only            | Spring Security in paid tiers     | Modules                            |
 | Migrations                | Flyway                                         | Liquibase                      | Dependencies only            | Flyway or Liquibase               | Module-based                       |
 | Databases                 | PostgreSQL, MySQL, H2                          | SQL and NoSQL options          | Dependencies only            | Broad SQL/NoSQL/embedded list     | Module-based                       |
 | Docker / local infra      | Optional backend Dockerfile and Compose        | Docker and deployment options  | Dependency option only       | Docker image option (paid tiers)  | Docker image support               |

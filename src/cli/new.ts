@@ -35,7 +35,8 @@ Create a new project skeleton.
 Options:
   --package <name>             Java package, for example com.example
   --db <postgresql|h2|mysql>   Database (default: postgresql)
-  --auth <jwt|none|keycloak>   Authentication (default: jwt)
+  --auth <jwt|session|oidc|keycloak|auth0|none>
+                               Authentication (default: jwt)
   --build <maven|gradle>       Build tool (default: maven)
   --frontend <angular|none>    Frontend (default: angular)
   --migrations <flyway|liquibase>
@@ -352,8 +353,11 @@ async function collectInteractiveOptions(
     default: defaults.auth,
     choices: [
       { name: 'JWT resource server', value: 'jwt' },
+      { name: 'Session login (username and password)', value: 'session' },
+      { name: 'Keycloak OIDC', value: 'keycloak' },
+      { name: 'Auth0 OIDC', value: 'auth0' },
+      { name: 'Generic OIDC', value: 'oidc' },
       { name: 'No authentication', value: 'none' },
-      { name: 'Keycloak', value: 'keycloak' },
     ],
   });
   options.buildTool ??= await select({

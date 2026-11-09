@@ -65,7 +65,14 @@ const IGNORED_PROJECT_DIRECTORIES = new Set([
 ]);
 
 const DATABASES: MetaResponse['databases'] = ['postgresql', 'mysql', 'h2'];
-const AUTH_METHODS: MetaResponse['authMethods'] = ['jwt', 'none', 'keycloak'];
+const AUTH_METHODS: MetaResponse['authMethods'] = [
+  'jwt',
+  'session',
+  'oidc',
+  'keycloak',
+  'auth0',
+  'none',
+];
 const BUILD_TOOLS: MetaResponse['buildTools'] = ['maven', 'gradle'];
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_FILE_BYTES = 512 * 1024;

@@ -1,0 +1,133 @@
+{{#if (eq project.options.auth "session")}}
+import { Component, inject, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
+
+import { AuthService } from '../../../core/auth/auth.service';
+{{/if}}
+{{#if (eq project.options.auth "jwt")}}
+import { Component, inject, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
+
+import { AuthService } from '../../../core/auth/auth.service';
+{{/if}}
+{{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+import { Component, inject } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+
+import { AuthService } from '../../../core/auth/auth.service';
+{{/if}}
+
+@Component({
+  selector: 'app-login',
+  {{#if (or (eq project.options.auth "session") (eq project.options.auth "jwt"))}}imports: [ReactiveFormsModule],
+  {{/if}}templateUrl: './login.component.html',
+  styleUrl: './login.component.scss',
+})
+export class LoginComponent {
+{{#if (eq project.options.auth "session")}}
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+
+  readonly form = inject(FormBuilder).nonNullable.group({
+    username: ['', Validators.required],
+    password: ['', Validators.required],
+  });
+  readonly submitting = signal(false);
+  readonly error = signal<string | null>(null);
+
+  constructor() {
+    if (this.auth.isAuthenticated()) {
+      void this.router.navigateByUrl(this.returnUrl);
+    }
+  }
+
+  async submit(): Promise<void> {
+    if (this.form.invalid || this.submitting()) {
+      return;
+    }
+
+    this.submitting.set(true);
+    this.error.set(null);
+    try {
+      await this.auth.login(this.form.getRawValue());
+      await this.router.navigateByUrl(this.returnUrl);
+    } catch {
+      this.error.set('Unable to sign in. Check your credentials and make sure the API is running.');
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  private get returnUrl(): string {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    return returnUrl?.startsWith('/') ? returnUrl : '/';
+  }
+{{/if}}
+{{#if (eq project.options.auth "jwt")}}
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+
+  readonly form = inject(FormBuilder).nonNullable.group({
+    token: ['', Validators.required],
+  });
+  readonly submitting = signal(false);
+  readonly error = signal<string | null>(null);
+
+  constructor() {
+    if (this.auth.isAuthenticated()) {
+      void this.router.navigateByUrl(this.returnUrl);
+    }
+  }
+
+  async submit(): Promise<void> {
+    if (this.form.invalid || this.submitting()) {
+      return;
+    }
+
+    this.submitting.set(true);
+    this.error.set(null);
+    try {
+      await this.auth.login({ token: this.form.controls.token.value });
+      await this.router.navigateByUrl(this.returnUrl);
+    } catch {
+      this.error.set('The access token was rejected. Check the issuer and try again.');
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  private get returnUrl(): string {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    return returnUrl?.startsWith('/') ? returnUrl : '/';
+  }
+{{/if}}
+{{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+
+  readonly provider = '{{#if (eq project.options.auth "keycloak")}}Keycloak{{/if}}{{#if (eq project.options.auth "auth0")}}Auth0{{/if}}{{#if (eq project.options.auth "oidc")}}your identity provider{{/if}}';
+
+  constructor() {
+    if (this.auth.isAuthenticated()) {
+      const returnUrl = sessionStorage.getItem('cleanstack.return-url') ?? this.returnUrl;
+      sessionStorage.removeItem('cleanstack.return-url');
+      void this.router.navigateByUrl(returnUrl.startsWith('/') ? returnUrl : '/');
+    }
+  }
+
+  login(): void {
+    sessionStorage.setItem('cleanstack.return-url', this.returnUrl);
+    this.auth.login();
+  }
+
+  private get returnUrl(): string {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    return returnUrl?.startsWith('/') ? returnUrl : '/';
+  }
+{{/if}}
+}

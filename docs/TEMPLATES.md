@@ -123,23 +123,26 @@ Manifest: `templates/spring-boot/manifest.json`.
 
 ### Infrastructure and web
 
-| Template                                                | Destination                                                                | Condition           | Purpose                               |
-| ------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------- | ------------------------------------- |
-| `java/infrastructure/config/package-info.java.hbs`      | `src/main/java/{{package}}/config/package-info.java`                       | —                   | Config package documentation          |
-| `java/infrastructure/config/ApplicationConfig.java.hbs` | `src/main/java/{{package}}/config/ApplicationConfig.java`                  | —                   | Shared beans (clock, etc.)            |
-| `java/infrastructure/config/OpenApiConfig.java.hbs`     | `src/main/java/{{package}}/config/OpenApiConfig.java`                      | —                   | OpenAPI title and version metadata    |
-| `java/infrastructure/security/package-info.java.hbs`    | `src/main/java/{{package}}/security/package-info.java`                     | —                   | Security package documentation        |
-| `java/infrastructure/security/SecurityConfig.java.hbs`  | `src/main/java/{{package}}/security/SecurityConfig.java`                   | `auth` jwt/keycloak | HTTP security and JWT/keycloak wiring |
-| `java/infrastructure/web/package-info.java.hbs`         | `src/main/java/{{package}}/controller/package-info.java`                   | —                   | Controller package documentation      |
-| `java/infrastructure/web/GreetingController.java.hbs`   | `src/main/java/{{package}}/controller/GreetingController.java`             | —                   | Sample greeting endpoint              |
-| `java/infrastructure/web/GreetingResponse.java.hbs`     | `src/main/java/{{package}}/web/dto/GreetingResponse.java`                  | —                   | Greeting response DTO                 |
-| `java/infrastructure/web/EntityController.java.hbs`     | `src/main/java/{{package}}/controller/{{entity.className}}Controller.java` | entity              | CRUD controller                       |
-| `java/infrastructure/web/EntityRequest.java.hbs`        | `src/main/java/{{package}}/web/dto/{{entity.className}}Request.java`       | entity              | Create/update request DTO             |
-| `java/infrastructure/web/EntityResponse.java.hbs`       | `src/main/java/{{package}}/web/dto/{{entity.className}}Response.java`      | entity              | Read response DTO                     |
-| `java/infrastructure/web/EntityMapper.java.hbs`         | `src/main/java/{{package}}/web/mapper/{{entity.className}}Mapper.java`     | entity              | Request/response/entity mapping       |
-| `java/exception/package-info.java.hbs`                  | `src/main/java/{{package}}/exception/package-info.java`                    | —                   | Exception package documentation       |
-| `java/web/dto/package-info.java.hbs`                    | `src/main/java/{{package}}/web/dto/package-info.java`                      | —                   | DTO package documentation             |
-| `java/web/mapper/package-info.java.hbs`                 | `src/main/java/{{package}}/web/mapper/package-info.java`                   | —                   | Mapper package documentation          |
+| Template                                                      | Destination                                                                | Condition                      | Purpose                                  |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------ | ---------------------------------------- |
+| `java/infrastructure/config/package-info.java.hbs`            | `src/main/java/{{package}}/config/package-info.java`                       | —                              | Config package documentation             |
+| `java/infrastructure/config/ApplicationConfig.java.hbs`       | `src/main/java/{{package}}/config/ApplicationConfig.java`                  | —                              | Shared beans (clock, etc.)               |
+| `java/infrastructure/config/OpenApiConfig.java.hbs`           | `src/main/java/{{package}}/config/OpenApiConfig.java`                      | —                              | OpenAPI title and version metadata       |
+| `java/infrastructure/security/package-info.java.hbs`          | `src/main/java/{{package}}/security/package-info.java`                     | —                              | Security package documentation           |
+| `java/infrastructure/security/SecurityConfig.java.hbs`        | `src/main/java/{{package}}/security/SecurityConfig.java`                   | `auth` jwt/oidc/keycloak/auth0 | Stateless JWT resource-server security   |
+| `java/infrastructure/security/SessionSecurityConfig.java.hbs` | `src/main/java/{{package}}/security/SecurityConfig.java`                   | `auth` session                 | Session login, CSRF, and starter user    |
+| `java/infrastructure/security/OAuth2AuthController.java.hbs`  | `src/main/java/{{package}}/controller/AuthController.java`                 | `auth` jwt/oidc/keycloak/auth0 | Current-user profile endpoint            |
+| `java/infrastructure/security/SessionAuthController.java.hbs` | `src/main/java/{{package}}/controller/AuthController.java`                 | `auth` session                 | CSRF bootstrap and current-user endpoint |
+| `java/infrastructure/web/package-info.java.hbs`               | `src/main/java/{{package}}/controller/package-info.java`                   | —                              | Controller package documentation         |
+| `java/infrastructure/web/GreetingController.java.hbs`         | `src/main/java/{{package}}/controller/GreetingController.java`             | —                              | Sample greeting endpoint                 |
+| `java/infrastructure/web/GreetingResponse.java.hbs`           | `src/main/java/{{package}}/web/dto/GreetingResponse.java`                  | —                              | Greeting response DTO                    |
+| `java/infrastructure/web/EntityController.java.hbs`           | `src/main/java/{{package}}/controller/{{entity.className}}Controller.java` | entity                         | CRUD controller                          |
+| `java/infrastructure/web/EntityRequest.java.hbs`              | `src/main/java/{{package}}/web/dto/{{entity.className}}Request.java`       | entity                         | Create/update request DTO                |
+| `java/infrastructure/web/EntityResponse.java.hbs`             | `src/main/java/{{package}}/web/dto/{{entity.className}}Response.java`      | entity                         | Read response DTO                        |
+| `java/infrastructure/web/EntityMapper.java.hbs`               | `src/main/java/{{package}}/web/mapper/{{entity.className}}Mapper.java`     | entity                         | Request/response/entity mapping          |
+| `java/exception/package-info.java.hbs`                        | `src/main/java/{{package}}/exception/package-info.java`                    | —                              | Exception package documentation          |
+| `java/web/dto/package-info.java.hbs`                          | `src/main/java/{{package}}/web/dto/package-info.java`                      | —                              | DTO package documentation                |
+| `java/web/mapper/package-info.java.hbs`                       | `src/main/java/{{package}}/web/mapper/package-info.java`                   | —                              | Mapper package documentation             |
 
 Entity migrations are rendered by the migration planner instead of the
 manifest, so these entries are marked `internal` and their destination is
@@ -200,6 +203,23 @@ Manifest: `templates/angular/manifest.json`.
 | `src/app/pages/settings/settings.component.html.hbs`      | `src/app/pages/settings/settings.component.html`      | Settings page template                     |
 | `src/app/pages/settings/settings.component.scss.hbs`      | `src/app/pages/settings/settings.component.scss`      | Settings page styles                       |
 
+### Authentication (when `options.auth` is not `none`)
+
+| Template                                               | Destination                                         | Purpose                                   |
+| ------------------------------------------------------ | --------------------------------------------------- | ----------------------------------------- |
+| `src/app/core/auth/JwtAuthService.ts.hbs`              | `src/app/core/auth/auth.service.ts`                 | JWT token storage and profile loading     |
+| `src/app/core/auth/SessionAuthService.ts.hbs`          | `src/app/core/auth/auth.service.ts`                 | Session login, logout, and CSRF bootstrap |
+| `src/app/core/auth/OidcAuthService.ts.hbs`             | `src/app/core/auth/auth.service.ts`                 | OIDC login and profile mapping            |
+| `src/app/core/auth/AuthGuard.ts.hbs`                   | `src/app/core/auth/auth.guard.ts`                   | Redirects anonymous visitors to `/login`  |
+| `src/app/core/auth/JwtAuthInterceptor.ts.hbs`          | `src/app/core/auth/auth.interceptor.ts`             | Adds the bearer token to API requests     |
+| `src/app/core/auth/SessionAuthInterceptor.ts.hbs`      | `src/app/core/auth/auth.interceptor.ts`             | Sends cookies with API requests           |
+| `src/app/pages/auth/login/LoginComponent.ts.hbs`       | `src/app/pages/auth/login/login.component.ts`       | Mode-specific login page                  |
+| `src/app/pages/auth/login/LoginComponent.html.hbs`     | `src/app/pages/auth/login/login.component.html`     | Login page template                       |
+| `src/app/pages/auth/login/LoginComponent.scss.hbs`     | `src/app/pages/auth/login/login.component.scss`     | Login page styles                         |
+| `src/app/pages/auth/profile/ProfileComponent.ts.hbs`   | `src/app/pages/auth/profile/profile.component.ts`   | Signed-in user profile                    |
+| `src/app/pages/auth/profile/ProfileComponent.html.hbs` | `src/app/pages/auth/profile/profile.component.html` | Profile page template                     |
+| `src/app/pages/auth/profile/ProfileComponent.scss.hbs` | `src/app/pages/auth/profile/profile.component.scss` | Profile page styles                       |
+
 ### Folder placeholders
 
 These files document the intended layering and keep empty folders in version
@@ -250,18 +270,18 @@ Entity-scoped templates additionally receive `entity` for the current entity.
 
 ### Project options
 
-| Variable                | Type                            | Default      | Meaning                          |
-| ----------------------- | ------------------------------- | ------------ | -------------------------------- |
-| `options.backend`       | boolean                         | `true`       | Generate the Spring Boot project |
-| `options.frontend`      | boolean                         | `true`       | Generate the Angular app         |
-| `options.database`      | `postgresql` \| `mysql` \| `h2` | `postgresql` | Database configuration           |
-| `options.auth`          | `jwt` \| `none` \| `keycloak`   | `jwt`        | Authentication mode              |
-| `options.buildTool`     | `maven` \| `gradle`             | `maven`      | Backend build tool               |
-| `options.migrationTool` | `flyway` \| `liquibase`         | `flyway`     | Schema migration tool            |
-| `options.seed`          | boolean                         | `false`      | Generate sample seed migrations  |
-| `options.docker`        | boolean                         | `false`      | Emit Docker files                |
-| `options.dryRun`        | boolean                         | `false`      | Generation reporting mode        |
-| `options.outputDir`     | string                          | `.`          | Output root for generated files  |
+| Variable                | Type                                                            | Default      | Meaning                          |
+| ----------------------- | --------------------------------------------------------------- | ------------ | -------------------------------- |
+| `options.backend`       | boolean                                                         | `true`       | Generate the Spring Boot project |
+| `options.frontend`      | boolean                                                         | `true`       | Generate the Angular app         |
+| `options.database`      | `postgresql` \| `mysql` \| `h2`                                 | `postgresql` | Database configuration           |
+| `options.auth`          | `jwt` \| `session` \| `oidc` \| `keycloak` \| `auth0` \| `none` | `jwt`        | Authentication mode              |
+| `options.buildTool`     | `maven` \| `gradle`                                             | `maven`      | Backend build tool               |
+| `options.migrationTool` | `flyway` \| `liquibase`                                         | `flyway`     | Schema migration tool            |
+| `options.seed`          | boolean                                                         | `false`      | Generate sample seed migrations  |
+| `options.docker`        | boolean                                                         | `false`      | Emit Docker files                |
+| `options.dryRun`        | boolean                                                         | `false`      | Generation reporting mode        |
+| `options.outputDir`     | string                                                          | `.`          | Output root for generated files  |
 
 ### Entity model
 

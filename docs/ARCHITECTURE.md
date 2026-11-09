@@ -384,7 +384,7 @@ com.example.demo/
   domain/          Greeting record, JPA entities
   exception/       <Entity>NotFoundException (+ package docs)
   repository/      Spring Data repositories
-  security/        SecurityConfig for jwt/keycloak
+  security/        SecurityConfig for the selected authentication mode
   service/         GreetUseCase, GreetingService, <Entity>Service
   web/
     dto/           GreetingResponse, <Entity>Request/Response
@@ -425,12 +425,16 @@ The sample `GET /api/greetings?name=...` demonstrates the controller → use cas
 
 ### Security
 
-`jwt` and `keycloak` generate a stateless `SecurityFilterChain` with CSRF
-disabled, `SessionCreationPolicy.STATELESS`, JWT resource-server support, and
-permit rules for health and documentation endpoints. The issuer differs by mode:
-`JWT_ISSUER_URI` for JWT, `KEYCLOAK_ISSUER_URI` for Keycloak. `none` omits the
-security configuration and OAuth2 dependency. Token acquisition is outside the
-generator's scope.
+`jwt`, `oidc`, `keycloak`, and `auth0` generate a stateless `SecurityFilterChain`
+with CSRF disabled, `SessionCreationPolicy.STATELESS`, JWT resource-server
+support, and permit rules for health and documentation endpoints. The issuer
+differs by mode: `JWT_ISSUER_URI`, `OIDC_ISSUER_URI`, `KEYCLOAK_ISSUER_URI`, or
+`AUTH0_ISSUER_URI`. `session` instead generates a cookie-based login form with
+CSRF protection, a starter in-memory user, and `/api/auth/csrf` and
+`/api/auth/me` endpoints. `none` omits the security configuration and
+authentication dependency. Token acquisition is outside the generator's scope,
+but authenticated Angular apps include a login page, profile page, route guard,
+and HTTP interceptor.
 
 ### Operations
 
@@ -467,8 +471,9 @@ src/app/
   same origin or override the value.
 - Entity pages use signals for loading/error/selected state and subscribe to
   HTTP services for CRUD operations.
-- No login screen, token storage, guard, or interceptor is generated. Add these
-  when the identity provider and UX are chosen.
+- Authenticated apps generate `core/auth/` (service, guard, interceptor) plus
+  login and profile pages under `pages/auth/`. The login page adapts to the
+  selected mode: JWT token entry, session username/password, or OIDC redirect.
 
 ## Studio architecture
 

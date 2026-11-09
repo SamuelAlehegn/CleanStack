@@ -1,0 +1,73 @@
+import { HttpClient } from '@angular/common/http';
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+
+import { environment } from '../../../environments/environment';
+
+export interface UserProfile {
+  name: string;
+  email?: string;
+  roles: string[];
+}
+
+export interface Credentials {
+  token: string;
+}
+
+const TOKEN_KEY = 'cleanstack.access-token';
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private readonly http = inject(HttpClient);
+  private readonly endpoint = `${environment.apiBaseUrl}/auth`;
+  private readonly currentUser = signal<UserProfile | null>(null);
+
+  readonly mode = environment.authMode;
+  readonly user = this.currentUser.asReadonly();
+  readonly isAuthenticated = computed(() => this.currentUser() !== null);
+
+  async initialize(): Promise<void> {
+    if (this.accessToken() === null) {
+      return;
+    }
+
+    try {
+      await this.refreshProfile();
+    } catch {
+      this.clearToken();
+    }
+  }
+
+  async login(credentials: Credentials): Promise<void> {
+    const token = credentials.token.trim();
+    if (token.length === 0) {
+      throw new Error('Enter an access token.');
+    }
+
+    localStorage.setItem(TOKEN_KEY, token);
+    try {
+      await this.refreshProfile();
+    } catch (error) {
+      this.clearToken();
+      throw error;
+    }
+  }
+
+  async logout(): Promise<void> {
+    this.clearToken();
+  }
+
+  accessToken(): string | null {
+    return localStorage.getItem(TOKEN_KEY);
+  }
+
+  private async refreshProfile(): Promise<void> {
+    const profile = await firstValueFrom(this.http.get<UserProfile>(`${this.endpoint}/me`));
+    this.currentUser.set(profile);
+  }
+
+  private clearToken(): void {
+    localStorage.removeItem(TOKEN_KEY);
+    this.currentUser.set(null);
+  }
+}

@@ -18,6 +18,9 @@
     "@angular/forms": "^22.2.0",
     "@angular/platform-browser": "^22.2.0",
     "@angular/router": "^22.2.0",
+{{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+    "angular-auth-oidc-client": "^22.0.2",
+{{/if}}
     "rxjs": "^7.8.0",
     "tslib": "^2.8.1"
   },

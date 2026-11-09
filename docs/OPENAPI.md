@@ -18,8 +18,8 @@ Boot 4. While the application runs, it exposes:
 | `/v3/api-docs`      | OpenAPI 3 document as JSON |
 | `/v3/api-docs.yaml` | OpenAPI 3 document as YAML |
 
-`OpenApiConfig` supplies the API title, description, and version. When JWT or
-Keycloak authentication is enabled, the security configuration permits the
+`OpenApiConfig` supplies the API title, description, and version. When
+authentication is enabled, the security configuration permits the
 documentation endpoints so the contract can be downloaded without a token.
 
 The contract reflects controllers, request/response DTOs, validation
