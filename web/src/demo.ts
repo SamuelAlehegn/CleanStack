@@ -580,7 +580,7 @@ const DEMO_META: MetaResponse = {
   fieldTypes: FIELD_TYPES,
   validations: FIELD_VALIDATIONS,
   databases: ['postgresql', 'mysql', 'h2'],
-  authMethods: ['jwt', 'none', 'keycloak'],
+  authMethods: ['jwt', 'session', 'oidc', 'keycloak', 'auth0', 'none'],
   buildTools: ['maven', 'gradle'],
   defaults: options({ docker: false }),
   capabilities: {

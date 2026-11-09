@@ -63,5 +63,62 @@ cleanstack openapi --input openapi/openapi.json
 CleanStack regenerates the client safely and keeps files it did not generate.
 See `src/app/api/README.md` for details.
 
+{{#unless (eq project.options.auth "none")}}
+## Authentication
+
+The app ships with a login page at `/login`, a profile page at `/profile`, a route
+guard, and an HTTP interceptor. All application routes are protected by the guard;
+anonymous visitors are redirected to the login page and returned to their original
+route after signing in.
+
+{{#if (eq project.options.auth "jwt")}}
+This project uses JWT bearer tokens. Paste an access token issued by your identity
+provider into the login page. The token is stored in `localStorage` under
+`cleanstack.access-token` and sent as an `Authorization: Bearer` header to the API.
+
+Token login is intended for local development. For a production browser flow,
+regenerate with `--auth oidc`, `--auth keycloak`, or `--auth auth0`.
+{{/if}}
+{{#if (eq project.options.auth "session")}}
+This project uses cookie-based sessions. Sign in with the starter account
+`demo` / `demo`; override it with `APP_SECURITY_USERNAME` and `APP_SECURITY_PASSWORD`
+in the backend. The login form posts to `/api/auth/login`, Spring Security stores
+the session in the `JSESSIONID` cookie, and the interceptor sends that cookie with
+API requests.
+
+The login page fetches a CSRF token from `/api/auth/csrf`. Angular's HTTP client
+automatically sends the `XSRF-TOKEN` cookie value as the `X-XSRF-TOKEN` header on
+state-changing requests.
+{{/if}}
+{{#if (eq project.options.auth "keycloak")}}
+This project uses Keycloak with the OIDC authorization-code flow and PKCE. Set the
+issuer and client ID in `src/environments/environment.ts`. Create a public
+`cleanstack-ui` client in Keycloak with the redirect URI `http://localhost:4200/login`
+and post-logout redirect URI `http://localhost:4200/login`, then enable the standard
+flow plus PKCE.
+{{/if}}
+{{#if (eq project.options.auth "auth0")}}
+This project uses Auth0 with the OIDC authorization-code flow and PKCE. Replace the
+placeholder issuer and client ID in `src/environments/environment.ts`, then add
+`http://localhost:4200/login` as an allowed callback and logout URL for an Auth0
+Single Page Application.
+{{/if}}
+{{#if (eq project.options.auth "oidc")}}
+This project uses a generic OIDC provider with the authorization-code flow and PKCE.
+Set the issuer, client ID, and scope in `src/environments/environment.ts`, then
+register `http://localhost:4200/login` as a redirect URI with your provider.
+{{/if}}
+
+{{#if (eq project.options.auth "session")}}
+The backend keeps users in an in-memory store by default. Replace it with a
+database-backed `UserDetailsService` before production. The actuator health and
+OpenAPI endpoints stay public.
+{{else}}
+The backend validates bearer tokens against the issuer configured in
+`src/main/resources/application.yml`. The actuator health and OpenAPI endpoints stay
+public.
+{{/if}}
+{{/unless}}
+
 <!-- <cleanstack:user-code id="readme.project-notes"> -->
 <!-- </cleanstack:user-code> -->

@@ -192,6 +192,9 @@ function registerHelpers(handlebars: typeof Handlebars): void {
   handlebars.registerHelper('uppercase', (value: unknown) => String(value ?? '').toUpperCase());
   handlebars.registerHelper('pluralize', (...args: unknown[]) => pluralizeHelper(args));
   handlebars.registerHelper('eq', (left: unknown, right: unknown) => left === right);
+  handlebars.registerHelper('or', (...args: unknown[]) =>
+    args.filter((value) => !isHandlebarsOptions(value)).some(Boolean),
+  );
   handlebars.registerHelper('json', (value: unknown) => {
     const serialized = JSON.stringify(value, null, 2) ?? 'undefined';
     return new Handlebars.SafeString(serialized);

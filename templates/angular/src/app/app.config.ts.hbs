@@ -1,12 +1,41 @@
-import { provideHttpClient, withFetch } from '@angular/common/http';
-import type { ApplicationConfig } from '@angular/core';
+import { provideHttpClient, withFetch{{#unless (eq project.options.auth "none")}}, withInterceptors{{/unless}} } from '@angular/common/http';
+import { {{#unless (eq project.options.auth "none")}}inject, provideAppInitializer, {{/unless}}type ApplicationConfig } from '@angular/core';
 import { provideRouter, withInMemoryScrolling } from '@angular/router';
+{{#unless (eq project.options.auth "none")}}
+{{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+import { authInterceptor, provideAuth } from 'angular-auth-oidc-client';
+
+import { environment } from '../environments/environment';
+import { AuthService } from './core/auth/auth.service';
+{{else}}
+import { AuthService } from './core/auth/auth.service';
+import { authInterceptor } from './core/auth/auth.interceptor';
+{{/if}}
+{{/unless}}
 
 import { routes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideHttpClient(withFetch()),
+    provideHttpClient(withFetch(){{#unless (eq project.options.auth "none")}}, withInterceptors([{{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}authInterceptor(){{else}}authInterceptor{{/if}}]){{/unless}}),
+{{#unless (eq project.options.auth "none")}}
+    provideAppInitializer(() => inject(AuthService).initialize()),
+{{/unless}}
+{{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+    provideAuth({
+      config: {
+        authority: environment.oidc.issuer,
+        redirectUrl: `${window.location.origin}/login`,
+        postLogoutRedirectUri: `${window.location.origin}/login`,
+        clientId: environment.oidc.clientId,
+        scope: environment.oidc.scope,
+        responseType: 'code',
+        silentRenew: true,
+        renewTimeBeforeTokenExpiresInSeconds: 30,
+        secureRoutes: [environment.apiBaseUrl],
+      },
+    }),
+{{/if}}
     provideRouter(
       routes,
       withInMemoryScrolling({ scrollPositionRestoration: 'enabled' }),

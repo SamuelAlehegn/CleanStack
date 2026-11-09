@@ -224,6 +224,45 @@
   cursor: pointer;
 }
 
+.account-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.account-name {
+  max-width: 130px;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sign-out-button,
+.sign-in-button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--muted-strong);
+  font-size: 10px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sign-out-button:hover,
+.sign-in-button:hover {
+  border-color: #d9d7e8;
+  color: var(--ink);
+}
+
 .page-content {
   width: min(100%, 1220px);
   margin: 0 auto;
@@ -279,7 +318,8 @@
     margin-left: auto;
   }
 
-  .status-pill {
+  .status-pill,
+  .account-name {
     display: none;
   }
 

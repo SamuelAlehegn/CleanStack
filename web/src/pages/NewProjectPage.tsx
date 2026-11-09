@@ -626,8 +626,11 @@ function StackStep({ form, update }: StepProps) {
             onChange={(event) => update('auth', event.target.value as CreateProjectRequest['auth'])}
           >
             <option value="jwt">JWT resource server</option>
+            <option value="session">Session login</option>
+            <option value="keycloak">Keycloak OIDC</option>
+            <option value="auth0">Auth0 OIDC</option>
+            <option value="oidc">Generic OIDC</option>
             <option value="none">No authentication</option>
-            <option value="keycloak">Keycloak</option>
           </select>
         </label>
 

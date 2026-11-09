@@ -20,6 +20,66 @@
       "destination": "src/environments/environment.development.ts"
     },
     { "template": "src/proxy.conf.json.hbs", "destination": "src/proxy.conf.json" },
+    {
+      "template": "src/app/core/auth/JwtAuthService.ts.hbs",
+      "destination": "src/app/core/auth/auth.service.ts",
+      "when": { "auth": "jwt" }
+    },
+    {
+      "template": "src/app/core/auth/SessionAuthService.ts.hbs",
+      "destination": "src/app/core/auth/auth.service.ts",
+      "when": { "auth": "session" }
+    },
+    {
+      "template": "src/app/core/auth/OidcAuthService.ts.hbs",
+      "destination": "src/app/core/auth/auth.service.ts",
+      "when": { "auth": ["oidc", "keycloak", "auth0"] }
+    },
+    {
+      "template": "src/app/core/auth/AuthGuard.ts.hbs",
+      "destination": "src/app/core/auth/auth.guard.ts",
+      "when": { "auth": ["jwt", "session", "oidc", "keycloak", "auth0"] }
+    },
+    {
+      "template": "src/app/core/auth/JwtAuthInterceptor.ts.hbs",
+      "destination": "src/app/core/auth/auth.interceptor.ts",
+      "when": { "auth": "jwt" }
+    },
+    {
+      "template": "src/app/core/auth/SessionAuthInterceptor.ts.hbs",
+      "destination": "src/app/core/auth/auth.interceptor.ts",
+      "when": { "auth": "session" }
+    },
+    {
+      "template": "src/app/pages/auth/login/LoginComponent.ts.hbs",
+      "destination": "src/app/pages/auth/login/login.component.ts",
+      "when": { "auth": ["jwt", "session", "oidc", "keycloak", "auth0"] }
+    },
+    {
+      "template": "src/app/pages/auth/login/LoginComponent.html.hbs",
+      "destination": "src/app/pages/auth/login/login.component.html",
+      "when": { "auth": ["jwt", "session", "oidc", "keycloak", "auth0"] }
+    },
+    {
+      "template": "src/app/pages/auth/login/LoginComponent.scss.hbs",
+      "destination": "src/app/pages/auth/login/login.component.scss",
+      "when": { "auth": ["jwt", "session", "oidc", "keycloak", "auth0"] }
+    },
+    {
+      "template": "src/app/pages/auth/profile/ProfileComponent.ts.hbs",
+      "destination": "src/app/pages/auth/profile/profile.component.ts",
+      "when": { "auth": ["jwt", "session", "oidc", "keycloak", "auth0"] }
+    },
+    {
+      "template": "src/app/pages/auth/profile/ProfileComponent.html.hbs",
+      "destination": "src/app/pages/auth/profile/profile.component.html",
+      "when": { "auth": ["jwt", "session", "oidc", "keycloak", "auth0"] }
+    },
+    {
+      "template": "src/app/pages/auth/profile/ProfileComponent.scss.hbs",
+      "destination": "src/app/pages/auth/profile/profile.component.scss",
+      "when": { "auth": ["jwt", "session", "oidc", "keycloak", "auth0"] }
+    },
     { "template": "src/app/app.config.ts.hbs", "destination": "src/app/app.config.ts" },
     { "template": "src/app/app.routes.ts.hbs", "destination": "src/app/app.routes.ts" },
     {

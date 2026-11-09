@@ -51,12 +51,40 @@ spring:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/cleanstack}
 {{/if}}
+{{#if (eq project.options.auth "auth0")}}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH0_ISSUER_URI:https://YOUR_DOMAIN.auth0.com/}
+{{/if}}
+{{#if (eq project.options.auth "oidc")}}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OIDC_ISSUER_URI:https://issuer.example.com}
+{{/if}}
+{{#if (eq project.options.auth "session")}}
+  security:
+    user:
+      name: ${APP_SECURITY_USERNAME:demo}
+      password: ${APP_SECURITY_PASSWORD:demo}
+{{/if}}
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
+{{#if (eq project.options.auth "session")}}
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        same-site: lax
+{{/if}}
 
 management:
   endpoints:

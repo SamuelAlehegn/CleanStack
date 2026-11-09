@@ -8,7 +8,7 @@ A Spring Boot service generated with CleanStack. The code uses a simple package 
 - Spring Boot 4.1
 - Spring Web MVC, Spring Data JPA, and {{#if (eq project.options.migrationTool "liquibase")}}Liquibase{{else}}Flyway{{/if}}
 - {{#if (eq project.options.database "postgresql")}}PostgreSQL{{/if}}{{#if (eq project.options.database "mysql")}}MySQL{{/if}}{{#if (eq project.options.database "h2")}}H2 (in-memory, for local development){{/if}}
-- {{#if (eq project.options.auth "jwt")}}JWT bearer-token authentication{{/if}}{{#if (eq project.options.auth "keycloak")}}Keycloak JWT bearer-token authentication{{/if}}{{#if (eq project.options.auth "none")}}No authentication{{/if}}
+- {{#if (eq project.options.auth "jwt")}}JWT bearer-token authentication{{/if}}{{#if (eq project.options.auth "session")}}Session-based authentication with username and password login{{/if}}{{#if (eq project.options.auth "oidc")}}OIDC bearer-token authentication{{/if}}{{#if (eq project.options.auth "keycloak")}}Keycloak OIDC bearer-token authentication{{/if}}{{#if (eq project.options.auth "auth0")}}Auth0 OIDC bearer-token authentication{{/if}}{{#if (eq project.options.auth "none")}}No authentication{{/if}}
 - {{#if (eq project.options.buildTool "maven")}}Maven{{else}}Gradle{{/if}}
 
 ## Requirements
@@ -65,10 +65,26 @@ the generated interfaces with `@RestController` classes in the `controller`
 package; do not repeat their class-level `@RequestMapping`. Regeneration uses
 the same ownership manifest and preserves files CleanStack did not generate.
 
+## Authentication
+
 {{#if (eq project.options.auth "jwt")}}
 All application endpoints require a valid JWT bearer token. Set `JWT_ISSUER_URI` to the issuer that creates your tokens; it must publish OIDC metadata and signing keys. The actuator health endpoint remains public.
+
+The Angular login page accepts an access token for local development. For a browser-based production flow, prefer the generated OIDC option.
+{{/if}}{{#if (eq project.options.auth "session")}}
+The browser signs in with a username and password at `POST /api/auth/login`. Spring Security stores the authenticated user in an HTTP session and the frontend sends the `JSESSIONID` cookie. The login page also bootstraps a CSRF cookie from `GET /api/auth/csrf`; state-changing requests send the `X-XSRF-TOKEN` header.
+
+The starter account is `demo` / `demo`. Override it with `APP_SECURITY_USERNAME` and `APP_SECURITY_PASSWORD`, and replace the in-memory `UserDetailsService` in `SecurityConfig` with a database-backed one before production. The actuator health endpoint remains public.
+{{/if}}{{#if (eq project.options.auth "oidc")}}
+All application endpoints require a valid OIDC bearer token. Set `OIDC_ISSUER_URI` to the issuer URL; it must publish OIDC metadata and signing keys. The Angular app uses authorization code flow with PKCE and reads its provider settings from `src/environments/environment.ts`. The actuator health endpoint remains public.
 {{/if}}{{#if (eq project.options.auth "keycloak")}}
-All application endpoints require a valid Keycloak bearer token. Create the `cleanstack` realm in Keycloak, then set `KEYCLOAK_ISSUER_URI` to that realm's issuer URL (for example, `http://localhost:8081/realms/cleanstack`). The issuer must be reachable by the application and match the token's `iss` claim. The actuator health endpoint remains public.
+All application endpoints require a valid Keycloak bearer token. Create the `cleanstack` realm in Keycloak, then set `KEYCLOAK_ISSUER_URI` to that realm's issuer URL (for example, `http://localhost:8081/realms/cleanstack`). The issuer must be reachable by the application and match the token's `iss` claim.
+
+Create a public `cleanstack-ui` client with standard flow, PKCE, and the redirect URI `http://localhost:4200/login`. The Angular app reads the issuer and client ID from `src/environments/environment.ts`. The actuator health endpoint remains public.
+{{/if}}{{#if (eq project.options.auth "auth0")}}
+All application endpoints require a valid Auth0 bearer token. Set `AUTH0_ISSUER_URI` to your tenant issuer, including the trailing slash (for example, `https://your-tenant.us.auth0.com/`). Configure an Auth0 Single Page Application with the allowed callback and logout URLs `http://localhost:4200/login`, then replace the placeholder issuer and client ID in `src/environments/environment.ts`. The actuator health endpoint remains public.
+{{/if}}{{#if (eq project.options.auth "none")}}
+Authentication is disabled. All API endpoints are public.
 {{/if}}
 
 ## Build and test
@@ -93,7 +109,11 @@ All application endpoints require a valid Keycloak bearer token. Create the `cle
 {{/if}}| `SERVER_PORT` | `8080` | HTTP port |
 | `SPRING_PROFILES_ACTIVE` | — | Set to `dev` for local development |
 {{#if (eq project.options.auth "jwt")}}| `JWT_ISSUER_URI` | `http://localhost:9000` | Issuer URI used to validate JWT bearer tokens |
+{{/if}}{{#if (eq project.options.auth "session")}}| `APP_SECURITY_USERNAME` | `demo` | Starter login username |
+| `APP_SECURITY_PASSWORD` | `demo` | Starter login password |
+{{/if}}{{#if (eq project.options.auth "oidc")}}| `OIDC_ISSUER_URI` | `https://issuer.example.com` | OIDC issuer URI used to validate bearer tokens |
 {{/if}}{{#if (eq project.options.auth "keycloak")}}| `KEYCLOAK_ISSUER_URI` | `http://localhost:8081/realms/cleanstack` | Keycloak realm issuer URI used to validate bearer tokens |
+{{/if}}{{#if (eq project.options.auth "auth0")}}| `AUTH0_ISSUER_URI` | `https://YOUR_DOMAIN.auth0.com/` | Auth0 tenant issuer URI used to validate bearer tokens |
 {{/if}}
 
 The base configuration lives in `src/main/resources/application.yml`. Local overrides live in `src/main/resources/application-dev.yml`.

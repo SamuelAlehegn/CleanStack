@@ -11,7 +11,10 @@ export function databaseLabel(value: string): string {
 
 export function authLabel(value: string): string {
   if (value === 'jwt') return 'JWT resource server';
-  if (value === 'keycloak') return 'Keycloak';
+  if (value === 'session') return 'Session login';
+  if (value === 'oidc') return 'OIDC';
+  if (value === 'keycloak') return 'Keycloak OIDC';
+  if (value === 'auth0') return 'Auth0 OIDC';
   if (value === 'none') return 'No authentication';
   return titleCase(value);
 }

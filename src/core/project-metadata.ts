@@ -174,8 +174,13 @@ export async function inferProjectConfig(
     const javaFiles = await fileSystem.listFiles('src/main/java');
     const securityFile = javaFiles.find((file) => file.endsWith('SecurityConfig.java'));
     if (securityFile !== undefined) {
-      const security = await fileSystem.readFile(securityFile);
-      auth = /keycloak|issuer-uri/i.test(`${configuration}\n${security}`) ? 'keycloak' : 'jwt';
+      const security = await fileSystem.readFile(path.posix.join('src/main/java', securityFile));
+      const securityConfiguration = `${configuration}\n${security}`;
+      if (/formLogin/i.test(security)) auth = 'session';
+      else if (/AUTH0_ISSUER_URI/.test(securityConfiguration)) auth = 'auth0';
+      else if (/OIDC_ISSUER_URI/.test(securityConfiguration)) auth = 'oidc';
+      else if (/keycloak|KEYCLOAK_ISSUER_URI/i.test(securityConfiguration)) auth = 'keycloak';
+      else auth = 'jwt';
     }
 
     docker =

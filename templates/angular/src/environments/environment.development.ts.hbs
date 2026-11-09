@@ -1,6 +1,26 @@
 export const environment = {
   production: false,
   apiBaseUrl: '/api',
+  authMode: '{{project.options.auth}}',
+{{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
+  oidc: {
+{{#if (eq project.options.auth "keycloak")}}
+    issuer: 'http://localhost:8081/realms/cleanstack',
+    clientId: 'cleanstack-ui',
+{{/if}}
+{{#if (eq project.options.auth "auth0")}}
+    // Replace these values with your Auth0 tenant and Single Page Application client ID.
+    issuer: 'https://YOUR_DOMAIN.auth0.com',
+    clientId: 'YOUR_AUTH0_CLIENT_ID',
+{{/if}}
+{{#if (eq project.options.auth "oidc")}}
+    // Replace these values with your OIDC provider and public client ID.
+    issuer: 'https://issuer.example.com',
+    clientId: 'cleanstack-ui',
+{{/if}}
+    scope: 'openid profile email',
+  },
+{{/if}}
 } as const;
 
 // <cleanstack:user-code id="config.environment.custom">

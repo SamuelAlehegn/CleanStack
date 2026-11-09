@@ -47,7 +47,9 @@ function destinationFor(entry) {
 }
 
 function applies(entry, options) {
-  return Object.entries(entry.when ?? {}).every(([key, expected]) => options[key] === expected);
+  return Object.entries(entry.when ?? {}).every(([key, expected]) =>
+    Array.isArray(expected) ? expected.includes(options[key]) : options[key] === expected,
+  );
 }
 
 async function renderProject(options) {
@@ -148,10 +150,12 @@ test('renders a Gradle and H2 project without Docker files', async () => {
   assert.doesNotMatch(files.get('build.gradle.kts'), /org\.postgresql:postgresql/);
 });
 
-test('renders JWT and Keycloak resource-server configuration only when selected', async () => {
+test('renders JWT, OIDC, Keycloak, and Auth0 resource-server configuration', async () => {
   for (const [auth, buildTool, issuerVariable] of [
     ['jwt', 'maven', 'JWT_ISSUER_URI'],
+    ['oidc', 'maven', 'OIDC_ISSUER_URI'],
     ['keycloak', 'gradle', 'KEYCLOAK_ISSUER_URI'],
+    ['auth0', 'gradle', 'AUTH0_ISSUER_URI'],
   ]) {
     const files = await renderProject({ auth, buildTool });
     const buildFile = buildTool === 'maven' ? files.get('pom.xml') : files.get('build.gradle.kts');
@@ -162,14 +166,43 @@ test('renders JWT and Keycloak resource-server configuration only when selected'
     assert.match(files.get('src/main/resources/application.yml'), new RegExp(issuerVariable));
     assert.match(securityConfig, /anyRequest\(\)\.authenticated\(\)/);
     assert.match(securityConfig, /actuator\/health/);
+    assert.match(
+      files.get('src/main/java/com/acme/shop/controller/AuthController.java'),
+      /@RequestMapping\("\/api\/auth"\)/,
+    );
   }
+});
 
+test('renders session login security without OAuth2 resource-server dependencies', async () => {
+  const files = await renderProject({ auth: 'session', buildTool: 'maven' });
+  const securityConfig = files.get('src/main/java/com/acme/shop/security/SecurityConfig.java');
+  const authController = files.get('src/main/java/com/acme/shop/controller/AuthController.java');
+
+  assert.match(files.get('pom.xml'), /spring-boot-starter-security/);
+  assert.doesNotMatch(files.get('pom.xml'), /spring-boot-starter-oauth2-resource-server/);
+  assert.match(securityConfig, /formLogin/);
+  assert.match(securityConfig, /logoutUrl\("\/api\/auth\/logout"\)/);
+  assert.match(securityConfig, /CookieCsrfTokenRepository/);
+  assert.match(securityConfig, /setCookiePath\("\/"\)/);
+  assert.match(securityConfig, /InMemoryUserDetailsManager/);
+  assert.match(files.get('src/main/resources/application.yml'), /APP_SECURITY_USERNAME/);
+  assert.match(files.get('src/main/resources/application.yml'), /servlet:[\s\S]*session:/);
+  assert.match(authController, /@GetMapping\("\/csrf"\)/);
+  assert.match(authController, /@GetMapping\("\/me"\)/);
+});
+
+test('omits security files and dependencies when authentication is disabled', async () => {
   const unauthenticated = await renderProject({ auth: 'none' });
   assert.equal(
     unauthenticated.has('src/main/java/com/acme/shop/security/SecurityConfig.java'),
     false,
   );
+  assert.equal(
+    unauthenticated.has('src/main/java/com/acme/shop/controller/AuthController.java'),
+    false,
+  );
   assert.doesNotMatch(unauthenticated.get('pom.xml'), /spring-boot-starter-oauth2-resource-server/);
+  assert.doesNotMatch(unauthenticated.get('pom.xml'), /spring-boot-starter-security/);
 });
 
 test('publishes the OpenAPI contract with springdoc', async () => {

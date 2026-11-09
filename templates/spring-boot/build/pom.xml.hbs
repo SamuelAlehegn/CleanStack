@@ -55,16 +55,16 @@
             <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
 {{/if}}
-{{#if (eq project.options.auth "jwt")}}
+{{#if (or (eq project.options.auth "jwt") (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
         </dependency>
 {{/if}}
-{{#if (eq project.options.auth "keycloak")}}
+{{#if (eq project.options.auth "session")}}
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+            <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 {{/if}}
 {{#if (eq project.options.database "postgresql")}}

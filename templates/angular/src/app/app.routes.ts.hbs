@@ -1,11 +1,25 @@
 import type { Routes } from '@angular/router';
 
 import { AppLayoutComponent } from './layout/app-layout/app-layout.component';
+{{#unless (eq project.options.auth "none")}}
+import { authGuard } from './core/auth/auth.guard';
+{{/unless}}
 
 export const routes: Routes = [
+{{#unless (eq project.options.auth "none")}}
+  {
+    path: 'login',
+    title: 'Sign in',
+    loadComponent: () =>
+      import('./pages/auth/login/login.component').then((module) => module.LoginComponent),
+  },
+{{/unless}}
   {
     path: '',
     component: AppLayoutComponent,
+{{#unless (eq project.options.auth "none")}}
+    canActivate: [authGuard],
+{{/unless}}
     children: [
       {
         path: '',
@@ -21,6 +35,16 @@ export const routes: Routes = [
             (module) => module.SettingsComponent,
           ),
       },
+{{#unless (eq project.options.auth "none")}}
+      {
+        path: 'profile',
+        title: 'Profile',
+        loadComponent: () =>
+          import('./pages/auth/profile/profile.component').then(
+            (module) => module.ProfileComponent,
+          ),
+      },
+{{/unless}}
       // <cleanstack:user-code id="routes.custom">
       // </cleanstack:user-code>
       // <cleanstack:entity-routes>

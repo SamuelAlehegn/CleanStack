@@ -1,0 +1,85 @@
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { OidcSecurityService } from 'angular-auth-oidc-client';
+import { firstValueFrom } from 'rxjs';
+
+import { environment } from '../../../environments/environment';
+
+export interface UserProfile {
+  name: string;
+  email?: string;
+  roles: string[];
+}
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private readonly oidc = inject(OidcSecurityService);
+  private readonly currentUser = signal<UserProfile | null>(null);
+  private readonly authenticated = signal(false);
+
+  readonly mode = environment.authMode;
+  readonly user = this.currentUser.asReadonly();
+  readonly isAuthenticated = computed(() => this.authenticated() && this.currentUser() !== null);
+
+  async initialize(): Promise<void> {
+    try {
+      const result = await firstValueFrom(this.oidc.checkAuth());
+      this.authenticated.set(result.isAuthenticated);
+      this.currentUser.set(result.isAuthenticated ? toUserProfile(result.userData) : null);
+    } catch {
+      this.authenticated.set(false);
+      this.currentUser.set(null);
+    }
+  }
+
+  login(): void {
+    this.oidc.authorize();
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await firstValueFrom(this.oidc.logoffAndRevokeTokens());
+    } finally {
+      this.authenticated.set(false);
+      this.currentUser.set(null);
+    }
+  }
+}
+
+function toUserProfile(data: unknown): UserProfile | null {
+  if (!isRecord(data) || typeof data['sub'] !== 'string') {
+    return null;
+  }
+
+  const roles = new Set<string>();
+  addRoles(roles, data['roles']);
+  if (isRecord(data['realm_access'])) {
+    addRoles(roles, data['realm_access']['roles']);
+  }
+
+  return {
+    name:
+      firstString(data['name'], data['preferred_username'], data['email'], data['sub']) ??
+      'Signed-in user',
+    email: firstString(data['email']),
+    roles: [...roles],
+  };
+}
+
+function addRoles(roles: Set<string>, value: unknown): void {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  for (const role of value) {
+    if (typeof role === 'string') {
+      roles.add(role);
+    }
+  }
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === 'string' && value.length > 0);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}

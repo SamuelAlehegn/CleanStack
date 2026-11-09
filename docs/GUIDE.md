@@ -85,25 +85,25 @@ directory (or under `--output-dir`).
 
 ### Options
 
-| Option                             | Meaning                                                        |
-| ---------------------------------- | -------------------------------------------------------------- |
-| `--package <name>`                 | Java package, for example `com.acme.app`                       |
-| `--db <postgresql\|h2\|mysql>`     | Database (default: `postgresql`)                               |
-| `--auth <jwt\|none\|keycloak>`     | Authentication (default: `jwt`)                                |
-| `--build <maven\|gradle>`          | Backend build tool (default: `maven`)                          |
-| `--frontend <angular\|none>`       | Generate the Angular app (default: `angular`) or skip it       |
-| `--migrations <flyway\|liquibase>` | Schema migration tool (default: `flyway`)                      |
-| `--seed` / `--no-seed`             | Generate one sample seed row per entity (or suppress seeds)    |
-| `--docker`                         | Emit a backend `Dockerfile`, `.dockerignore`, and compose file |
-| `--output-dir <path>`              | Directory that receives the generated project                  |
-| `--entities`                       | Include entities from the configuration or `entities/`         |
-| `--no-entities`                    | Skip entities from both sources                                |
-| `--interactive`                    | Prompt for any settings that are not already provided          |
-| `-y, --yes`                        | Skip prompts and use defaults for missing settings             |
-| `--git`                            | Run `git init` in the generated project                        |
-| `--force`                          | Overwrite generated files completely, including regions        |
-| `--dry-run`                        | Report what would change without writing files                 |
-| `-h, --help`                       | Show command help                                              |
+| Option                                               | Meaning                                                        |
+| ---------------------------------------------------- | -------------------------------------------------------------- |
+| `--package <name>`                                   | Java package, for example `com.acme.app`                       |
+| `--db <postgresql\|h2\|mysql>`                       | Database (default: `postgresql`)                               |
+| `--auth <jwt\|session\|oidc\|keycloak\|auth0\|none>` | Authentication (default: `jwt`)                                |
+| `--build <maven\|gradle>`                            | Backend build tool (default: `maven`)                          |
+| `--frontend <angular\|none>`                         | Generate the Angular app (default: `angular`) or skip it       |
+| `--migrations <flyway\|liquibase>`                   | Schema migration tool (default: `flyway`)                      |
+| `--seed` / `--no-seed`                               | Generate one sample seed row per entity (or suppress seeds)    |
+| `--docker`                                           | Emit a backend `Dockerfile`, `.dockerignore`, and compose file |
+| `--output-dir <path>`                                | Directory that receives the generated project                  |
+| `--entities`                                         | Include entities from the configuration or `entities/`         |
+| `--no-entities`                                      | Skip entities from both sources                                |
+| `--interactive`                                      | Prompt for any settings that are not already provided          |
+| `-y, --yes`                                          | Skip prompts and use defaults for missing settings             |
+| `--git`                                              | Run `git init` in the generated project                        |
+| `--force`                                            | Overwrite generated files completely, including regions        |
+| `--dry-run`                                          | Report what would change without writing files                 |
+| `-h, --help`                                         | Show command help                                              |
 
 `cleanstack new` always generates the Spring Boot backend. Use
 `--frontend none` to create a backend-only project; there is no option to skip
@@ -241,8 +241,8 @@ The service listens on <http://localhost:8080>. Set `SERVER_PORT` to change the
 port. The development profile enables SQL logging and, for H2, configures the H2
 console at `/h2-console`. The generated security configuration permits only the
 health and documentation endpoints, so the console is reachable as generated
-only with `--auth none`. For JWT or Keycloak mode, add a `/h2-console/**` permit
-rule and allow frames before using it.
+only with `--auth none`. For any authenticated mode, add a `/h2-console/**`
+permit rule and allow frames before using it.
 
 Useful endpoints:
 
@@ -254,8 +254,9 @@ Useful endpoints:
 | `/v3/api-docs`                   | OpenAPI JSON             |
 | `/v3/api-docs.yaml`              | OpenAPI YAML             |
 
-With JWT or Keycloak authentication, every application endpoint requires a
-bearer token. The health and documentation endpoints are explicitly permitted.
+With authentication enabled, every application endpoint is protected. JWT and
+OIDC modes require a bearer token; session mode requires a signed-in browser
+session. The health and documentation endpoints are explicitly permitted.
 
 ### Frontend
 
@@ -384,27 +385,34 @@ migration, so add a new migration when you need more rows.
 
 ### Authentication modes
 
-| Mode       | Generated behavior                                                                                                           |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `none`     | No Spring Security configuration or OAuth2 resource-server dependency.                                                       |
-| `jwt`      | Stateless JWT resource server; issuer from `JWT_ISSUER_URI` (default `http://localhost:9000`).                               |
-| `keycloak` | Same stateless resource-server setup; issuer from `KEYCLOAK_ISSUER_URI` (default `http://localhost:8081/realms/cleanstack`). |
+| Mode       | Generated behavior                                                                                                          |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `none`     | No Spring Security configuration or authentication dependency.                                                              |
+| `jwt`      | Stateless JWT resource server; issuer from `JWT_ISSUER_URI` (default `http://localhost:9000`).                              |
+| `session`  | Cookie-based login form at `/api/auth/login`; starter account `demo` / `demo`; CSRF protection for state-changing requests. |
+| `oidc`     | Generic OIDC resource server; issuer from `OIDC_ISSUER_URI`; Angular uses authorization code with PKCE.                     |
+| `keycloak` | OIDC resource server with Keycloak defaults; issuer from `KEYCLOAK_ISSUER_URI`.                                             |
+| `auth0`    | OIDC resource server with Auth0 placeholders; issuer from `AUTH0_ISSUER_URI`.                                               |
 
-Both authenticated modes permit `/actuator/health`, `/actuator/health/**`,
+All authenticated modes permit `/actuator/health`, `/actuator/health/**`,
 `/v3/api-docs/**`, `/swagger-ui.html`, and `/swagger-ui/**`. All other requests
-need a valid bearer token.
+need a valid bearer token or, in session mode, a signed-in session.
 
-CleanStack configures token _validation_, not token _issuance_. Point the issuer
-at your provider, obtain a token from it, and send it explicitly:
+CleanStack configures token _validation_, not token _issuance_, for JWT and OIDC
+modes. Point the issuer at your provider, obtain a token from it, and send it
+explicitly:
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/products
 ```
 
-The generated Angular app has no login screen, token service, route guard, or
-HTTP interceptor. Add those when you choose an identity provider and UX. Keeping
-authentication out of the generated frontend avoids baking in a flow that most
-applications replace.
+The generated Angular app includes a login page, profile page, route guard, and
+HTTP interceptor for every authenticated mode. JWT mode accepts a pasted access
+token for local development. Session mode signs in with the starter account and
+sends the `JSESSIONID` cookie. OIDC modes redirect to the provider and use the
+authorization-code flow with PKCE. Provider settings live in
+`src/environments/environment.ts`; backend issuer settings live in
+`src/main/resources/application.yml`.
 
 ## Generate an entity
 
@@ -834,21 +842,21 @@ error rather than a silent choice.
 
 ### Environment variables
 
-| Variable                                             | Setting                        |
-| ---------------------------------------------------- | ------------------------------ |
-| `CLEANSTACK_NAME`                                    | Project name                   |
-| `CLEANSTACK_PACKAGE`, `CLEANSTACK_PACKAGE_NAME`      | Java package                   |
-| `CLEANSTACK_BACKEND`                                 | Generate backend files         |
-| `CLEANSTACK_FRONTEND`                                | Generate frontend files        |
-| `CLEANSTACK_DATABASE`, `CLEANSTACK_DB`               | `postgresql`, `mysql`, or `h2` |
-| `CLEANSTACK_AUTH`                                    | `jwt`, `none`, or `keycloak`   |
-| `CLEANSTACK_BUILD`, `CLEANSTACK_BUILD_TOOL`          | `maven` or `gradle`            |
-| `CLEANSTACK_MIGRATIONS`, `CLEANSTACK_MIGRATION_TOOL` | `flyway` or `liquibase`        |
-| `CLEANSTACK_SEED`                                    | Generate seed migrations       |
-| `CLEANSTACK_DOCKER`                                  | Emit Docker files              |
-| `CLEANSTACK_DRY_RUN`                                 | Report changes without writing |
-| `CLEANSTACK_OUTPUT_DIR`                              | Output directory               |
-| `CLEANSTACK_CONFIG`                                  | Explicit configuration file    |
+| Variable                                             | Setting                                                  |
+| ---------------------------------------------------- | -------------------------------------------------------- |
+| `CLEANSTACK_NAME`                                    | Project name                                             |
+| `CLEANSTACK_PACKAGE`, `CLEANSTACK_PACKAGE_NAME`      | Java package                                             |
+| `CLEANSTACK_BACKEND`                                 | Generate backend files                                   |
+| `CLEANSTACK_FRONTEND`                                | Generate frontend files                                  |
+| `CLEANSTACK_DATABASE`, `CLEANSTACK_DB`               | `postgresql`, `mysql`, or `h2`                           |
+| `CLEANSTACK_AUTH`                                    | `jwt`, `session`, `oidc`, `keycloak`, `auth0`, or `none` |
+| `CLEANSTACK_BUILD`, `CLEANSTACK_BUILD_TOOL`          | `maven` or `gradle`                                      |
+| `CLEANSTACK_MIGRATIONS`, `CLEANSTACK_MIGRATION_TOOL` | `flyway` or `liquibase`                                  |
+| `CLEANSTACK_SEED`                                    | Generate seed migrations                                 |
+| `CLEANSTACK_DOCKER`                                  | Emit Docker files                                        |
+| `CLEANSTACK_DRY_RUN`                                 | Report changes without writing                           |
+| `CLEANSTACK_OUTPUT_DIR`                              | Output directory                                         |
+| `CLEANSTACK_CONFIG`                                  | Explicit configuration file                              |
 
 Booleans accept `true`/`false`, `1`/`0`, `yes`/`no`, and `on`/`off`. Empty
 variables are ignored.
@@ -873,21 +881,21 @@ the expected values, and a suggested fix.
 
 ### Configuration shape
 
-| Key                     | Meaning                                             |
-| ----------------------- | --------------------------------------------------- |
-| `name`                  | Project name (optional for team defaults)           |
-| `packageName`           | Java package (default `com.example`)                |
-| `entities`              | Entity descriptors, same format as YAML descriptors |
-| `options.backend`       | Generate backend files                              |
-| `options.frontend`      | Generate the Angular app                            |
-| `options.database`      | `postgresql`, `mysql`, or `h2`                      |
-| `options.auth`          | `jwt`, `none`, or `keycloak`                        |
-| `options.buildTool`     | `maven` or `gradle`                                 |
-| `options.migrationTool` | `flyway` or `liquibase`                             |
-| `options.seed`          | Generate a sample seed row for every entity         |
-| `options.docker`        | Emit Docker files                                   |
-| `options.dryRun`        | Report changes without writing                      |
-| `options.outputDir`     | Output root for `new`                               |
+| Key                     | Meaning                                                  |
+| ----------------------- | -------------------------------------------------------- |
+| `name`                  | Project name (optional for team defaults)                |
+| `packageName`           | Java package (default `com.example`)                     |
+| `entities`              | Entity descriptors, same format as YAML descriptors      |
+| `options.backend`       | Generate backend files                                   |
+| `options.frontend`      | Generate the Angular app                                 |
+| `options.database`      | `postgresql`, `mysql`, or `h2`                           |
+| `options.auth`          | `jwt`, `session`, `oidc`, `keycloak`, `auth0`, or `none` |
+| `options.buildTool`     | `maven` or `gradle`                                      |
+| `options.migrationTool` | `flyway` or `liquibase`                                  |
+| `options.seed`          | Generate a sample seed row for every entity              |
+| `options.docker`        | Emit Docker files                                        |
+| `options.dryRun`        | Report changes without writing                           |
+| `options.outputDir`     | Output root for `new`                                    |
 
 The schema is strict: unknown keys are rejected so typos surface immediately.
 
@@ -972,8 +980,8 @@ not block generation but may prevent a generated project from building.
 | `No generated CleanStack project was found`     | Run the command inside a project created by `cleanstack new`, or in a directory containing exactly one such project.                                                   |
 | `contains multiple generated projects`          | Change into the specific project directory; CleanStack will not guess.                                                                                                 |
 | Backend fails to connect to PostgreSQL or MySQL | Start the database, use `--docker` with `docker compose up`, or regenerate with `--db h2` for local work.                                                              |
-| Every API call returns 401                      | JWT/Keycloak mode is active. Set the issuer environment variable and send a valid bearer token.                                                                        |
-| Backend cannot reach the JWT issuer             | Set `JWT_ISSUER_URI` or `KEYCLOAK_ISSUER_URI` to an issuer that publishes OIDC metadata and signing keys.                                                              |
+| Every API call returns 401                      | Authentication is enabled. Sign in through the Angular login page, or send a valid bearer token for JWT/OIDC modes.                                                    |
+| Backend cannot reach the JWT issuer             | Set `JWT_ISSUER_URI`, `OIDC_ISSUER_URI`, `KEYCLOAK_ISSUER_URI`, or `AUTH0_ISSUER_URI` to an issuer that publishes OIDC metadata and signing keys.                      |
 | Port 8080 or 4200 is busy                       | Set `SERVER_PORT` for the backend; pass `--port` to `ng serve` for the frontend.                                                                                       |
 | Flyway or Liquibase rejects the schema          | Keep migrations append-only. Do not edit applied migrations; generate a new update migration or add a new `V<n>__*.sql` / changelog file.                              |
 | `Protected region conflict`                     | Resolve the reported region ids, then rerun. Use `--force` only when you intend to discard region contents.                                                            |

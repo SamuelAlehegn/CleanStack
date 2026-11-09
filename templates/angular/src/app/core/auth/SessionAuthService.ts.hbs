@@ -1,0 +1,69 @@
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+
+import { environment } from '../../../environments/environment';
+
+export interface UserProfile {
+  name: string;
+  email?: string;
+  roles: string[];
+}
+
+export interface Credentials {
+  username: string;
+  password: string;
+}
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private readonly http = inject(HttpClient);
+  private readonly endpoint = `${environment.apiBaseUrl}/auth`;
+  private readonly currentUser = signal<UserProfile | null>(null);
+
+  readonly mode = environment.authMode;
+  readonly user = this.currentUser.asReadonly();
+  readonly isAuthenticated = computed(() => this.currentUser() !== null);
+
+  async initialize(): Promise<void> {
+    await this.refreshProfile();
+  }
+
+  async login(credentials: Credentials): Promise<void> {
+    await this.ensureCsrfToken();
+    const body = new URLSearchParams({
+      username: credentials.username,
+      password: credentials.password,
+    }).toString();
+
+    await firstValueFrom(
+      this.http.post<void>(`${this.endpoint}/login`, body, {
+        headers: new HttpHeaders({ 'Content-Type': 'application/x-www-form-urlencoded' }),
+      }),
+    );
+    await this.refreshProfile();
+  }
+
+  async logout(): Promise<void> {
+    this.currentUser.set(null);
+    try {
+      await this.ensureCsrfToken();
+      await firstValueFrom(this.http.post<void>(`${this.endpoint}/logout`, null));
+    } catch {
+      // The browser is signed out locally even if the server cannot be reached.
+    }
+  }
+
+  private async ensureCsrfToken(): Promise<void> {
+    await firstValueFrom(this.http.get(`${this.endpoint}/csrf`));
+  }
+
+  private async refreshProfile(): Promise<void> {
+    try {
+      const profile = await firstValueFrom(this.http.get<UserProfile>(`${this.endpoint}/me`));
+      this.currentUser.set(profile);
+    } catch {
+      this.currentUser.set(null);
+    }
+  }
+}
