@@ -4,7 +4,12 @@ import path from 'node:path';
 import { ConfigLoader, CliOptionError, parseCommandLineOptions } from '../core/config-loader.js';
 import { JAVA_PACKAGE_PATTERN, type ProjectConfig } from '../core/config.js';
 import { EntityParser } from '../core/entity-parser.js';
-import { writeProjectMetadata } from '../core/project-metadata.js';
+import {
+  findPreviousEntityModel,
+  generateEntityMigrations,
+  orderEntitiesForMigrations,
+} from '../core/migrations.js';
+import { readProjectMetadata, writeProjectMetadata } from '../core/project-metadata.js';
 import {
   kebabCase,
   renderManifest,
@@ -33,6 +38,10 @@ Options:
   --auth <jwt|none|keycloak>   Authentication (default: jwt)
   --build <maven|gradle>       Build tool (default: maven)
   --frontend <angular|none>    Frontend (default: angular)
+  --migrations <flyway|liquibase>
+                               Schema migration tool (default: flyway)
+  --seed                       Generate one sample seed row per entity
+  --no-seed                    Do not generate seed migrations
   --docker                     Emit Docker files
   --entities                   Generate entities from the project configuration
   --no-entities                Skip configured entities
@@ -123,6 +132,10 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
   });
   // Project-level template overrides resolve from the directory the command runs in.
   const engine = new TemplateEngine({ projectRoot: cwd });
+  // Rerunning `new` over an existing project should diff descriptors against
+  // the stored model so field changes become new update migrations instead of
+  // silently leaving the schema behind.
+  const previousConfig = await readProjectMetadata(projectRootFs.rootDir);
   const generatedFiles: GeneratedFileResult[] = [];
   const collect =
     (prefix: string) =>
@@ -147,6 +160,18 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
     filesystemLogger,
     { force, onFile: collect(backendDirectory) },
   );
+  for (const entity of orderEntitiesForMigrations(generationProject.entities)) {
+    const previousEntity = findPreviousEntityModel(previousConfig?.entities ?? [], entity);
+    const migrations = await generateEntityMigrations({
+      fileSystem: backendFs,
+      engine,
+      project: backendProject,
+      entity,
+      ...(previousEntity === undefined ? {} : { previousEntity }),
+      logger: options.logger,
+    });
+    for (const migration of migrations) collect(backendDirectory)(migration);
+  }
 
   const uiDirectory = `${kebabCase(project.name)}-ui`;
   if (project.options.frontend) {

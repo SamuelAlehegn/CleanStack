@@ -28,9 +28,15 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+{{#if (eq project.options.migrationTool "liquibase")}}
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.xml
+{{else}}
   flyway:
     enabled: true
     locations: classpath:db/migration
+{{/if}}
 {{#if (eq project.options.auth "jwt")}}
   security:
     oauth2:

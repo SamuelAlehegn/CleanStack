@@ -15,6 +15,13 @@ import {
 } from '../core/frontend-updates.js';
 import { resolveProjectConfig, updateProjectMetadataEntity } from '../core/project-metadata.js';
 import { locateGeneratedProject, type GeneratedProject } from '../core/project.js';
+import {
+  findCreateMigration,
+  findPreviousEntityModel,
+  generateEntityMigrations,
+  isGeneratedEntityMigrationEntry,
+  nextMigrationVersion,
+} from '../core/migrations.js';
 import type { GeneratedFileResult } from '../core/generated-file.js';
 import { renderManifest, templateAliases, type ManifestEntry } from '../templates/manifest.js';
 import { TemplateEngine } from '../templates/template-engine.js';
@@ -35,6 +42,7 @@ interface EntityCommandArguments {
   packageName?: string;
   backend?: boolean;
   frontend?: boolean;
+  seed?: boolean;
   force: boolean;
   dryRun: boolean;
   help: boolean;
@@ -56,6 +64,8 @@ Options:
   --no-backend              Skip backend artifacts
   --frontend                Generate frontend artifacts only
   --no-frontend             Skip frontend artifacts
+  --seed                    Generate a sample seed migration for this entity
+  --no-seed                 Skip seed data even when the descriptor or project enables it
   --force                   Overwrite generated files completely, including protected regions
   --dry-run                 Show what would change without writing files
   -h, --help                Show this help`;
@@ -71,6 +81,10 @@ export interface EntityGenerationOptions {
   frontend?: boolean | undefined;
   force?: boolean | undefined;
   dryRun?: boolean | undefined;
+  /** Overrides the entity and project seed settings for this run. */
+  seed?: boolean | undefined;
+  /** Previous stored version of the entity, used to build update migrations. */
+  previousEntity?: EntityModel | undefined;
   /** Overrides the detected Java package. */
   packageName?: string | undefined;
   /** Already resolved project config; inferred when omitted. */
@@ -135,6 +149,8 @@ export async function generateEntityInProject(
   const metadataConfig =
     options.metadataConfig ??
     (await resolveProjectConfig(project, { cwd, logger: filesystemLogger }));
+  const previousEntity =
+    options.previousEntity ?? findPreviousEntityModel(metadataConfig.entities, entity);
 
   const projectName = path.basename(project.rootDir);
   const projectConfig: ProjectConfig = {
@@ -162,7 +178,14 @@ export async function generateEntityInProject(
   const migrationVersion =
     backendFileSystem === undefined
       ? 2
-      : await nextMigrationVersion(backendFileSystem, entity.tableName);
+      : ((
+          await findCreateMigration(
+            backendFileSystem,
+            projectConfig.options.migrationTool,
+            entity.tableName,
+          )
+        )?.version ??
+        (await nextMigrationVersion(backendFileSystem, projectConfig.options.migrationTool)));
   const entityContext = { ...entity, migrationVersion };
   const context = {
     project: { ...projectConfig, entities: [entityContext] },
@@ -170,7 +193,8 @@ export async function generateEntityInProject(
     entities: [entityContext],
     ...templateAliases(projectConfig),
   } as unknown as Record<string, unknown>;
-  const entityEntries = (entry: ManifestEntry): boolean => entry.forEach === 'entities';
+  const entityEntries = (entry: ManifestEntry): boolean =>
+    entry.forEach === 'entities' && !isGeneratedEntityMigrationEntry(entry);
 
   const backendProject: ProjectConfig | undefined = project.backend
     ? { ...projectConfig, name: path.basename(project.backend.directory) }
@@ -201,6 +225,16 @@ export async function generateEntityInProject(
       filesystemLogger,
       { filter: entityEntries, force, onFile },
     );
+    const migrations = await generateEntityMigrations({
+      fileSystem: backendFileSystem,
+      engine,
+      project: backendProject,
+      entity,
+      ...(previousEntity === undefined ? {} : { previousEntity }),
+      ...(options.seed === undefined ? {} : { seed: options.seed }),
+      logger,
+    });
+    generatedFiles.push(...migrations);
   }
 
   if (generateFrontend && frontendProject && frontendFileSystem) {
@@ -292,6 +326,11 @@ export async function runEntityCommand(
     source = descriptor.descriptorPath;
   }
 
+  if (parsed.seed !== undefined) {
+    entityConfig = { ...entityConfig, seed: parsed.seed };
+    entity = { ...entity, seed: parsed.seed };
+  }
+
   await generateEntityInProject({
     project,
     entity,
@@ -301,6 +340,7 @@ export async function runEntityCommand(
     ...(parsed.backend === undefined ? {} : { backend: parsed.backend }),
     ...(parsed.frontend === undefined ? {} : { frontend: parsed.frontend }),
     ...(parsed.packageName === undefined ? {} : { packageName: parsed.packageName }),
+    ...(parsed.seed === undefined ? {} : { seed: parsed.seed }),
     force: parsed.force,
     dryRun: parsed.dryRun,
   });
@@ -360,6 +400,16 @@ export function parseEntityCommandArguments(args: string[]): EntityCommandArgume
       case '--no-frontend':
         rejectValue(flag, inlineValue);
         setSide(result, 'frontend', false);
+        break;
+      case '--seed':
+        result.seed = parseBooleanFlag(flag, inlineValue, true);
+        break;
+      case '--no-seed':
+        rejectValue(flag, inlineValue);
+        if (result.seed === true) {
+          throw new CliOptionError('Options "--seed" and "--no-seed" cannot be combined.');
+        }
+        result.seed = false;
         break;
       case '--descriptor':
       case '-d': {
@@ -445,25 +495,6 @@ async function updateFrontendNavigation(
       `Could not find ${layoutPath}; add the ${entity.routeName} navigation link manually.`,
     );
   }
-}
-
-/** Finds the migration number a new or regenerated entity should use. */
-export async function nextMigrationVersion(
-  fileSystem: FileSystemService,
-  tableName: string,
-): Promise<number> {
-  const directory = 'src/main/resources/db/migration';
-  if (!(await fileSystem.exists(directory))) return 1;
-
-  const files = await fileSystem.listFiles(directory, { recursive: false });
-  let maximum = 0;
-  for (const file of files) {
-    const name = path.posix.basename(file);
-    const match = /^V(\d+)__/.exec(name);
-    if (match) maximum = Math.max(maximum, Number(match[1]));
-    if (name.endsWith(`__create_${tableName}_table.sql`) && match) return Number(match[1]);
-  }
-  return maximum + 1;
 }
 
 function resolveSides(

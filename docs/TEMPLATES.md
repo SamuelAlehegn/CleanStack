@@ -59,10 +59,10 @@ slashes. Template names on disk keep their `.hbs` suffix; the engine appends
 
 ## Built-in packs
 
-| Pack          | Generated into   | When generated                                                    | Description                                                      |
-| ------------- | ---------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `spring-boot` | `<name>-backend` | Always by `new`; when the backend side is enabled for the command | Spring Boot service with layered packages, JPA, Flyway, and auth |
-| `angular`     | `<name>-ui`      | `options.frontend` is true                                        | Standalone Angular app with routing, signals, and entity screens |
+| Pack          | Generated into   | When generated                                                    | Description                                                                   |
+| ------------- | ---------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `spring-boot` | `<name>-backend` | Always by `new`; when the backend side is enabled for the command | Spring Boot service with layered packages, JPA, Flyway or Liquibase, and auth |
+| `angular`     | `<name>-ui`      | `options.frontend` is true                                        | Standalone Angular app with routing, signals, and entity screens              |
 
 `cleanstack new` always generates the Spring Boot backend; only the Angular
 frontend is optional (`--frontend none`). Entity and regeneration commands
@@ -79,29 +79,31 @@ Manifest: `templates/spring-boot/manifest.json`.
 
 ### Build and project files
 
-| Template                             | Destination                             | Condition | Purpose                                                    |
-| ------------------------------------ | --------------------------------------- | --------- | ---------------------------------------------------------- |
-| `build/pom.xml.hbs`                  | `pom.xml`                               | Maven     | Spring Boot, JPA, Flyway, validation, springdoc, auth deps |
-| `build/mvnw.hbs`                     | `mvnw`                                  | Maven     | Maven wrapper script (generated executable)                |
-| `build/mvnw.cmd.hbs`                 | `mvnw.cmd`                              | Maven     | Maven wrapper script for Windows                           |
-| `build/maven-wrapper.properties.hbs` | `.mvn/wrapper/maven-wrapper.properties` | Maven     | Maven distribution and wrapper version                     |
-| `build/build.gradle.kts.hbs`         | `build.gradle.kts`                      | Gradle    | Kotlin DSL build file with the same dependencies           |
-| `build/settings.gradle.kts.hbs`      | `settings.gradle.kts`                   | Gradle    | Gradle project name and repositories                       |
-| `root/.gitignore.hbs`                | `.gitignore`                            | —         | Java/Maven/Gradle ignore rules                             |
-| `root/README.md.hbs`                 | `README.md`                             | —         | Stack, run/build commands, configuration, structure        |
-| `root/ARCHITECTURE.md.hbs`           | `ARCHITECTURE.md`                       | —         | Layering rules and package conventions                     |
+| Template                             | Destination                             | Condition | Purpose                                                                 |
+| ------------------------------------ | --------------------------------------- | --------- | ----------------------------------------------------------------------- |
+| `build/pom.xml.hbs`                  | `pom.xml`                               | Maven     | Spring Boot, JPA, Flyway or Liquibase, validation, springdoc, auth deps |
+| `build/mvnw.hbs`                     | `mvnw`                                  | Maven     | Maven wrapper script (generated executable)                             |
+| `build/mvnw.cmd.hbs`                 | `mvnw.cmd`                              | Maven     | Maven wrapper script for Windows                                        |
+| `build/maven-wrapper.properties.hbs` | `.mvn/wrapper/maven-wrapper.properties` | Maven     | Maven distribution and wrapper version                                  |
+| `build/build.gradle.kts.hbs`         | `build.gradle.kts`                      | Gradle    | Kotlin DSL build file with the same dependencies                        |
+| `build/settings.gradle.kts.hbs`      | `settings.gradle.kts`                   | Gradle    | Gradle project name and repositories                                    |
+| `root/.gitignore.hbs`                | `.gitignore`                            | —         | Java/Maven/Gradle ignore rules                                          |
+| `root/README.md.hbs`                 | `README.md`                             | —         | Stack, run/build commands, configuration, structure                     |
+| `root/ARCHITECTURE.md.hbs`           | `ARCHITECTURE.md`                       | —         | Layering rules and package conventions                                  |
 
 ### Local infrastructure
 
-| Template                                      | Destination                                        | Condition         | Purpose                            |
-| --------------------------------------------- | -------------------------------------------------- | ----------------- | ---------------------------------- |
-| `docker/Dockerfile.maven.hbs`                 | `Dockerfile`                                       | `docker` + Maven  | Multi-stage Maven image            |
-| `docker/Dockerfile.gradle.hbs`                | `Dockerfile`                                       | `docker` + Gradle | Multi-stage Gradle image           |
-| `docker/.dockerignore.hbs`                    | `.dockerignore`                                    | `docker`          | Build-context exclusions           |
-| `docker/docker-compose.yml.hbs`               | `docker-compose.yml`                               | `docker`          | Service plus database container    |
-| `resources/application.yml.hbs`               | `src/main/resources/application.yml`               | —                 | Base datasource/auth configuration |
-| `resources/application-dev.yml.hbs`           | `src/main/resources/application-dev.yml`           | —                 | Local development profile          |
-| `resources/db/migration/V1__baseline.sql.hbs` | `src/main/resources/db/migration/V1__baseline.sql` | —                 | Baseline Flyway migration          |
+| Template                                              | Destination                                                | Condition         | Purpose                                      |
+| ----------------------------------------------------- | ---------------------------------------------------------- | ----------------- | -------------------------------------------- |
+| `docker/Dockerfile.maven.hbs`                         | `Dockerfile`                                               | `docker` + Maven  | Multi-stage Maven image                      |
+| `docker/Dockerfile.gradle.hbs`                        | `Dockerfile`                                               | `docker` + Gradle | Multi-stage Gradle image                     |
+| `docker/.dockerignore.hbs`                            | `.dockerignore`                                            | `docker`          | Build-context exclusions                     |
+| `docker/docker-compose.yml.hbs`                       | `docker-compose.yml`                                       | `docker`          | Service plus database container              |
+| `resources/application.yml.hbs`                       | `src/main/resources/application.yml`                       | —                 | Base datasource/auth/migration configuration |
+| `resources/application-dev.yml.hbs`                   | `src/main/resources/application-dev.yml`                   | —                 | Local development profile                    |
+| `resources/db/migration/V1__baseline.sql.hbs`         | `src/main/resources/db/migration/V1__baseline.sql`         | Flyway            | Baseline Flyway migration                    |
+| `resources/db/changelog/db.changelog-master.xml.hbs`  | `src/main/resources/db/changelog/db.changelog-master.xml`  | Liquibase         | Master changelog with `includeAll`           |
+| `resources/db/changelog/changes/V1__baseline.xml.hbs` | `src/main/resources/db/changelog/changes/V1__baseline.xml` | Liquibase         | Baseline changelog                           |
 
 ### Application and domain
 
@@ -139,11 +141,23 @@ Manifest: `templates/spring-boot/manifest.json`.
 | `java/web/dto/package-info.java.hbs`                    | `src/main/java/{{package}}/web/dto/package-info.java`                      | —                   | DTO package documentation             |
 | `java/web/mapper/package-info.java.hbs`                 | `src/main/java/{{package}}/web/mapper/package-info.java`                   | —                   | Mapper package documentation          |
 
-Entity SQL is generated by the migration template in the resources group:
+Entity migrations are rendered by the migration planner instead of the
+manifest, so these entries are marked `internal` and their destination is
+documentation only:
 
-| Template                                | Destination                                                                                           | Condition | Purpose                                       |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------- | --------- | --------------------------------------------- |
-| `resources/db/migration/Entity.sql.hbs` | `src/main/resources/db/migration/V{{entity.migrationVersion}}__create_{{entity.tableName}}_table.sql` | entity    | Table, constraints, foreign keys, join tables |
+| Template                                             | Destination example                                                       | Purpose                                              |
+| ---------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `resources/db/migration/CreateTable.sql.hbs`         | `src/main/resources/db/migration/V2__create_products_table.sql`           | Flyway table, constraints, foreign keys, join tables |
+| `resources/db/migration/UpdateTable.sql.hbs`         | `src/main/resources/db/migration/V3__update_products_add_sku.sql`         | Flyway schema changes when a descriptor changes      |
+| `resources/db/migration/SeedData.sql.hbs`            | `src/main/resources/db/migration/V4__seed_products.sql`                   | Flyway seed rows                                     |
+| `resources/db/changelog/changes/CreateTable.xml.hbs` | `src/main/resources/db/changelog/changes/V2__create_products_table.xml`   | Liquibase create changeset                           |
+| `resources/db/changelog/changes/UpdateTable.xml.hbs` | `src/main/resources/db/changelog/changes/V3__update_products_add_sku.xml` | Liquibase update changeset                           |
+| `resources/db/changelog/changes/SeedData.xml.hbs`    | `src/main/resources/db/changelog/changes/V4__seed_products.xml`           | Liquibase seed changeset                             |
+
+Migration templates receive `migration` with `action`, `version`, `description`,
+`fileName`, `changesetId`, `author`, `changes`, `seedRows`, and seed helpers.
+`entity` additionally carries `idSqlType` and per-field `sqlType`, `defaultSql`,
+and `liquibaseDefault` for the selected database.
 
 ## Angular templates
 
@@ -236,16 +250,18 @@ Entity-scoped templates additionally receive `entity` for the current entity.
 
 ### Project options
 
-| Variable            | Type                            | Default      | Meaning                          |
-| ------------------- | ------------------------------- | ------------ | -------------------------------- |
-| `options.backend`   | boolean                         | `true`       | Generate the Spring Boot project |
-| `options.frontend`  | boolean                         | `true`       | Generate the Angular app         |
-| `options.database`  | `postgresql` \| `mysql` \| `h2` | `postgresql` | Database configuration           |
-| `options.auth`      | `jwt` \| `none` \| `keycloak`   | `jwt`        | Authentication mode              |
-| `options.buildTool` | `maven` \| `gradle`             | `maven`      | Backend build tool               |
-| `options.docker`    | boolean                         | `false`      | Emit Docker files                |
-| `options.dryRun`    | boolean                         | `false`      | Generation reporting mode        |
-| `options.outputDir` | string                          | `.`          | Output root for generated files  |
+| Variable                | Type                            | Default      | Meaning                          |
+| ----------------------- | ------------------------------- | ------------ | -------------------------------- |
+| `options.backend`       | boolean                         | `true`       | Generate the Spring Boot project |
+| `options.frontend`      | boolean                         | `true`       | Generate the Angular app         |
+| `options.database`      | `postgresql` \| `mysql` \| `h2` | `postgresql` | Database configuration           |
+| `options.auth`          | `jwt` \| `none` \| `keycloak`   | `jwt`        | Authentication mode              |
+| `options.buildTool`     | `maven` \| `gradle`             | `maven`      | Backend build tool               |
+| `options.migrationTool` | `flyway` \| `liquibase`         | `flyway`     | Schema migration tool            |
+| `options.seed`          | boolean                         | `false`      | Generate sample seed migrations  |
+| `options.docker`        | boolean                         | `false`      | Emit Docker files                |
+| `options.dryRun`        | boolean                         | `false`      | Generation reporting mode        |
+| `options.outputDir`     | string                          | `.`          | Output root for generated files  |
 
 ### Entity model
 
@@ -411,6 +427,7 @@ Manifest fields:
 | `files[].when`        | no       | Equality conditions checked against `project.options` (or top-level project fields) |
 | `files[].forEach`     | no       | Only `"entities"` today: render once per entity with `entity` in context            |
 | `files[].executable`  | no       | Mark the generated file executable (`0755`); used by the Maven wrapper script       |
+| `files[].internal`    | no       | Skip the entry in the manifest pass; rendered by a dedicated planner (migrations)   |
 
 Destination interpolation is intentionally limited to:
 

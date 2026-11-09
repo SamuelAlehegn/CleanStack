@@ -23,7 +23,11 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+{{#if (eq project.options.migrationTool "liquibase")}}
+    implementation("org.liquibase:liquibase-core")
+{{else}}
     implementation("org.springframework.boot:spring-boot-starter-flyway")
+{{/if}}
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
 {{#if (eq project.options.auth "jwt")}}
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
@@ -34,12 +38,16 @@ dependencies {
 {{#if (eq project.options.database "postgresql")}}
 
     runtimeOnly("org.postgresql:postgresql")
+{{#if (eq project.options.migrationTool "flyway")}}
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
+{{/if}}
 {{/if}}
 {{#if (eq project.options.database "mysql")}}
 
     runtimeOnly("com.mysql:mysql-connector-j")
+{{#if (eq project.options.migrationTool "flyway")}}
     runtimeOnly("org.flywaydb:flyway-mysql")
+{{/if}}
 {{/if}}
 {{#if (eq project.options.database "h2")}}
 

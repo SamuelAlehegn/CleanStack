@@ -17,6 +17,11 @@ export interface ManifestEntry {
   forEach?: 'entities';
   /** Marks the generated file as executable on platforms that support it. */
   executable?: boolean;
+  /**
+   * Templates rendered by a dedicated generator (for example the migration
+   * planner) rather than by the manifest itself.
+   */
+  internal?: boolean;
 }
 
 export interface TemplateManifest {
@@ -166,6 +171,7 @@ export async function planManifest(
 
   for (const entry of manifest.files) {
     if (filter && !filter(entry)) continue;
+    if (entry.internal === true) continue;
     if (
       entry.when &&
       !Object.entries(entry.when).every(([key, value]) => getCondition(project, key) === value)

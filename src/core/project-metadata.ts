@@ -154,10 +154,13 @@ export async function inferProjectConfig(
   const backend = project.backend;
   let database: GenerationOptions['database'] = 'postgresql';
   let auth: GenerationOptions['auth'] = 'none';
+  let migrationTool: GenerationOptions['migrationTool'] = 'flyway';
   let docker = false;
 
   if (backend !== undefined) {
     const resources = path.join(backend.directory, 'src', 'main', 'resources');
+    const liquibaseMaster = path.join(resources, 'db', 'changelog', 'db.changelog-master.xml');
+    if (await isFile(liquibaseMaster)) migrationTool = 'liquibase';
     const application = await readOptional(path.join(resources, 'application.yml'));
     const development = await readOptional(path.join(resources, 'application-dev.yml'));
     const configuration = `${application}\n${development}`;
@@ -191,6 +194,8 @@ export async function inferProjectConfig(
       auth,
       buildTool: backend?.buildTool ?? 'maven',
       docker,
+      migrationTool,
+      seed: false,
       dryRun: false,
       outputDir: '.',
     },

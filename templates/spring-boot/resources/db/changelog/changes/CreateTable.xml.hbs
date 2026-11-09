@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet id="create-{{entity.tableName}}" author="cleanstack">
+        <comment>Create table {{entity.tableName}} for {{entity.className}}.</comment>
+        <createTable tableName="{{entity.tableName}}">
+            <column name="id" type="{{entity.idSqlType}}">
+                <constraints primaryKey="true" primaryKeyName="pk_{{entity.tableName}}" nullable="false"/>
+            </column>
+{{#each entity.fields}}
+            <column name="{{columnName}}" type="{{sqlType}}"{{#if liquibaseDefault}} {{liquibaseDefault}}{{/if}}>
+                <constraints{{#if required}} nullable="false"{{/if}}{{#if unique}} unique="true" uniqueConstraintName="uq_{{../entity.tableName}}_{{columnName}}"{{/if}}/>
+            </column>
+{{/each}}
+{{#each entity.relationColumns}}
+            <column name="{{columnName}}" type="{{../entity.idSqlType}}">
+                <constraints{{#if required}} nullable="false"{{/if}}{{#if unique}} unique="true" uniqueConstraintName="uq_{{../entity.tableName}}_{{columnName}}"{{/if}}/>
+            </column>
+{{/each}}
+        </createTable>
+{{#each entity.relationColumns}}
+        <addForeignKeyConstraint baseTableName="{{../entity.tableName}}" baseColumnNames="{{columnName}}" constraintName="{{constraintName}}" referencedTableName="{{targetTable}}" referencedColumnNames="id"/>
+{{/each}}
+{{#each entity.joinTables}}
+        <createTable tableName="{{name}}">
+            <column name="{{joinColumn}}" type="{{../entity.idSqlType}}">
+                <constraints nullable="false"/>
+            </column>
+            <column name="{{inverseColumn}}" type="{{../entity.idSqlType}}">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addPrimaryKey tableName="{{name}}" columnNames="{{joinColumn}}, {{inverseColumn}}" constraintName="pk_{{name}}"/>
+        <addForeignKeyConstraint baseTableName="{{name}}" baseColumnNames="{{joinColumn}}" constraintName="fk_{{name}}_owner" referencedTableName="{{ownerTable}}" referencedColumnNames="id" onDelete="CASCADE"/>
+        <addForeignKeyConstraint baseTableName="{{name}}" baseColumnNames="{{inverseColumn}}" constraintName="fk_{{name}}_target" referencedTableName="{{targetTable}}" referencedColumnNames="id" onDelete="CASCADE"/>
+{{/each}}
+        <!-- <cleanstack:user-code id="migration.{{entity.variableName}}"> -->
+        <!-- </cleanstack:user-code> -->
+    </changeSet>
+</databaseChangeLog>

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -50,6 +50,50 @@ test('generates configured entities by default when prompts are skipped', async 
       'src/main/java/com/example/domain/Product.java',
     );
     assert.match(await readFile(generated, 'utf8'), /@Entity/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('--migrations liquibase and --seed generate changelogs with seed data', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-new-liquibase-'));
+  try {
+    await createProject(cwd, ['demo', '--yes', '--migrations', 'liquibase', '--seed']);
+
+    const changelogRoot = path.join(cwd, 'demo', 'demo-backend', 'src/main/resources/db/changelog');
+    const create = await readFile(
+      path.join(changelogRoot, 'changes', 'V2__create_products_table.xml'),
+      'utf8',
+    );
+    assert.match(create, /<createTable tableName="products">/);
+    assert.match(
+      await readFile(path.join(changelogRoot, 'db.changelog-master.xml'), 'utf8'),
+      /includeAll path="changes"/,
+    );
+    const seed = await readFile(
+      path.join(changelogRoot, 'changes', 'V3__seed_products.xml'),
+      'utf8',
+    );
+    assert.match(seed, /<insert tableName="products">/);
+    assert.match(seed, /Sample Product/);
+
+    const metadata = JSON.parse(
+      await readFile(path.join(cwd, 'demo', '.cleanstack', 'project.json'), 'utf8'),
+    );
+    assert.equal(metadata.config.options.migrationTool, 'liquibase');
+    assert.equal(metadata.config.options.seed, true);
+
+    await assert.rejects(
+      readFile(
+        path.join(
+          cwd,
+          'demo',
+          'demo-backend',
+          'src/main/resources/db/migration/V2__create_products_table.sql',
+        ),
+      ),
+      { code: 'ENOENT' },
+    );
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
@@ -223,6 +267,35 @@ test('rerunning new preserves user code in protected regions', async () => {
 
     await createProject(cwd, ['demo', '--yes', '--no-entities', '--force']);
     assert.doesNotMatch(await readFile(servicePath, 'utf8'), /customHook/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('rerunning new creates an update migration when configured fields change', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-new-update-migration-'));
+  try {
+    await createProject(cwd, ['demo', '--yes']);
+    await createProject(
+      cwd,
+      ['demo', '--yes'],
+      [
+        {
+          name: 'Product',
+          fields: [
+            { name: 'name', type: 'String', required: true },
+            { name: 'sku', type: 'String' },
+          ],
+        },
+      ],
+    );
+
+    const migrations = path.join(cwd, 'demo', 'demo-backend', 'src/main/resources/db/migration');
+    const files = await readdir(migrations);
+    const update = files.find((file) => file.startsWith('V3__update_products_add_sku'));
+    assert.ok(update, `Expected an update migration, found: ${files.join(', ')}`);
+    assert.match(await readFile(path.join(migrations, update), 'utf8'), /ADD COLUMN sku/);
+    assert.equal(files.filter((file) => file.includes('__create_products_table')).length, 1);
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

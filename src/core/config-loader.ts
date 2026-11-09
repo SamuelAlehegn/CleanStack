@@ -82,6 +82,9 @@ const OPTION_SPECS: Record<string, OptionSpec> = {
   build: { key: 'buildTool', kind: 'string', scope: 'options' },
   buildTool: { key: 'buildTool', kind: 'string', scope: 'options' },
   docker: { key: 'docker', kind: 'boolean', scope: 'options' },
+  migrations: { key: 'migrationTool', kind: 'string', scope: 'options' },
+  migrationTool: { key: 'migrationTool', kind: 'string', scope: 'options' },
+  seed: { key: 'seed', kind: 'boolean', scope: 'options' },
   dryRun: { key: 'dryRun', kind: 'boolean', scope: 'options' },
   outputDir: { key: 'outputDir', kind: 'string', scope: 'options' },
 };
@@ -102,6 +105,9 @@ const ENVIRONMENT_SPECS: Record<string, OptionSpec> = {
   BUILD: { key: 'buildTool', kind: 'string', scope: 'options' },
   BUILD_TOOL: { key: 'buildTool', kind: 'string', scope: 'options' },
   DOCKER: { key: 'docker', kind: 'boolean', scope: 'options' },
+  MIGRATIONS: { key: 'migrationTool', kind: 'string', scope: 'options' },
+  MIGRATION_TOOL: { key: 'migrationTool', kind: 'string', scope: 'options' },
+  SEED: { key: 'seed', kind: 'boolean', scope: 'options' },
   DRY_RUN: { key: 'dryRun', kind: 'boolean', scope: 'options' },
   OUTPUT_DIR: { key: 'outputDir', kind: 'string', scope: 'options' },
 };
