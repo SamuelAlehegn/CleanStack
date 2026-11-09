@@ -5,6 +5,12 @@ import { CliOptionError } from '../core/config-loader.js';
 import type { GeneratedFileResult } from '../core/generated-file.js';
 import { buildEntityModels } from '../core/entity-model.js';
 import { EntityParser, formatZodError } from '../core/entity-parser.js';
+import {
+  findPreviousEntityModel,
+  generateEntityMigrations,
+  isGeneratedEntityMigrationEntry,
+  orderEntitiesForMigrations,
+} from '../core/migrations.js';
 import { resolveProjectConfig, writeProjectMetadata } from '../core/project-metadata.js';
 import { locateGeneratedProject, type GeneratedProject } from '../core/project.js';
 import { renderManifest, templateContext, type ManifestEntry } from '../templates/manifest.js';
@@ -83,6 +89,7 @@ export async function runRegenerateCommand(
       entity,
       entityConfig,
       metadataConfig: config,
+      previousEntity: findPreviousEntityModel(baseConfig.entities, entity),
       cwd,
       logger: options.logger,
       ...(parsed.backend === undefined ? {} : { backend: parsed.backend }),
@@ -119,32 +126,47 @@ export async function runRegenerateCommand(
     generatedFiles.push(result);
   };
   const filter = (entry: ManifestEntry): boolean =>
-    parsed.target === 'all' ? true : entry.forEach !== 'entities';
+    !isGeneratedEntityMigrationEntry(entry) &&
+    (parsed.target === 'all' ? true : entry.forEach !== 'entities');
 
   // Pin migration numbers to the versions already on disk so --all cannot
   // renumber migrations when entities were generated in a different order.
-  const migrationVersions = await detectExistingMigrationVersions(project, filesystemLogger);
+  const migrationVersions = await detectExistingMigrationVersions(
+    project,
+    config,
+    filesystemLogger,
+  );
 
   if (generateBackend && project.backend) {
+    const backendProject = { ...config, name: path.basename(project.backend.directory) };
+    const backendFileSystem = new FileSystemService({
+      rootDir: project.backend.directory,
+      logger: filesystemLogger,
+      dryRun: parsed.dryRun,
+    });
     await renderManifest(
       'spring-boot',
-      { ...config, name: path.basename(project.backend.directory) },
-      templateContext(
-        {
-          ...config,
-          name: path.basename(project.backend.directory),
-        },
-        migrationVersions,
-      ),
+      backendProject,
+      templateContext(backendProject, migrationVersions),
       engine,
-      new FileSystemService({
-        rootDir: project.backend.directory,
-        logger: filesystemLogger,
-        dryRun: parsed.dryRun,
-      }),
+      backendFileSystem,
       filesystemLogger,
       { filter, force: parsed.force, onFile },
     );
+    if (parsed.target === 'all') {
+      for (const entity of orderEntitiesForMigrations(config.entities)) {
+        const previousEntity = findPreviousEntityModel(baseConfig.entities, entity);
+        const migrations = await generateEntityMigrations({
+          fileSystem: backendFileSystem,
+          engine,
+          project: backendProject,
+          entity,
+          ...(previousEntity === undefined ? {} : { previousEntity }),
+          logger: options.logger,
+        });
+        generatedFiles.push(...migrations);
+      }
+    }
   }
 
   if (generateFrontend && project.frontend) {
@@ -398,6 +420,7 @@ async function isDirectory(directory: string): Promise<boolean> {
 
 async function detectExistingMigrationVersions(
   project: GeneratedProject,
+  config: ProjectConfig,
   filesystemLogger: FileSystemLogger,
 ): Promise<Map<string, number>> {
   const versions = new Map<string, number>();
@@ -407,12 +430,15 @@ async function detectExistingMigrationVersions(
     rootDir: project.backend.directory,
     logger: filesystemLogger,
   });
-  const directory = 'src/main/resources/db/migration';
+  const directory =
+    config.options.migrationTool === 'liquibase'
+      ? 'src/main/resources/db/changelog/changes'
+      : 'src/main/resources/db/migration';
   if (!(await fs.exists(directory))) return versions;
 
   const files = await fs.listFiles(directory, { recursive: false });
   for (const file of files) {
-    const match = /^V(\d+)__create_(.+)_table\.sql$/.exec(path.posix.basename(file));
+    const match = /^V(\d+)__create_(.+)_table\.(?:sql|xml)$/.exec(path.posix.basename(file));
     if (match) {
       const version = Number(match[1]);
       const tableName = match[2]!;

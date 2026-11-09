@@ -85,23 +85,25 @@ directory (or under `--output-dir`).
 
 ### Options
 
-| Option                         | Meaning                                                        |
-| ------------------------------ | -------------------------------------------------------------- |
-| `--package <name>`             | Java package, for example `com.acme.app`                       |
-| `--db <postgresql\|h2\|mysql>` | Database (default: `postgresql`)                               |
-| `--auth <jwt\|none\|keycloak>` | Authentication (default: `jwt`)                                |
-| `--build <maven\|gradle>`      | Backend build tool (default: `maven`)                          |
-| `--frontend <angular\|none>`   | Generate the Angular app (default: `angular`) or skip it       |
-| `--docker`                     | Emit a backend `Dockerfile`, `.dockerignore`, and compose file |
-| `--output-dir <path>`          | Directory that receives the generated project                  |
-| `--entities`                   | Include entities from the configuration or `entities/`         |
-| `--no-entities`                | Skip entities from both sources                                |
-| `--interactive`                | Prompt for any settings that are not already provided          |
-| `-y, --yes`                    | Skip prompts and use defaults for missing settings             |
-| `--git`                        | Run `git init` in the generated project                        |
-| `--force`                      | Overwrite generated files completely, including regions        |
-| `--dry-run`                    | Report what would change without writing files                 |
-| `-h, --help`                   | Show command help                                              |
+| Option                             | Meaning                                                        |
+| ---------------------------------- | -------------------------------------------------------------- |
+| `--package <name>`                 | Java package, for example `com.acme.app`                       |
+| `--db <postgresql\|h2\|mysql>`     | Database (default: `postgresql`)                               |
+| `--auth <jwt\|none\|keycloak>`     | Authentication (default: `jwt`)                                |
+| `--build <maven\|gradle>`          | Backend build tool (default: `maven`)                          |
+| `--frontend <angular\|none>`       | Generate the Angular app (default: `angular`) or skip it       |
+| `--migrations <flyway\|liquibase>` | Schema migration tool (default: `flyway`)                      |
+| `--seed` / `--no-seed`             | Generate one sample seed row per entity (or suppress seeds)    |
+| `--docker`                         | Emit a backend `Dockerfile`, `.dockerignore`, and compose file |
+| `--output-dir <path>`              | Directory that receives the generated project                  |
+| `--entities`                       | Include entities from the configuration or `entities/`         |
+| `--no-entities`                    | Skip entities from both sources                                |
+| `--interactive`                    | Prompt for any settings that are not already provided          |
+| `-y, --yes`                        | Skip prompts and use defaults for missing settings             |
+| `--git`                            | Run `git init` in the generated project                        |
+| `--force`                          | Overwrite generated files completely, including regions        |
+| `--dry-run`                        | Report what would change without writing files                 |
+| `-h, --help`                       | Show command help                                              |
 
 `cleanstack new` always generates the Spring Boot backend. Use
 `--frontend none` to create a backend-only project; there is no option to skip
@@ -109,15 +111,17 @@ the backend.
 
 ### Defaults
 
-| Setting    | Default           |
-| ---------- | ----------------- |
-| Package    | `com.example`     |
-| Database   | `postgresql`      |
-| Auth       | `jwt`             |
-| Build tool | `maven`           |
-| Frontend   | Angular           |
-| Docker     | Off               |
-| Output     | Current directory |
+| Setting        | Default           |
+| -------------- | ----------------- |
+| Package        | `com.example`     |
+| Database       | `postgresql`      |
+| Auth           | `jwt`             |
+| Build tool     | `maven`           |
+| Migration tool | `flyway`          |
+| Seed data      | Off               |
+| Frontend       | Angular           |
+| Docker         | Off               |
+| Output         | Current directory |
 
 With defaults, the generated backend expects PostgreSQL on `localhost:5432` and
 a JWT issuer at `http://localhost:9000`. For a first run without external
@@ -298,8 +302,85 @@ build and exposes `/actuator/health` as its health check.
 
 The database name is the project name in snake case. Change the datasource in
 `src/main/resources/application.yml` or with standard Spring Boot environment
-variables. Flyway runs at startup and validates the schema; entity migrations
-are added as `V<n>__create_<table>_table.sql`.
+variables. The selected migration tool runs at startup and validates the schema.
+
+### Migrations and seed data
+
+Choose the migration tool when the project is created:
+
+```sh
+cleanstack new shop --migrations flyway
+cleanstack new shop --migrations liquibase
+```
+
+Flyway projects keep SQL migrations in
+`src/main/resources/db/migration`. Liquibase projects keep changelogs in
+`src/main/resources/db/changelog/changes`, included by
+`db.changelog-master.xml`. Entity and regeneration commands use the tool stored
+in `.cleanstack/project.json`, so the choice is stable for the life of the
+project. An existing project without metadata is detected from the presence of
+the Liquibase master changelog.
+
+Migrations are append-only and descriptively named:
+
+| Action | Flyway                            | Liquibase                         |
+| ------ | --------------------------------- | --------------------------------- |
+| Create | `V2__create_products_table.sql`   | `V2__create_products_table.xml`   |
+| Update | `V3__update_products_add_sku.sql` | `V3__update_products_add_sku.xml` |
+| Seed   | `V4__seed_products.sql`           | `V4__seed_products.xml`           |
+
+When a descriptor changes, CleanStack compares it with the definition stored in
+`.cleanstack/project.json` and writes a new update migration instead of editing
+one that may already have run. Updates cover table renames, added and dropped
+columns, SQL type changes, nullability, unique constraints, defaults, foreign
+keys, and many-to-many join tables. Field renames are treated as a drop plus an
+add because a rename cannot be inferred safely from names alone; edit the
+generated update migration if you want to preserve the data. Re-running
+`cleanstack new` for an existing project performs the same comparison, so a
+changed entity in the configuration or `entities/` appends an update migration.
+
+Seed migrations are generated in three ways:
+
+```sh
+cleanstack new shop --seed                    # sample row for every entity
+cleanstack entity Product --seed              # sample row for one entity
+cleanstack entity Product --no-seed           # suppress descriptor/project seeds
+```
+
+An entity can opt in with `seed: true` or provide explicit rows with
+`seedData`:
+
+```yaml
+name: Product
+fields:
+  - name: name
+    type: String
+    required: true
+  - name: price
+    type: BigDecimal
+    required: true
+  - name: active
+    type: boolean
+    default: true
+relations:
+  - field: category
+    type: many-to-one
+    target: Category
+    required: true
+seedData:
+  - id: 11111111-1111-4111-8111-111111111111
+    name: Demo product
+    price: 19.99
+    active: true
+    categoryId: 22222222-2222-4222-8222-222222222222
+```
+
+Keys are field names. Use `<relation>Id` for a to-one relation and `<relation>Ids`
+for a to-many relation. Omit `id` to get a deterministic UUID, which keeps
+regeneration snapshots stable. A required relation without an explicit id cannot
+be seeded safely; CleanStack warns and skips that row. Only one seed migration is
+created per table; later descriptor changes do not rewrite an applied seed
+migration, so add a new migration when you need more rows.
 
 ### Authentication modes
 
@@ -433,6 +514,8 @@ cleanstack entity Product \
 | `--no-backend`            | Skip backend artifacts               |
 | `--frontend`              | Generate frontend artifacts only     |
 | `--no-frontend`           | Skip frontend artifacts              |
+| `--seed`                  | Generate a sample seed migration     |
+| `--no-seed`               | Skip descriptor and project seeds    |
 | `--force`                 | Overwrite generated files completely |
 | `--dry-run`               | Report changes without writing files |
 
@@ -450,7 +533,8 @@ Backend:
 - REST controller at `/api/<route-name>`
 - Request and response DTOs plus a mapper
 - Not-found exception mapped to HTTP 404
-- Flyway migration with columns, constraints, foreign keys, and join tables
+- Flyway migration or Liquibase changelog with columns, constraints, foreign
+  keys, and join tables (plus an optional seed migration)
 
 Frontend:
 
@@ -492,9 +576,11 @@ read-only.
 
 Running `entity` again merges the newly rendered files with protected regions in
 the existing files. Custom code inside a region survives. Conflicts leave the
-file untouched and are reported with region ids. The command also picks the next
-Flyway version from existing `V<number>__*.sql` files and reuses a migration
-that already exists for the same table.
+file untouched and are reported with region ids. The command compares the
+descriptor with the definition stored in `.cleanstack/project.json`; when the
+schema changed it appends an update migration, and when seeding is newly enabled
+it appends a seed migration. Existing create migrations keep their versions and
+are never edited.
 
 Every generated entity is recorded in `.cleanstack/project.json`, so entities
 created from inline fields can be regenerated later:
@@ -535,9 +621,11 @@ Docker files.
 | `--force`                      | Overwrite generated files completely           |
 | `--dry-run`                    | Report what would change without writing files |
 
-Existing Flyway migrations keep their `V<n>` numbers during `--all`. Only files
-that changed are rewritten. Conflicts are reported with region ids and stop the
-command unless you resolve them or pass `--force`.
+Existing Flyway migrations and Liquibase changelogs keep their `V<n>` numbers
+during `--all`. Only files that changed are rewritten; schema changes since the
+last metadata update are appended as new update migrations. Conflicts are
+reported with region ids and stop the command unless you resolve them or pass
+`--force`.
 
 Use dry runs before a large regeneration:
 
@@ -709,6 +797,8 @@ export default {
     database: 'postgresql',
     auth: 'jwt',
     buildTool: 'maven',
+    migrationTool: 'flyway',
+    seed: false,
     docker: false,
   },
 };
@@ -721,6 +811,8 @@ options:
   database: postgresql
   auth: jwt
   buildTool: maven
+  migrationTool: flyway
+  seed: false
 ```
 
 A team defaults file may omit `name`; `cleanstack new <name>` supplies it. A
@@ -742,19 +834,21 @@ error rather than a silent choice.
 
 ### Environment variables
 
-| Variable                                        | Setting                        |
-| ----------------------------------------------- | ------------------------------ |
-| `CLEANSTACK_NAME`                               | Project name                   |
-| `CLEANSTACK_PACKAGE`, `CLEANSTACK_PACKAGE_NAME` | Java package                   |
-| `CLEANSTACK_BACKEND`                            | Generate backend files         |
-| `CLEANSTACK_FRONTEND`                           | Generate frontend files        |
-| `CLEANSTACK_DATABASE`, `CLEANSTACK_DB`          | `postgresql`, `mysql`, or `h2` |
-| `CLEANSTACK_AUTH`                               | `jwt`, `none`, or `keycloak`   |
-| `CLEANSTACK_BUILD`, `CLEANSTACK_BUILD_TOOL`     | `maven` or `gradle`            |
-| `CLEANSTACK_DOCKER`                             | Emit Docker files              |
-| `CLEANSTACK_DRY_RUN`                            | Report changes without writing |
-| `CLEANSTACK_OUTPUT_DIR`                         | Output directory               |
-| `CLEANSTACK_CONFIG`                             | Explicit configuration file    |
+| Variable                                             | Setting                        |
+| ---------------------------------------------------- | ------------------------------ |
+| `CLEANSTACK_NAME`                                    | Project name                   |
+| `CLEANSTACK_PACKAGE`, `CLEANSTACK_PACKAGE_NAME`      | Java package                   |
+| `CLEANSTACK_BACKEND`                                 | Generate backend files         |
+| `CLEANSTACK_FRONTEND`                                | Generate frontend files        |
+| `CLEANSTACK_DATABASE`, `CLEANSTACK_DB`               | `postgresql`, `mysql`, or `h2` |
+| `CLEANSTACK_AUTH`                                    | `jwt`, `none`, or `keycloak`   |
+| `CLEANSTACK_BUILD`, `CLEANSTACK_BUILD_TOOL`          | `maven` or `gradle`            |
+| `CLEANSTACK_MIGRATIONS`, `CLEANSTACK_MIGRATION_TOOL` | `flyway` or `liquibase`        |
+| `CLEANSTACK_SEED`                                    | Generate seed migrations       |
+| `CLEANSTACK_DOCKER`                                  | Emit Docker files              |
+| `CLEANSTACK_DRY_RUN`                                 | Report changes without writing |
+| `CLEANSTACK_OUTPUT_DIR`                              | Output directory               |
+| `CLEANSTACK_CONFIG`                                  | Explicit configuration file    |
 
 Booleans accept `true`/`false`, `1`/`0`, `yes`/`no`, and `on`/`off`. Empty
 variables are ignored.
@@ -779,19 +873,21 @@ the expected values, and a suggested fix.
 
 ### Configuration shape
 
-| Key                 | Meaning                                             |
-| ------------------- | --------------------------------------------------- |
-| `name`              | Project name (optional for team defaults)           |
-| `packageName`       | Java package (default `com.example`)                |
-| `entities`          | Entity descriptors, same format as YAML descriptors |
-| `options.backend`   | Generate backend files                              |
-| `options.frontend`  | Generate the Angular app                            |
-| `options.database`  | `postgresql`, `mysql`, or `h2`                      |
-| `options.auth`      | `jwt`, `none`, or `keycloak`                        |
-| `options.buildTool` | `maven` or `gradle`                                 |
-| `options.docker`    | Emit Docker files                                   |
-| `options.dryRun`    | Report changes without writing                      |
-| `options.outputDir` | Output root for `new`                               |
+| Key                     | Meaning                                             |
+| ----------------------- | --------------------------------------------------- |
+| `name`                  | Project name (optional for team defaults)           |
+| `packageName`           | Java package (default `com.example`)                |
+| `entities`              | Entity descriptors, same format as YAML descriptors |
+| `options.backend`       | Generate backend files                              |
+| `options.frontend`      | Generate the Angular app                            |
+| `options.database`      | `postgresql`, `mysql`, or `h2`                      |
+| `options.auth`          | `jwt`, `none`, or `keycloak`                        |
+| `options.buildTool`     | `maven` or `gradle`                                 |
+| `options.migrationTool` | `flyway` or `liquibase`                             |
+| `options.seed`          | Generate a sample seed row for every entity         |
+| `options.docker`        | Emit Docker files                                   |
+| `options.dryRun`        | Report changes without writing                      |
+| `options.outputDir`     | Output root for `new`                               |
 
 The schema is strict: unknown keys are rejected so typos surface immediately.
 
@@ -879,7 +975,7 @@ not block generation but may prevent a generated project from building.
 | Every API call returns 401                      | JWT/Keycloak mode is active. Set the issuer environment variable and send a valid bearer token.                                                                        |
 | Backend cannot reach the JWT issuer             | Set `JWT_ISSUER_URI` or `KEYCLOAK_ISSUER_URI` to an issuer that publishes OIDC metadata and signing keys.                                                              |
 | Port 8080 or 4200 is busy                       | Set `SERVER_PORT` for the backend; pass `--port` to `ng serve` for the frontend.                                                                                       |
-| Flyway rejects the schema                       | Keep migrations append-only. Do not edit applied migrations; add a new `V<n>__*.sql` file.                                                                             |
+| Flyway or Liquibase rejects the schema          | Keep migrations append-only. Do not edit applied migrations; generate a new update migration or add a new `V<n>__*.sql` / changelog file.                              |
 | `Protected region conflict`                     | Resolve the reported region ids, then rerun. Use `--force` only when you intend to discard region contents.                                                            |
 | A custom template is ignored                    | The new template dropped an existing protected region. The merge reported an orphaned-region conflict and left the file unchanged; re-add the region or use `--force`. |
 | `TemplateNotFoundError`                         | Check the pack-relative path (`<pack>/<template>.hbs`) and run `cleanstack templates list`.                                                                            |

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { zipSync } from 'fflate';
 import { stringify as stringifyYaml } from 'yaml';
-import { nextMigrationVersion, runEntityCommand } from '../cli/entity.js';
+import { runEntityCommand } from '../cli/entity.js';
 import { runNewCommand } from '../cli/new.js';
 import {
   EntityConfigSchema,
@@ -18,6 +18,12 @@ import {
   type RelationConfig,
 } from '../core/config.js';
 import { buildEntityModels, type EntityModel } from '../core/entity-model.js';
+import {
+  findCreateMigration,
+  migrationDirectory,
+  nextMigrationVersion,
+} from '../core/migrations.js';
+import { withSqlMetadata } from '../core/sql-types.js';
 import { resolveProjectConfig } from '../core/project-metadata.js';
 import { locateGeneratedProject, type GeneratedProject } from '../core/project.js';
 import { planManifest, templateAliases } from '../templates/manifest.js';
@@ -845,7 +851,6 @@ interface PreviewTemplate {
 
 const PREVIEW_TEMPLATES: Record<'backend' | 'frontend', PreviewTemplate[]> = {
   backend: [
-    { template: 'resources/db/migration/Entity.sql.hbs', language: 'sql' },
     { template: 'java/domain/Entity.java.hbs', language: 'java' },
     { template: 'java/infrastructure/web/EntityController.java.hbs', language: 'java' },
     { template: 'java/infrastructure/web/EntityRequest.java.hbs', language: 'java' },
@@ -879,25 +884,63 @@ async function renderEntityPreview(
     },
   };
   const filesystemLogger = { log: () => {} };
+  const migrationTool = projectConfig.options.migrationTool;
   const migrationVersion =
     project.backend === undefined
       ? 2
-      : await nextMigrationVersion(
+      : ((
+          await findCreateMigration(
+            new FileSystemService({
+              rootDir: project.backend.directory,
+              logger: filesystemLogger,
+            }),
+            migrationTool,
+            entityConfig.tableName ?? entity.tableName,
+          )
+        )?.version ??
+        (await nextMigrationVersion(
           new FileSystemService({
             rootDir: project.backend.directory,
             logger: filesystemLogger,
           }),
-          entityConfig.tableName ?? entity.tableName,
-        );
-  const entityContext = { ...entity, migrationVersion };
+          migrationTool,
+        )));
+  const entityContext = {
+    ...withSqlMetadata(entity, projectConfig.options.database),
+    migrationVersion,
+  };
   const context = {
     project: { ...projectConfig, entities: [entityContext] },
     ...projectConfig,
     entities: [entityContext],
+    entity: entityContext,
     ...templateAliases(projectConfig),
   } as unknown as Record<string, unknown>;
   const engine = new TemplateEngine({ projectRoot: project.workspaceRoot });
   const previews: EntityPreviewFile[] = [];
+
+  if (project.backend !== undefined) {
+    const isLiquibase = migrationTool === 'liquibase';
+    const template = isLiquibase
+      ? 'resources/db/changelog/changes/CreateTable.xml.hbs'
+      : 'resources/db/migration/CreateTable.sql.hbs';
+    const fileName = `V${migrationVersion}__create_${entity.tableName}_table.${
+      isLiquibase ? 'xml' : 'sql'
+    }`;
+    const contents = await engine.render(`spring-boot/${template}`, context);
+    previews.push({
+      path: relativePortable(
+        project.rootDir,
+        path.join(project.backend.directory, migrationDirectory(migrationTool), fileName),
+      ),
+      side: 'backend',
+      language: isLiquibase ? 'xml' : 'sql',
+      contents:
+        contents.length <= MAX_PREVIEW_FILE_CHARS
+          ? contents
+          : `${contents.slice(0, MAX_PREVIEW_FILE_CHARS)}\n/* Preview truncated by CleanStack Studio. */\n`,
+    });
+  }
 
   const sides = [
     {

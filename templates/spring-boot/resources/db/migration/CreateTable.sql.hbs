@@ -1,0 +1,38 @@
+-- Create table {{entity.tableName}} for {{entity.className}}.
+CREATE TABLE {{entity.tableName}} (
+    id {{entity.idSqlType}} NOT NULL,
+{{#each entity.fields}}
+    {{columnName}} {{sqlType}}{{#if defaultSql}} DEFAULT {{defaultSql}}{{/if}}{{#if required}} NOT NULL{{/if}},
+{{/each}}
+{{#each entity.relationColumns}}
+    {{columnName}} {{../entity.idSqlType}}{{#if required}} NOT NULL{{/if}},
+{{/each}}
+    CONSTRAINT pk_{{entity.tableName}} PRIMARY KEY (id)
+);
+{{#each entity.fields}}
+{{#if unique}}
+ALTER TABLE {{../entity.tableName}} ADD CONSTRAINT uq_{{../entity.tableName}}_{{columnName}} UNIQUE ({{columnName}});
+{{/if}}
+{{/each}}
+{{#each entity.relationColumns}}
+{{#if unique}}
+ALTER TABLE {{../entity.tableName}} ADD CONSTRAINT uq_{{../entity.tableName}}_{{columnName}} UNIQUE ({{columnName}});
+{{/if}}
+{{/each}}
+{{#each entity.relationColumns}}
+
+ALTER TABLE {{../entity.tableName}} ADD CONSTRAINT {{constraintName}} FOREIGN KEY ({{columnName}}) REFERENCES {{targetTable}} (id);
+{{/each}}
+{{#each entity.joinTables}}
+
+CREATE TABLE {{name}} (
+    {{joinColumn}} {{../entity.idSqlType}} NOT NULL,
+    {{inverseColumn}} {{../entity.idSqlType}} NOT NULL,
+    CONSTRAINT pk_{{name}} PRIMARY KEY ({{joinColumn}}, {{inverseColumn}}),
+    CONSTRAINT fk_{{name}}_owner FOREIGN KEY ({{joinColumn}}) REFERENCES {{ownerTable}} (id) ON DELETE CASCADE,
+    CONSTRAINT fk_{{name}}_target FOREIGN KEY ({{inverseColumn}}) REFERENCES {{targetTable}} (id) ON DELETE CASCADE
+);
+{{/each}}
+
+-- <cleanstack:user-code id="migration-{{entity.variableName}}">
+-- </cleanstack:user-code>

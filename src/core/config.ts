@@ -45,6 +45,8 @@ export const FIELD_VALIDATIONS = [
   'FutureOrPresent',
 ] as const;
 
+export const MIGRATION_TOOLS = ['flyway', 'liquibase'] as const;
+
 const identifier = (label: string) =>
   z.string().trim().min(1).regex(IDENTIFIER_PATTERN, `${label} must be a valid identifier.`);
 
@@ -196,6 +198,10 @@ export const EntityConfigSchema = z
     tableName: z.string().trim().min(1).optional(),
     fields: z.array(FieldConfigSchema).default([]),
     relations: z.array(RelationConfigSchema).default([]),
+    /** Generate one sample seed row for this entity. */
+    seed: z.boolean().default(false),
+    /** Explicit seed rows, keyed by field name or `<relation>Id`. */
+    seedData: z.array(z.record(z.string(), z.unknown())).default([]),
   })
   .strict();
 
@@ -207,6 +213,10 @@ export const GenerationOptionsSchema = z
     auth: z.enum(['jwt', 'none', 'keycloak']).default('jwt'),
     buildTool: z.enum(['maven', 'gradle']).default('maven'),
     docker: z.boolean().default(false),
+    /** Schema migration tool used by the generated Spring Boot backend. */
+    migrationTool: z.enum(MIGRATION_TOOLS).default('flyway'),
+    /** Generate seed migrations for entities that opt in with `seed` or `seedData`. */
+    seed: z.boolean().default(false),
     dryRun: z.boolean().default(false),
     outputDir: z.string().trim().min(1).default('.'),
   })

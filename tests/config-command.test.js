@@ -70,6 +70,8 @@ test('config show prints a summary table', async () => {
     assert.match(output, /Name=demo/);
     assert.match(output, /Package=com\.example/);
     assert.match(output, /Database=h2/);
+    assert.match(output, /Migration tool=flyway/);
+    assert.match(output, /Seed data=no/);
     assert.match(output, /Auth=none/);
     assert.match(output, /Entities=Product/);
   } finally {

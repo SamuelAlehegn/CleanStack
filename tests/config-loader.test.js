@@ -34,6 +34,17 @@ test('supports option aliases and inline boolean values', () => {
   );
 });
 
+test('parses the migration tool and seed options', () => {
+  assert.deepEqual(
+    parseCommandLineOptions(['new', 'shop', '--migrations', 'liquibase', '--seed']),
+    { name: 'shop', options: { migrationTool: 'liquibase', seed: true } },
+  );
+  assert.deepEqual(
+    parseCommandLineOptions(['new', 'shop', '--migration-tool=flyway', '--no-seed']),
+    { name: 'shop', options: { migrationTool: 'flyway', seed: false } },
+  );
+});
+
 test('accepts a project name after "--"', () => {
   assert.deepEqual(parseCommandLineOptions(['new', '--', 'my-app']), { name: 'my-app' });
 });
@@ -105,6 +116,8 @@ test('applies schema defaults when no configuration is present', async () => {
       auth: 'jwt',
       buildTool: 'maven',
       docker: false,
+      migrationTool: 'flyway',
+      seed: false,
       dryRun: false,
       outputDir: '.',
     });
@@ -325,6 +338,8 @@ test('environment variables accept aliases and boolean spellings', async () => {
         CLEANSTACK_PACKAGE: 'com.alias',
         CLEANSTACK_DB: 'h2',
         CLEANSTACK_BUILD: 'gradle',
+        CLEANSTACK_MIGRATIONS: 'liquibase',
+        CLEANSTACK_SEED: 'yes',
         CLEANSTACK_FRONTEND: '0',
         CLEANSTACK_BACKEND: 'off',
         CLEANSTACK_OUTPUT_DIR: 'generated',
@@ -335,6 +350,8 @@ test('environment variables accept aliases and boolean spellings', async () => {
     assert.equal(defaults.packageName, 'com.alias');
     assert.equal(defaults.options.database, 'h2');
     assert.equal(defaults.options.buildTool, 'gradle');
+    assert.equal(defaults.options.migrationTool, 'liquibase');
+    assert.equal(defaults.options.seed, true);
     assert.equal(defaults.options.frontend, false);
     assert.equal(defaults.options.backend, false);
     assert.equal(defaults.options.outputDir, 'generated');

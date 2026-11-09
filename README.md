@@ -7,7 +7,7 @@ descriptors, safe regeneration, template overrides, and OpenAPI client
 generation.
 
 The generated code is intentionally plain: constructor injection, explicit
-layers, manual DTO mapping, standard Flyway migrations, standalone Angular
+layers, manual DTO mapping, Flyway or Liquibase migrations, standalone Angular
 components, and signals. There is no CleanStack runtime dependency and no
 generated abstraction layer to learn.
 
@@ -114,7 +114,7 @@ only the backend.
 
 - Java 21 and Spring Boot 4.1.2 with Spring Web MVC, Spring Data JPA, and
   Bean Validation
-- PostgreSQL, MySQL, or H2 configuration with Flyway migrations
+- PostgreSQL, MySQL, or H2 configuration with Flyway or Liquibase migrations
 - Layered packages: `controller`, `service`, `domain`, `repository`,
   `web/dto`, `web/mapper`, `config`, and `security`
 - CRUD endpoints for each entity with validation and consistent HTTP statuses
@@ -180,15 +180,24 @@ Then generate it:
 cleanstack entity Product
 ```
 
-CleanStack creates the backend model, persistence, service, HTTP layer, Flyway
-migration, and the Angular model, service, and pages. Descriptors can also be
-built inline with repeatable `--field` options:
+CleanStack creates the backend model, persistence, service, HTTP layer,
+migration, and the Angular model, service, and pages. Migrations get descriptive
+names such as `V2__create_products_table.sql`. When a descriptor changes,
+CleanStack adds an update migration (for example
+`V3__update_products_add_sku.sql`) instead of editing migrations that already
+ran. Descriptors can also be built inline with repeatable `--field` options:
 
 ```sh
 cleanstack entity Product \
   --field 'name:String:required:maxLength=120' \
-  --field 'price:BigDecimal:required:min=0'
+  --field 'price:BigDecimal:required:min=0' \
+  --seed
 ```
+
+Choose Liquibase when creating a project with `--migrations liquibase`; the
+generated changelogs live under `src/main/resources/db/changelog`. Use `--seed`
+to add a sample row, or define explicit `seedData` rows in the descriptor. See
+[Migrations and seed data](docs/GUIDE.md#migrations-and-seed-data).
 
 See [Entity descriptors](docs/entity-descriptor.md) for field types,
 validations, inline syntax, and relation ownership rules.

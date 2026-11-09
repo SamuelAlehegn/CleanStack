@@ -6,7 +6,7 @@ A Spring Boot service generated with CleanStack. The code uses a simple package 
 
 - Java 21
 - Spring Boot 4.1
-- Spring Web MVC, Spring Data JPA, and Flyway
+- Spring Web MVC, Spring Data JPA, and {{#if (eq project.options.migrationTool "liquibase")}}Liquibase{{else}}Flyway{{/if}}
 - {{#if (eq project.options.database "postgresql")}}PostgreSQL{{/if}}{{#if (eq project.options.database "mysql")}}MySQL{{/if}}{{#if (eq project.options.database "h2")}}H2 (in-memory, for local development){{/if}}
 - {{#if (eq project.options.auth "jwt")}}JWT bearer-token authentication{{/if}}{{#if (eq project.options.auth "keycloak")}}Keycloak JWT bearer-token authentication{{/if}}{{#if (eq project.options.auth "none")}}No authentication{{/if}}
 - {{#if (eq project.options.buildTool "maven")}}Maven{{else}}Gradle{{/if}}

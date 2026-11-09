@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -312,6 +312,50 @@ test('regenerate --all preserves existing entity migration version', async () =>
       'demo-backend/src/main/resources/db/migration/V2__create_products_table.sql',
     );
     assert.match(migrationAfter, /CREATE TABLE products/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('regenerate --all creates an update migration when a descriptor changes', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-regen-update-migration-'));
+  try {
+    const projectRoot = await generateProject(cwd);
+    await addEntityDescriptor(
+      projectRoot,
+      ['name: Product', 'fields:', '  - name: name', '    type: String', ''].join('\n'),
+    );
+    await runEntityCommand(['Product'], { cwd: projectRoot, logger });
+
+    await addEntityDescriptor(
+      projectRoot,
+      [
+        'name: Product',
+        'fields:',
+        '  - name: name',
+        '    type: String',
+        '  - name: sku',
+        '    type: String',
+        '    unique: true',
+        '',
+      ].join('\n'),
+    );
+    await runRegenerateCommand(['--all'], { cwd: projectRoot, logger });
+
+    const migrations = path.join(projectRoot, 'demo-backend/src/main/resources/db/migration');
+    const files = await readdir(migrations);
+    const update = files.find((file) => file.startsWith('V3__update_products_add_sku'));
+    assert.ok(update, `expected an update migration, got ${files.join(', ')}`);
+    assert.match(await readFile(path.join(migrations, update), 'utf8'), /ADD COLUMN sku/);
+
+    // Regenerating again after the metadata is updated must not repeat it.
+    await runRegenerateCommand(['--all'], { cwd: projectRoot, logger });
+    const after = await readdir(migrations);
+    assert.equal(
+      after.some((file) => file.startsWith('V4__update_products')),
+      false,
+      `expected no duplicate update migration, got ${after.join(', ')}`,
+    );
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

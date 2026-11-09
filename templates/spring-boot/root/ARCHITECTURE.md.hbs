@@ -30,7 +30,7 @@ The generated backend uses a straightforward Spring Boot package structure:
 - Keep HTTP request and response types in `web.dto`.
 - Keep DTO conversions in `web.mapper`.
 - Put JPA annotations on entities in `domain` and Spring Data interfaces in `repository`.
-- Put schema changes in Flyway migrations under `src/main/resources/db/migration`.
+- Put schema changes in {{#if (eq project.options.migrationTool "liquibase")}}Liquibase changelogs under `src/main/resources/db/changelog/changes`{{else}}Flyway migrations under `src/main/resources/db/migration`{{/if}}.
 - Add application-specific code inside the protected regions in generated files.
 
 <!-- <cleanstack:user-code id="architecture.project-notes"> -->

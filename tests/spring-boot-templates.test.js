@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { buildEntityModels } from '../dist/core/entity-model.js';
+import { withSqlMetadata } from '../dist/core/sql-types.js';
 import { TemplateEngine } from '../dist/templates/template-engine.js';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -11,8 +12,9 @@ const templateRoot = path.join(repositoryRoot, 'templates', 'spring-boot');
 const manifest = JSON.parse(await readFile(path.join(templateRoot, 'manifest.json'), 'utf8'));
 
 function createContext(options, configuredEntities = []) {
+  const database = options.database ?? 'postgresql';
   const entities = buildEntityModels(configuredEntities).map((entity, index) => ({
-    ...entity,
+    ...withSqlMetadata(entity, database),
     migrationVersion: index + 2,
   }));
   return {
@@ -27,6 +29,8 @@ function createContext(options, configuredEntities = []) {
         auth: 'none',
         buildTool: 'maven',
         docker: false,
+        migrationTool: 'flyway',
+        seed: false,
         dryRun: false,
         outputDir: '.',
         ...options,
@@ -56,6 +60,7 @@ async function renderProject(options) {
 
   const files = new Map();
   for (const entry of manifest.files) {
+    if (entry.internal === true) continue;
     if (!applies(entry, context.project.options)) continue;
     const items = entry.forEach === 'entities' ? context.entities : [undefined];
     for (const entity of items) {
@@ -68,6 +73,16 @@ async function renderProject(options) {
     }
   }
   return files;
+}
+
+async function renderEntityMigration(options, entityConfig, template, extra = {}) {
+  const context = createContext(options, [entityConfig]);
+  const engine = new TemplateEngine({
+    projectRoot: path.join(repositoryRoot, 'tests', '.render'),
+    userTemplatesDir: path.join(repositoryRoot, 'tests', '.render', 'user'),
+    builtInTemplatesDir: templateRoot,
+  });
+  return engine.render(template, { ...context, entity: context.entities[0], ...extra });
 }
 
 test('renders a complete Maven, PostgreSQL, Docker project', async () => {
@@ -180,19 +195,22 @@ test('publishes the OpenAPI contract with springdoc', async () => {
 });
 
 test('renders entity artifacts and a Flyway migration for configured entities', async () => {
-  const files = await renderProject({
-    entities: [
-      {
-        name: 'Product',
-        relations: [],
-        fields: [
-          { name: 'name', type: 'String', required: true, maxLength: 120, validations: [] },
-          { name: 'price', type: 'BigDecimal', required: true, min: 0, validations: [] },
-          { name: 'createdAt', type: 'Instant', required: true, validations: [] },
-        ],
-      },
+  const product = {
+    name: 'Product',
+    relations: [],
+    fields: [
+      { name: 'name', type: 'String', required: true, maxLength: 120, validations: [] },
+      { name: 'price', type: 'BigDecimal', required: true, min: 0, validations: [] },
+      { name: 'createdAt', type: 'Instant', required: true, validations: [] },
     ],
-  });
+  };
+  const options = { entities: [product] };
+  const files = await renderProject(options);
+  const migration = await renderEntityMigration(
+    options,
+    product,
+    'resources/db/migration/CreateTable.sql.hbs',
+  );
 
   assert.match(files.get('src/main/java/com/acme/shop/domain/Product.java'), /class Product/);
   assert.match(
@@ -203,14 +221,8 @@ test('renders entity artifacts and a Flyway migration for configured entities', 
     files.get('src/main/java/com/acme/shop/controller/ProductController.java'),
     /@RequestMapping\("\/api\/products"\)/,
   );
-  assert.match(
-    files.get('src/main/resources/db/migration/V2__create_products_table.sql'),
-    /CREATE TABLE products[\s\S]*name VARCHAR\(120\) NOT NULL/,
-  );
-  assert.match(
-    files.get('src/main/resources/db/migration/V2__create_products_table.sql'),
-    /created_at TIMESTAMP WITH TIME ZONE NOT NULL/,
-  );
+  assert.match(migration, /CREATE TABLE products[\s\S]*name VARCHAR\(120\) NOT NULL/);
+  assert.match(migration, /created_at TIMESTAMP WITH TIME ZONE NOT NULL/);
   assert.match(
     files.get('src/main/java/com/acme/shop/web/dto/ProductRequest.java'),
     /import java\.math\.BigDecimal;/,
@@ -240,6 +252,105 @@ test('renders entity artifacts and a Flyway migration for configured entities', 
     ),
     false,
   );
+});
+
+test('renders Liquibase changelogs and dependencies when selected', async () => {
+  const product = {
+    name: 'Product',
+    relations: [],
+    fields: [
+      { name: 'name', type: 'String', required: true, validations: [] },
+      { name: 'active', type: 'boolean', required: true, default: true, validations: [] },
+    ],
+  };
+  const options = { migrationTool: 'liquibase', database: 'mysql', entities: [product] };
+  const files = await renderProject(options);
+
+  assert.ok(files.has('src/main/resources/db/changelog/db.changelog-master.xml'));
+  assert.match(
+    files.get('src/main/resources/db/changelog/db.changelog-master.xml'),
+    /includeAll path="changes"/,
+  );
+  assert.ok(files.has('src/main/resources/db/changelog/changes/V1__baseline.xml'));
+  assert.equal(files.has('src/main/resources/db/migration/V1__baseline.sql'), false);
+  assert.match(
+    files.get('src/main/resources/application.yml'),
+    /liquibase:[\s\S]*db\.changelog-master\.xml/,
+  );
+  assert.doesNotMatch(files.get('src/main/resources/application.yml'), /flyway:/);
+  assert.match(files.get('pom.xml'), /org\.liquibase[\s\S]*liquibase-core/);
+  assert.doesNotMatch(files.get('pom.xml'), /spring-boot-starter-flyway/);
+
+  const migration = await renderEntityMigration(
+    options,
+    product,
+    'resources/db/changelog/changes/CreateTable.xml.hbs',
+  );
+  assert.match(migration, /<createTable tableName="products">/);
+  assert.match(migration, /<column name="id" type="CHAR\(36\)">/);
+  assert.match(migration, /defaultValueBoolean="true"/);
+});
+
+test('renders update and seed migration templates', async () => {
+  const product = {
+    name: 'Product',
+    relations: [],
+    fields: [
+      { name: 'name', type: 'String', required: true, validations: [] },
+      { name: 'price', type: 'BigDecimal', validations: [] },
+    ],
+  };
+  const migration = {
+    action: 'update',
+    version: 3,
+    description: 'Update table products.',
+    fileName: 'V3__update_products_add_sku.sql',
+    changesetId: '3-update-products',
+    author: 'cleanstack',
+    changes: [
+      {
+        kind: 'add-column',
+        label: 'add_sku',
+        description: 'Add column sku',
+        statements: ['ALTER TABLE products ADD COLUMN sku VARCHAR(255);'],
+        liquibase:
+          '<addColumn tableName="products"><column name="sku" type="VARCHAR(255)"/></addColumn>',
+      },
+    ],
+    seedStatements: [
+      "INSERT INTO products (id, name) VALUES ('00000000-0000-4000-8000-000000000000', 'Sample');",
+    ],
+    liquibaseSeed: '',
+    seedRows: [],
+    hasSeedData: false,
+  };
+
+  const update = await renderEntityMigration(
+    { database: 'postgresql' },
+    product,
+    'resources/db/migration/UpdateTable.sql.hbs',
+    { migration },
+  );
+  assert.match(update, /ALTER TABLE products ADD COLUMN sku VARCHAR\(255\);/);
+  assert.match(update, /migration\.update\.3/);
+
+  const seed = await renderEntityMigration(
+    { database: 'postgresql' },
+    product,
+    'resources/db/migration/SeedData.sql.hbs',
+    { migration },
+  );
+  assert.match(seed, /INSERT INTO products/);
+  assert.match(seed, /migration\.seed\.product/);
+
+  const liquibase = await renderEntityMigration(
+    { migrationTool: 'liquibase' },
+    product,
+    'resources/db/changelog/changes/UpdateTable.xml.hbs',
+    { migration },
+  );
+  assert.match(liquibase, /<addColumn tableName="products">/);
+  assert.match(liquibase, /changeSet id="3-update-products"/);
 });
 
 test('every built-in template is referenced by the manifest', async () => {

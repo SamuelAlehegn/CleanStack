@@ -1,0 +1,10 @@
+-- Update table {{entity.tableName}}.
+{{#each migration.changes}}
+-- {{description}}
+{{#each statements}}
+{{this}}
+{{/each}}
+
+{{/each}}
+-- <cleanstack:user-code id="migration.update.{{migration.version}}">
+-- </cleanstack:user-code>

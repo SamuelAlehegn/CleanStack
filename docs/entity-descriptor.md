@@ -89,6 +89,8 @@ cleanstack entity Product \
 | `--no-backend`            | Skip backend artifacts.                              |
 | `--frontend`              | Generate frontend artifacts only.                    |
 | `--no-frontend`           | Skip frontend artifacts.                             |
+| `--seed`                  | Generate a sample seed migration for this entity.    |
+| `--no-seed`               | Skip descriptor and project seed settings.           |
 | `--force`                 | Overwrite generated files completely.                |
 | `--dry-run`               | Report what would change without writing.            |
 
@@ -99,12 +101,13 @@ unless `--package` is passed.
 ### Generated artifacts
 
 For the backend, the command writes the JPA entity, repository, service,
-controller, request/response DTOs, mapper, not-found exception, and a Flyway
-migration. The migration version is derived from the existing
-`V<number>__*.sql` files; an existing migration for the same table is reused.
-When `new` generates several entities at once, migration versions are ordered
-so related tables exist before foreign keys and join tables that reference
-them.
+controller, request/response DTOs, mapper, not-found exception, and a migration
+for the project's Flyway or Liquibase setup. The migration version is derived
+from the existing `V<number>__*` files; an existing create migration for the
+same table is reused. When the descriptor changes, a new update migration is
+appended. When `new` generates several entities at once, migration versions are
+ordered so related tables exist before foreign keys and join tables that
+reference them.
 
 For the frontend, the command writes the model, HTTP service, and list, detail,
 and form pages, then adds the entity routes to `app.routes.ts` and a link to
@@ -168,6 +171,8 @@ relations:
 | `tableName` | string     | Optional database table name.                              |
 | `fields`    | list       | Scalar fields. Defaults to an empty list.                  |
 | `relations` | list       | Associations to other entities. Defaults to an empty list. |
+| `seed`      | boolean    | Generate one sample seed row. Defaults to `false`.         |
+| `seedData`  | list       | Explicit seed rows keyed by field and `<relation>Id`.      |
 
 Field names and relation fields use Java-style identifiers. Names are case-sensitive within an entity; duplicate names are rejected.
 
@@ -322,6 +327,45 @@ mapper can include labels without extra queries. Relation payloads are flat:
 - Angular forms render a `<select>` for single relations and a multiple
   `<select>` for collections, loading options from the target's HTTP service.
   List and detail pages display the resolved labels.
+
+## Seed data
+
+Set `seed: true` to generate one sample row, or use `seedData` for explicit
+values:
+
+```yaml
+name: Product
+seed: true
+fields:
+  - name: name
+    type: String
+    required: true
+  - name: price
+    type: BigDecimal
+    required: true
+relations:
+  - field: category
+    type: many-to-one
+    target: Category
+    required: true
+seedData:
+  - id: 11111111-1111-4111-8111-111111111111
+    name: Demo product
+    price: 19.99
+    categoryId: 22222222-2222-4222-8222-222222222222
+```
+
+`seedData` keys are field names. To-one relations use `<field>Id`; to-many
+relations use `<field>Ids`. Omit `id` to let CleanStack derive a stable UUID.
+Explicit rows take precedence over `seed: true`. A required relation without an
+explicit id cannot be seeded safely, so the row is skipped with a warning.
+Project-wide `--seed` also enables a sample row for every entity.
+
+A seed migration is created once per table. Changing `seedData` later does not
+rewrite an applied migration; add a new migration when you need more rows. Use
+`--no-seed` to suppress seeds for one command. See
+[Migrations and seed data](GUIDE.md#migrations-and-seed-data) for the generated
+file names.
 
 ## Validation
 

@@ -98,6 +98,8 @@ export async function runConfigCommand(
       { setting: 'Backend', value: config.options.backend ? 'yes' : 'no' },
       { setting: 'Frontend', value: config.options.frontend ? 'yes' : 'no' },
       { setting: 'Database', value: config.options.database },
+      { setting: 'Migration tool', value: config.options.migrationTool },
+      { setting: 'Seed data', value: config.options.seed ? 'yes' : 'no' },
       { setting: 'Auth', value: config.options.auth },
       { setting: 'Build tool', value: config.options.buildTool },
       { setting: 'Docker', value: config.options.docker ? 'yes' : 'no' },
