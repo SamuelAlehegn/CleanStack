@@ -20,6 +20,7 @@ import { TemplateEngine } from '../templates/template-engine.js';
 import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
 import { isMissingPath } from '../utils/path-safety.js';
 import type { Logger } from '../utils/logger.js';
+import { loadCommandExtensions } from './extensions.js';
 import { conflictingFiles, reportGeneratedFiles } from './file-report.js';
 import type { GeneratedFileResult } from '../core/generated-file.js';
 
@@ -70,6 +71,9 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
     return;
   }
   let cliOptions = mapFrontendOption(parseCommandLineOptions(configArgs));
+  // Extensions are loaded before the configuration is validated so entity
+  // definitions in the configuration file may use extension field types.
+  await loadCommandExtensions({ cwd, logger: options.logger });
   const loader = new ConfigLoader();
   // File and environment defaults count as provided values, so `new` only
   // prompts for settings that are still missing.

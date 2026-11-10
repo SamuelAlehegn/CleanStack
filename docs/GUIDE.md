@@ -997,5 +997,6 @@ For deeper detail:
 - [Templates](TEMPLATES.md) — template catalog and override authoring
 - [Protected regions](protected-regions.md) — merge rules and error codes
 - [Entity descriptors](entity-descriptor.md) — complete descriptor reference
+- [Extensions](EXTENSIONS.md) — adding field types and frontend frameworks
 - [OpenAPI integration](OPENAPI.md) — client manifests and contract-first details
 - [Comparison](COMPARISON.md) — how CleanStack differs from other generators

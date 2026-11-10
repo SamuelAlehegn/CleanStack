@@ -37,6 +37,10 @@
       "types": "./dist/core/entity-parser.d.ts",
       "default": "./dist/core/entity-parser.js"
     },
+    "./extensions": {
+      "types": "./dist/core/extensions/index.d.ts",
+      "default": "./dist/core/extensions/index.js"
+    },
     "./migrations": {
       "types": "./dist/core/migrations.d.ts",
       "default": "./dist/core/migrations.js"

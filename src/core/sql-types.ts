@@ -1,5 +1,6 @@
 import type { FieldConfig, GenerationOptions } from './config.js';
 import type { EntityFieldModel, EntityModel } from './entity-model.js';
+import { resolveActiveFieldType } from './extensions/registry.js';
 
 export type SqlDatabase = GenerationOptions['database'];
 
@@ -24,6 +25,9 @@ export function sqlTypeForField(
   field: Pick<FieldConfig, 'type' | 'maxLength'>,
   database: SqlDatabase,
 ): string {
+  const custom = resolveActiveFieldType(field.type);
+  if (custom) return custom.sqlTypeFor(field, database);
+
   switch (field.type) {
     case 'String':
       return `VARCHAR(${field.maxLength ?? 255})`;

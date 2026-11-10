@@ -4,6 +4,7 @@ import type { Logger } from '../utils/logger.js';
 import { runConfigCommand } from './config.js';
 import { runDoctorCommand } from './doctor.js';
 import { runEntityCommand } from './entity.js';
+import { runExtensionsCommand } from './extensions.js';
 import { runNewCommand } from './new.js';
 import { runOpenApiCommand } from './openapi.js';
 import { runRegenerateCommand } from './regenerate.js';
@@ -24,6 +25,7 @@ export interface CliHandlers {
   configCommand(args: string[], context: CliCommandContext): Promise<void>;
   doctorCommand(args: string[], context: CliCommandContext): Promise<void>;
   uiCommand(args: string[], context: CliCommandContext): Promise<void>;
+  extensionsCommand(args: string[], context: CliCommandContext): Promise<void>;
 }
 
 export interface CreateProgramOptions {
@@ -52,6 +54,7 @@ const defaultHandlers: CliHandlers = {
   configCommand: (args, context) => runConfigCommand(args, context),
   doctorCommand: (args, context) => runDoctorCommand(args, context),
   uiCommand: (args, context) => runUiCommand(args, context).then(() => undefined),
+  extensionsCommand: (args, context) => runExtensionsCommand(args, context),
 };
 
 /**
@@ -160,6 +163,14 @@ export function createProgram(options: CreateProgramOptions): Command {
   leaf(program, 'ui')
     .description('Start the local CleanStack web UI')
     .action((args: string[]) => handlers.uiCommand(args, context));
+
+  const extensions = program
+    .command('extensions')
+    .description('List the extensions loaded for this directory');
+  leaf(extensions, 'list')
+    .description('List extensions, field types, and frontend frameworks')
+    .action((args: string[]) => handlers.extensionsCommand(['list', ...args], context));
+  extensions.action(() => handlers.extensionsCommand(['list'], context));
 
   return program;
 }

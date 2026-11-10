@@ -3,12 +3,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { parse as parseYaml } from 'yaml';
-import {
-  ProjectConfigSchema,
-  ProjectDefaultsSchema,
-  type ProjectConfig,
-  type ProjectDefaults,
-} from './config.js';
+import { createConfigSchemas, type ProjectConfig, type ProjectDefaults } from './config.js';
+import { activeSchemaInput } from './extensions/registry.js';
 import { CleanStackError } from '../utils/errors.js';
 
 export type ConfigInput = Record<string, unknown>;
@@ -121,7 +117,11 @@ export interface EnvironmentOptions {
 /** Loads and validates project configuration from a file and CLI arguments. */
 export class ConfigLoader {
   async load(options: ConfigLoaderOptions = {}): Promise<ProjectConfig> {
-    return ProjectConfigSchema.parse(await this.resolve(options));
+    // Built at call time so extension field types declared in the same
+    // configuration file are accepted once extensions have been loaded.
+    return createConfigSchemas(activeSchemaInput()).ProjectConfigSchema.parse(
+      await this.resolve(options),
+    ) as ProjectConfig;
   }
 
   /**
@@ -129,7 +129,9 @@ export class ConfigLoader {
    * a team defaults file, which `cleanstack new <name>` completes.
    */
   async loadDefaults(options: ConfigLoaderOptions = {}): Promise<ProjectDefaults> {
-    return ProjectDefaultsSchema.parse(await this.resolve(options));
+    return createConfigSchemas(activeSchemaInput()).ProjectDefaultsSchema.parse(
+      await this.resolve(options),
+    ) as ProjectDefaults;
   }
 
   /**
