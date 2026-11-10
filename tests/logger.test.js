@@ -240,6 +240,22 @@ test('quiet mode does not create spinners but still runs the task', async () => 
   assert.equal(stderr.text(), '');
 });
 
+test('default spinner loads lazily and replays queued calls', async () => {
+  const { logger, stderr } = createLogger();
+
+  const spinner = logger.startSpinner('Working');
+  assert.ok(spinner);
+  logger.updateSpinner('Almost done');
+  assert.equal(spinner.text, 'Almost done');
+  logger.succeedSpinner('Done');
+
+  // ora is imported asynchronously; wait for the queued calls to replay.
+  for (let attempt = 0; attempt < 100 && !stderr.text().includes('Done'); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.match(stderr.text(), /Done/);
+});
+
 test('detects color support from the environment and the stream', () => {
   const tty = { isTTY: true };
   const pipe = { isTTY: false };

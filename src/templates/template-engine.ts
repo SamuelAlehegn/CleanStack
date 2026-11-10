@@ -44,6 +44,15 @@ interface ResolvedTemplate {
   root: string;
 }
 
+type HandlebarsEnvironment = ReturnType<typeof Handlebars.create>;
+type CompiledTemplate = ReturnType<typeof Handlebars.compile>;
+
+interface CompiledTemplateCacheEntry {
+  compiled: CompiledTemplate;
+  mtimeMs: number;
+  size: number;
+}
+
 export type TemplateOverrideLocation = 'project' | 'user' | 'built-in';
 
 export interface ResolvedTemplateLocation {
@@ -66,6 +75,15 @@ export const BUILT_IN_TEMPLATE_ROOT = path.resolve(
 export class TemplateEngine {
   private readonly roots: string[];
   private readonly extension: string;
+  /**
+   * One Handlebars environment per engine, so helpers and partials are
+   * registered once instead of on every render.
+   */
+  private environment: Promise<HandlebarsEnvironment> | undefined;
+  /** Compiled templates keyed by resolved file path, validated by mtime and size. */
+  private readonly compiledTemplates = new Map<string, CompiledTemplateCacheEntry>();
+  /** Concurrent renders of the same template share one compilation. */
+  private readonly pendingCompilations = new Map<string, Promise<CompiledTemplate>>();
 
   constructor(options: TemplateEngineOptions = {}) {
     const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
@@ -88,14 +106,11 @@ export class TemplateEngine {
    */
   async render(templateName: string, context: Record<string, unknown>): Promise<string> {
     const resolved = await this.resolveTemplate(templateName);
-    const source = await readFile(resolved.filePath, 'utf8');
-    const handlebars = Handlebars.create();
-    registerHelpers(handlebars);
-    await this.registerPartials(handlebars);
 
     try {
       // Generated source code must not be HTML-escaped.
-      return handlebars.compile(source, { strict: true, noEscape: true })(context);
+      const compiled = await this.getCompiledTemplate(resolved.filePath);
+      return compiled(context);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(
@@ -105,6 +120,17 @@ export class TemplateEngine {
         },
       );
     }
+  }
+
+  /**
+   * Drops compiled templates, cached partials, and helper registrations.
+   * Long-running embedders call this after editing template files in place;
+   * the CLI creates a fresh engine per command and rarely needs it.
+   */
+  clearCache(): void {
+    this.compiledTemplates.clear();
+    this.pendingCompilations.clear();
+    this.environment = undefined;
   }
 
   /**
@@ -142,7 +168,56 @@ export class TemplateEngine {
     throw new TemplateNotFoundError(templateName, searchedPaths);
   }
 
-  private async registerPartials(handlebars: typeof Handlebars): Promise<void> {
+  /**
+   * Returns a compiled template, reusing it while the source file is unchanged.
+   * The stat check keeps the cache correct for watch modes and web sessions
+   * where an override may be edited between renders.
+   */
+  private async getCompiledTemplate(filePath: string): Promise<CompiledTemplate> {
+    const fileStats = await stat(filePath);
+    const cached = this.compiledTemplates.get(filePath);
+    if (cached && cached.mtimeMs === fileStats.mtimeMs && cached.size === fileStats.size) {
+      return cached.compiled;
+    }
+
+    const pending = this.pendingCompilations.get(filePath);
+    if (pending) return pending;
+
+    const compilation = (async () => {
+      const source = await readFile(filePath, 'utf8');
+      const handlebars = await this.getEnvironment();
+      const compiled = handlebars.compile(source, { strict: true, noEscape: true });
+      this.compiledTemplates.set(filePath, {
+        compiled,
+        mtimeMs: fileStats.mtimeMs,
+        size: fileStats.size,
+      });
+      return compiled;
+    })();
+
+    this.pendingCompilations.set(filePath, compilation);
+    try {
+      return await compilation;
+    } finally {
+      this.pendingCompilations.delete(filePath);
+    }
+  }
+
+  private getEnvironment(): Promise<HandlebarsEnvironment> {
+    this.environment ??= (async () => {
+      const handlebars = Handlebars.create();
+      registerHelpers(handlebars);
+      await this.registerPartials(handlebars);
+      return handlebars;
+    })().catch((error: unknown) => {
+      // A failed initialization must not poison the engine; the next render retries.
+      this.environment = undefined;
+      throw error;
+    });
+    return this.environment;
+  }
+
+  private async registerPartials(handlebars: HandlebarsEnvironment): Promise<void> {
     const registered = new Set<string>();
 
     // First registration wins, so the roots' configured priority is preserved.

@@ -1,15 +1,6 @@
 import path from 'node:path';
 import { Command } from 'commander';
 import type { Logger } from '../utils/logger.js';
-import { runConfigCommand } from './config.js';
-import { runDoctorCommand } from './doctor.js';
-import { runEntityCommand } from './entity.js';
-import { runExtensionsCommand } from './extensions.js';
-import { runNewCommand } from './new.js';
-import { runOpenApiCommand } from './openapi.js';
-import { runRegenerateCommand } from './regenerate.js';
-import { runTemplatesCommand } from './templates.js';
-import { runUiCommand } from './ui.js';
 
 export interface CliCommandContext {
   logger: Logger;
@@ -45,16 +36,48 @@ export interface ExtractedGlobalFlags {
   quiet: boolean;
 }
 
+/**
+ * Command modules are imported on demand. Startup therefore loads Commander
+ * and the logger only; heavy dependencies such as inquirer, Handlebars, and
+ * zod are paid for by the command that actually needs them.
+ */
 const defaultHandlers: CliHandlers = {
-  newCommand: (args, context) => runNewCommand(args, context),
-  entityCommand: (args, context) => runEntityCommand(args, context),
-  regenerateCommand: (args, context) => runRegenerateCommand(args, context),
-  openapiCommand: (args, context) => runOpenApiCommand(args, context),
-  templatesCommand: (args, context) => runTemplatesCommand(args, context),
-  configCommand: (args, context) => runConfigCommand(args, context),
-  doctorCommand: (args, context) => runDoctorCommand(args, context),
-  uiCommand: (args, context) => runUiCommand(args, context).then(() => undefined),
-  extensionsCommand: (args, context) => runExtensionsCommand(args, context),
+  async newCommand(args, context) {
+    const { runNewCommand } = await import('./new.js');
+    return runNewCommand(args, context);
+  },
+  async entityCommand(args, context) {
+    const { runEntityCommand } = await import('./entity.js');
+    return runEntityCommand(args, context);
+  },
+  async regenerateCommand(args, context) {
+    const { runRegenerateCommand } = await import('./regenerate.js');
+    return runRegenerateCommand(args, context);
+  },
+  async openapiCommand(args, context) {
+    const { runOpenApiCommand } = await import('./openapi.js');
+    return runOpenApiCommand(args, context);
+  },
+  async templatesCommand(args, context) {
+    const { runTemplatesCommand } = await import('./templates.js');
+    return runTemplatesCommand(args, context);
+  },
+  async configCommand(args, context) {
+    const { runConfigCommand } = await import('./config.js');
+    return runConfigCommand(args, context);
+  },
+  async doctorCommand(args, context) {
+    const { runDoctorCommand } = await import('./doctor.js');
+    return runDoctorCommand(args, context);
+  },
+  async uiCommand(args, context) {
+    const { runUiCommand } = await import('./ui.js');
+    await runUiCommand(args, context);
+  },
+  async extensionsCommand(args, context) {
+    const { runExtensionsCommand } = await import('./extensions.js');
+    return runExtensionsCommand(args, context);
+  },
 };
 
 /**

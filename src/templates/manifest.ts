@@ -36,8 +36,13 @@ export interface RenderManifestOptions {
   filter?: (entry: ManifestEntry) => boolean;
   /** Replace existing files completely, including protected regions. */
   force?: boolean;
-  /** Called once per planned file with the merge outcome. */
+  /** Called once per planned file with the merge outcome, in manifest order. */
   onFile?: (result: GeneratedFileResult) => void;
+  /**
+   * Maximum number of files rendered and written at the same time.
+   * Defaults to 8; set to 1 to force sequential writes.
+   */
+  concurrency?: number;
 }
 
 export interface ManifestPlanItem {
@@ -201,26 +206,109 @@ export async function renderManifest(
   options: RenderManifestOptions = {},
 ): Promise<string[]> {
   const plan = await planManifest(templateSet, project, context, filesystemLogger, options.filter, engine);
+  const concurrency = normalizeConcurrency(options.concurrency);
   const written: string[] = [];
 
-  for (const item of plan) {
-    const contents = await engine.render(`${templateSet}/${item.entry.template}`, item.context);
-    const parent = path.posix.dirname(item.destination);
-    if (!output.dryRun && parent !== '.') await output.createDirectory(parent);
-    const result = await writeGeneratedFile(output, item.destination, contents, {
-      force: options.force ?? false,
-      dryRun: output.dryRun,
-    });
+  // Create each parent once. mkdir is recursive, so parallel calls are safe.
+  if (!output.dryRun) {
+    const parents = [
+      ...new Set(
+        plan
+          .map((item) => path.posix.dirname(item.destination))
+          .filter((parent) => parent !== '.'),
+      ),
+    ];
+    await forEachConcurrent(parents, concurrency, (parent) => output.createDirectory(parent));
+  }
+
+  // Files with distinct destinations are independent. Entries that resolve to
+  // the same destination stay ordered and run one at a time, so the last entry
+  // still wins exactly as it did with sequential rendering.
+  const destinationGroups = new Map<string, Array<{ item: ManifestPlanItem; index: number }>>();
+  plan.forEach((item, index) => {
+    const existing = destinationGroups.get(item.destination);
+    const entry = { item, index };
+    if (existing) existing.push(entry);
+    else destinationGroups.set(item.destination, [entry]);
+  });
+
+  const results: Array<GeneratedFileResult | undefined> = new Array(plan.length);
+  await forEachConcurrent(
+    [...destinationGroups.values()],
+    concurrency,
+    async (entries) => {
+      for (const { item, index } of entries) {
+        const contents = await engine.render(`${templateSet}/${item.entry.template}`, item.context);
+        const result = await writeGeneratedFile(output, item.destination, contents, {
+          force: options.force ?? false,
+          dryRun: output.dryRun,
+        });
+        results[index] = result;
+
+        if (
+          result.status !== 'conflict' &&
+          result.status !== 'preserved' &&
+          item.entry.executable &&
+          !output.dryRun
+        ) {
+          await output.chmod(item.destination, 0o755);
+        }
+      }
+    },
+  );
+
+  // Report in manifest order regardless of completion order so CLI output and
+  // the returned file list stay deterministic.
+  for (const [index, item] of plan.entries()) {
+    const result = results[index];
+    if (result === undefined) {
+      throw new Error(`No generation result was recorded for "${item.destination}".`);
+    }
     options.onFile?.(result);
     if (result.status !== 'conflict' && result.status !== 'preserved') {
-      if (item.entry.executable && !output.dryRun) {
-        await output.chmod(item.destination, 0o755);
-      }
       written.push(item.destination);
     }
   }
 
   return written;
+}
+
+const DEFAULT_WRITE_CONCURRENCY = 8;
+
+function normalizeConcurrency(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return DEFAULT_WRITE_CONCURRENCY;
+  return Math.max(1, Math.floor(value));
+}
+
+/**
+ * Runs `worker` over `items` with a bounded number of concurrent tasks.
+ * Workers stop taking new items after the first failure, then the error is
+ * re-thrown once the in-flight tasks settle.
+ */
+async function forEachConcurrent<T>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+  let failure: unknown;
+  const run = async (): Promise<void> => {
+    while (failure === undefined) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) return;
+      try {
+        await worker(items[index]!);
+      } catch (error) {
+        failure = error;
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(Math.max(1, limit), items.length) }, () => run()),
+  );
+  if (failure !== undefined) throw failure;
 }
 
 function resolveDestination(

@@ -146,6 +146,30 @@ test('renders code without HTML-escaping template values', async () => {
   }
 });
 
+test('reuses compiled templates and recompiles them after an edit', async () => {
+  const fixture = await createFixture();
+  try {
+    const templatePath = await fixture.write(
+      fixture.builtInTemplatesDir,
+      'greeting.hbs',
+      'Hello {{name}}',
+    );
+    const engine = fixture.engine();
+
+    assert.equal(await engine.render('greeting', { name: 'Ada' }), 'Hello Ada');
+    assert.equal(await engine.render('greeting', { name: 'Grace' }), 'Hello Grace');
+
+    await writeFile(templatePath, 'Hi {{name}}');
+    assert.equal(await engine.render('greeting', { name: 'Ada' }), 'Hi Ada');
+
+    // Explicit invalidation also drops partials and helpers.
+    engine.clearCache();
+    assert.equal(await engine.render('greeting', { name: 'Ada' }), 'Hi Ada');
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test('does not write rendered output to disk', async () => {
   const fixture = await createFixture();
   try {

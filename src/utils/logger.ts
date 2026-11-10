@@ -1,5 +1,4 @@
 import type { Writable } from 'node:stream';
-import ora from 'ora';
 import picocolors from 'picocolors';
 
 type Colors = ReturnType<typeof picocolors.createColors>;
@@ -81,9 +80,11 @@ export class Logger {
     this.verbose = options.verbose ?? false;
     this.colorEnabled = options.color ?? shouldUseColor(this.stdout);
     this.colors = picocolors.createColors(this.colorEnabled);
+    // ora is only loaded when a spinner is actually shown. Spinner-free
+    // commands (including --help and --version) avoid that startup cost.
     this.createSpinner =
       options.createSpinner ??
-      (({ text, stream }) => ora({ text, stream, color: this.colorEnabled ? 'cyan' : false }));
+      (({ text, stream }) => createLazySpinner(text, stream, this.colorEnabled));
   }
 
   /** Plain output. Hidden in quiet mode. */
@@ -216,6 +217,94 @@ export class Logger {
   private writeLine(stream: Writable, message: string): void {
     stream.write(`${message}\n`);
   }
+}
+
+type Ora = typeof import('ora').default;
+
+let oraImport: Promise<Ora> | undefined;
+
+function loadOra(): Promise<Ora> {
+  oraImport ??= import('ora')
+    .then((module) => module.default)
+    .catch((error: unknown) => {
+      oraImport = undefined;
+      throw error;
+    });
+  return oraImport;
+}
+
+/**
+ * Returns a spinner immediately and loads ora in the background. Calls made
+ * before the module arrives are replayed in order, so the synchronous
+ * SpinnerLike contract is unchanged.
+ */
+function createLazySpinner(text: string, stream: Writable, colorEnabled: boolean): SpinnerLike {
+  let currentText = text;
+  let spinner: SpinnerLike | undefined;
+  let loadFailed = false;
+  const pendingCalls: Array<(target: SpinnerLike) => void> = [];
+
+  const apply = (call: (target: SpinnerLike) => void): void => {
+    if (spinner) call(spinner);
+    else if (!loadFailed) pendingCalls.push(call);
+  };
+
+  const spinnerHandle: SpinnerLike = {
+    get text() {
+      return currentText;
+    },
+    set text(value: string) {
+      currentText = value;
+      if (spinner) spinner.text = value;
+    },
+    start(value?: string) {
+      if (value !== undefined) currentText = value;
+      apply((target) => target.start(currentText));
+      return spinnerHandle;
+    },
+    stop() {
+      apply((target) => target.stop());
+      return spinnerHandle;
+    },
+    succeed(value?: string) {
+      apply((target) => target.succeed(value));
+      return spinnerHandle;
+    },
+    fail(value?: string) {
+      apply((target) => target.fail(value));
+      return spinnerHandle;
+    },
+    warn(value?: string) {
+      apply((target) => target.warn(value));
+      return spinnerHandle;
+    },
+    info(value?: string) {
+      apply((target) => target.info(value));
+      return spinnerHandle;
+    },
+    clear() {
+      apply((target) => target.clear());
+      return spinnerHandle;
+    },
+  };
+
+  void loadOra()
+    .then((ora) => {
+      spinner = ora({
+        text: currentText,
+        stream,
+        color: colorEnabled ? 'cyan' : false,
+      });
+      for (const call of pendingCalls) call(spinner);
+      pendingCalls.length = 0;
+    })
+    .catch(() => {
+      // Spinners are cosmetic; a failed import must not break the command.
+      loadFailed = true;
+      pendingCalls.length = 0;
+    });
+
+  return spinnerHandle;
 }
 
 /** Returns whether colored output should be used for a stream. */
