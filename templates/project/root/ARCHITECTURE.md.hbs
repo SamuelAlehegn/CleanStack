@@ -1,0 +1,102 @@
+# {{pascalCase project.name}} — Architecture
+
+This document is written for two audiences at once: developers and AI coding
+agents. It describes how the workspace is organized, how the layers depend on
+each other, and which rules generated code follows. Agents must treat the rules
+in [.ai/rules/](.ai/README.md) as binding.
+
+## Workspace layout
+
+```text
+{{kebabCase project.name}}/
+  {{kebabCase project.name}}-backend/    Spring Boot REST API{{#if project.options.frontend}}
+  {{kebabCase project.name}}-ui/         Angular single-page application{{/if}}
+  entities/         Entity descriptors (YAML) used by the generator
+  .ai/              Architecture and naming rules for agents
+  .cleanstack/      Generator metadata (do not edit by hand)
+  ARCHITECTURE.md   This file
+  AGENTS.md         Entry point for AI coding agents
+```
+
+## Sides
+
+### Backend — `{{kebabCase project.name}}-backend`
+
+Spring Boot with a layered package structure under
+`src/main/java/{{packagePath project.packageName}}`:
+
+| Package | Responsibility |
+| --- | --- |
+| `domain` | JPA entities and domain models |
+| `service` | Use cases and application services |
+| `repository` | Spring Data repositories |
+| `controller` | REST controllers (`/api/...`) |
+| `web.dto` | Request and response types |
+| `web.mapper` | HTTP-to-domain mapping |
+| `exception` | Exceptions and HTTP status mapping |
+| `config`, `security` | Infrastructure configuration |
+
+Details: [{{kebabCase project.name}}-backend/ARCHITECTURE.md]({{kebabCase project.name}}-backend/ARCHITECTURE.md).
+
+{{#if project.options.frontend}}
+### Frontend — `{{kebabCase project.name}}-ui`
+
+Angular (standalone components, signals) with a page-first structure under
+`src/app`:
+
+| Folder | Responsibility |
+| --- | --- |
+| `pages/<route>/` | One folder per entity route with `list`, `detail`, and `form` pages |
+| `services/` | One HTTP service per entity (`providedIn: 'root'`) |
+| `models/` | API types: `<entity>.ts` with an interface and an input type |
+| `core/auth/` | Authentication service, guard, and interceptor |
+| `layout/`, `shared/`, `api/generated/` | Shell, reusable pieces, generated API client |
+
+The frontend talks to the backend through the `/api` proxy configured in
+`src/proxy.conf.json` during development.
+
+{{/if}}
+## Request flow
+
+{{#if project.options.frontend}}1. A page component calls an Angular service method
+   (`services/<entity>.service.ts`), which sends an HTTP request to
+   `/api/<route>` on the backend.
+2. A controller validates a request DTO from `web.dto`.
+3. A mapper converts the DTO to a domain entity.
+4. A service in `service/` applies the use case and calls a repository.
+5. The response travels back as a response DTO and is rendered with signals.
+{{else}}1. A client sends an HTTP request to `/api/<route>` on the backend.
+2. A controller validates a request DTO from `web.dto`.
+3. A mapper converts the DTO to a domain entity.
+4. A service in `service/` applies the use case and calls a repository.
+5. The response travels back as a response DTO.
+{{/if}}
+
+## Schema changes
+
+Schema changes are generated from entity descriptors, never written by hand:
+{{#if (eq project.options.migrationTool "liquibase")}}
+Liquibase changelogs live in
+`{{kebabCase project.name}}-backend/src/main/resources/db/changelog/changes`.
+{{else}}
+Flyway migrations live in
+`{{kebabCase project.name}}-backend/src/main/resources/db/migration`.
+{{/if}}
+
+Descriptors live in `entities/` (and in `.cleanstack/project.json` metadata);
+add or change an entity there, then run `cleanstack entity <Name>` or
+`cleanstack regenerate`.
+
+## Rules for agents and humans
+
+1. Follow the layer tables above; dependencies point from controllers/pages
+   toward the domain, never the other way around.
+2. Name every artifact exactly as described in
+   [.ai/rules/naming-conventions.md](.ai/rules/naming-conventions.md).
+3. Never edit generated code outside `cleanstack:user-code` regions; see
+   [.ai/rules/protected-regions.md](.ai/rules/protected-regions.md).
+4. Generate entities with the CLI instead of writing CRUD code by hand; see
+   [.ai/rules/adding-an-entity.md](.ai/rules/adding-an-entity.md).
+
+<!-- <cleanstack:user-code id="architecture.project-notes"> -->
+<!-- </cleanstack:user-code> -->

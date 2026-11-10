@@ -1,0 +1,51 @@
+# Protected regions
+
+CleanStack owns the files it generates. Hand-written code survives
+regeneration only inside protected regions. AI agents must internalize these
+rules before touching any generated file.
+
+## Marker format
+
+A region is a comment pair whose comment syntax matches the file language:
+
+```text
+Java, TypeScript, SCSS  // <cleanstack:user-code id="service.product">  ...  // </cleanstack:user-code>
+HTML, Markdown, YAML    <!-- <cleanstack:user-code id="...">  ...  -->
+SQL                     -- <cleanstack:user-code id="...">     ...  --
+```
+
+The `id` is stable and namespaced (for example `controller.product`); a
+checksum detects whether the generated side of the region changed.
+
+## Rules for agents
+
+1. **Never move, rename, or reformat marker lines.** The opening and closing
+   lines must stay byte-identical.
+2. **Write custom code only inside regions.** Anything written outside a region
+   in a generated file is overwritten by the next `cleanstack regenerate`.
+3. **Never delete a region**, even when it looks empty; the generator re-injects
+   its content on regeneration.
+4. **New files you create yourself** (a new use case, a shared component) are
+   yours; the generator never touches files it did not generate. Follow
+   [naming-conventions.md](naming-conventions.md) so they fit in.
+5. **Do not edit `.cleanstack/project.json`.** It stores generation metadata for
+   `regenerate`; hand edits corrupt the next run.
+
+## Regeneration workflow
+
+```bash
+cleanstack regenerate --dry-run   # preview what would change
+cleanstack regenerate             # apply, keeping every protected region
+```
+
+Outcomes reported per file: `created`, `updated` (regions re-injected),
+`unchanged`, `preserved` (file has no regions; never overwritten without
+`--force`), `conflict` (a region was edited on both sides).
+
+- A `conflict` blocks the run. Fix the region by hand, or rerun with `--force`
+  to discard your changes deliberately.
+- After structural template updates, run `cleanstack regenerate --all` and
+  review the report before committing.
+
+<!-- <cleanstack:user-code id="ai.rules.protected-regions"> -->
+<!-- </cleanstack:user-code> -->

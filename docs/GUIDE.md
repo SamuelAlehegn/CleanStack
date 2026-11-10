@@ -16,6 +16,7 @@ details.
 - [Databases and authentication](#databases-and-authentication)
 - [Generate an entity](#generate-an-entity)
 - [Regenerate a project](#regenerate-a-project)
+- [AI coding agents](#ai-coding-agents)
 - [Protected regions](#protected-regions)
 - [Template overrides](#template-overrides)
 - [OpenAPI integration](#openapi-integration)
@@ -158,6 +159,9 @@ demo/
 │   ├── angular.json
 │   ├── package.json
 │   └── src/app/...
+├── AGENTS.md
+├── ARCHITECTURE.md
+├── .ai/rules/...
 └── .cleanstack/
     └── project.json
 ```
@@ -641,6 +645,18 @@ Use dry runs before a large regeneration:
 cleanstack regenerate --all --dry-run
 cleanstack regenerate --all
 ```
+
+## AI coding agents
+
+Generated projects include an agent documentation layer: `AGENTS.md` at the
+workspace root (the file most AI coding tools read automatically), a
+workspace-wide `ARCHITECTURE.md`, and a `.ai/` folder with binding rules for
+architecture, naming conventions, protected regions, and the entity workflow.
+The rules are regenerated with the project skeleton; extend each file inside
+its `<cleanstack:user-code>` region to keep team-specific conventions.
+
+See [AI-friendly conventions](ai-conventions.md) for the file list and
+customization through template overrides.
 
 ## Protected regions
 

@@ -1,0 +1,52 @@
+# AGENTS.md
+
+Guidance for AI coding agents (Claude Code, Cursor, Copilot, Codex, and
+similar) working in this repository. Read this file first, then the rule files
+it points to. The rules are short so that they fit in context; follow them
+exactly so your changes survive `cleanstack regenerate`.
+
+## Read before writing code
+
+1. [.ai/rules/architecture.md](.ai/rules/architecture.md) — layers and allowed dependencies
+2. [.ai/rules/naming-conventions.md](.ai/rules/naming-conventions.md) — the naming contract
+3. [.ai/rules/protected-regions.md](.ai/rules/protected-regions.md) — how to edit generated files safely
+4. [.ai/rules/adding-an-entity.md](.ai/rules/adding-an-entity.md) — workflow for new entities
+5. [ARCHITECTURE.md](ARCHITECTURE.md) — full-stack architecture overview
+
+## Workspace layout
+
+```text
+{{kebabCase project.name}}/
+  {{kebabCase project.name}}-backend/    Spring Boot REST API{{#if project.options.frontend}}
+  {{kebabCase project.name}}-ui/         Angular single-page application{{/if}}
+  entities/         Entity descriptors (YAML), the source of truth for CRUD code
+  .ai/              Agent rules (load these before generating code)
+  .cleanstack/      Generator metadata (read-only for agents)
+```
+
+## Golden rules
+
+1. **Generated code is owned by the generator.** Files produced by CleanStack
+   may only be modified inside `<cleanstack:user-code>` regions. Hand edits
+   anywhere else are destroyed by the next regeneration. Details:
+   [.ai/rules/protected-regions.md](.ai/rules/protected-regions.md).
+2. **Derive names from the entity.** Every artifact name comes from the entity
+   name via the table in
+   [.ai/rules/naming-conventions.md](.ai/rules/naming-conventions.md). Never
+   invent a new naming style.
+3. **Do not hand-write CRUD.** New entities are a YAML descriptor plus
+   `cleanstack entity <Name>`, which generates the
+   {{#if project.options.frontend}}backend and frontend{{else}}backend{{/if}} artifacts
+   consistently. Hand-written code belongs in protected regions or new files
+   you create yourself.
+4. **Respect the layers.** Dependencies point from the edges (controllers,
+   pages) toward the domain. See
+   [.ai/rules/architecture.md](.ai/rules/architecture.md).
+5. **Verify before finishing.** Backend changes must pass
+   {{#if (eq project.options.buildTool "maven")}}`mvn clean verify`{{else}}`gradle clean build`{{/if}}.{{#if project.options.frontend}}
+   Frontend changes must pass `npm test` and `npm start` in
+   `{{kebabCase project.name}}-ui`.{{/if}}
+   Template-affecting changes: run `cleanstack regenerate --dry-run` first.
+
+<!-- <cleanstack:user-code id="agents.project-notes"> -->
+<!-- </cleanstack:user-code> -->

@@ -197,6 +197,19 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
     );
   }
 
+  // Workspace-root documentation (ARCHITECTURE.md, AGENTS.md, and the .ai/
+  // rules) describes the whole project, so it renders once against the project
+  // root instead of once per side. Paths are already relative to that root.
+  await renderManifest(
+    'project',
+    generationProject,
+    templateContext(generationProject),
+    engine,
+    projectRootFs,
+    filesystemLogger,
+    { force, onFile: (result) => generatedFiles.push(result) },
+  );
+
   reportGeneratedFiles(options.logger, generatedFiles, { dryRun, force });
   if (conflictingFiles(generatedFiles).length > 0) {
     throw new CliOptionError(

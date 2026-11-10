@@ -1,0 +1,71 @@
+# Naming conventions
+
+This is the naming contract of the workspace. AI agents must derive every
+artifact name from the entity name using the tables below — never invent a new
+style. The examples use a `Product` entity; substitute your entity name and
+apply the same transformations.
+
+## Transformations
+
+Given the entity name `Product`:
+
+- **PascalCase** — `Product` — Java classes, Angular classes, TypeScript types
+- **camelCase** — `product` — variables, Angular model file names
+- **kebab-case plural** — `products` — routes, REST paths, Angular folders
+- **snake_case plural** — `products` — table and column names
+
+## Backend artifacts (entity `Product`)
+
+| Artifact | Path | Name rule |
+| --- | --- | --- |
+| Entity | `domain/Product.java` | `<Entity>` |
+| Service | `service/ProductService.java` | `<Entity>Service` |
+| Repository | `repository/ProductRepository.java` | `<Entity>Repository` |
+| Controller | `controller/ProductController.java` | `<Entity>Controller` |
+| Request DTO | `web/dto/ProductRequest.java` | `<Entity>Request` |
+| Response DTO | `web/dto/ProductResponse.java` | `<Entity>Response` |
+| Mapper | `web/mapper/ProductMapper.java` | `<Entity>Mapper` |
+| Not-found exception | `exception/ProductNotFoundException.java` | `<Entity>NotFoundException` |
+| Create migration | `db/migration/V2__create_products_table.sql` | `V<n>__create_<table>_table` |
+| Update migration | `db/migration/V3__update_products_<change>.sql` | `V<n>__update_<table>_<change>` |
+| Seed migration | `db/migration/V4__seed_products.sql` | `V<n>__seed_<table>` |
+
+## Frontend artifacts (entity `Product`)
+
+{{#if project.options.frontend}}
+| Artifact | Path | Name rule |
+| --- | --- | --- |
+| Model | `src/app/models/product.ts` | `<entity>.ts`, exports `interface Product` and `ProductInput` |
+| Service | `src/app/services/product.service.ts` | `<entity>.service.ts`, exports `class ProductService` |
+| List page | `src/app/pages/products/list/list.component.ts` | selector `app-products-list` |
+| Detail page | `src/app/pages/products/detail/detail.component.ts` | selector `app-products-detail` |
+| Form page | `src/app/pages/products/form/form.component.ts` | selector `app-products-form` |
+| Routes | `products`, `products/new`, `products/:id`, `products/:id/edit` | kebab-case plural |
+| REST base | `/api/products` | kebab-case plural behind `/api` |
+{{else}}
+This workspace was generated without a frontend.
+{{/if}}
+
+## General rules
+
+1. Java packages are lowercase single words: `domain`, `service`, `repository`,
+   `controller`, `dto`, `mapper`, `config`, `security`, `exception`.
+2. Java methods and fields are camelCase; constants are UPPER_SNAKE_CASE.
+3. Angular file names are kebab-case with Angular suffixes:
+   `product.service.ts`, `list.component.ts`.
+4. TypeScript types are PascalCase, members camelCase; model files export the
+   API interface plus a matching `<Entity>Input` payload type.
+5. Database names are snake_case; tables are plural, columns singular.
+6. REST paths are kebab-case plural nouns under `/api`; actions that do not fit
+   CRUD use sub-resources, for example `/api/orders/{id}/cancel`.
+7. Tests mirror the tested file: `ProductServiceTest` next to the Java class,
+   `<name>.component.spec.ts` next to the Angular component.
+8. Descriptors are PascalCase singular YAML files in `entities/`:
+   `entities/Product.yaml`.
+
+When none of the tables above cover a new artifact, choose the closest rule and
+document the addition inside the protected region below so the next agent
+follows the same convention.
+
+<!-- <cleanstack:user-code id="ai.rules.naming"> -->
+<!-- </cleanstack:user-code> -->

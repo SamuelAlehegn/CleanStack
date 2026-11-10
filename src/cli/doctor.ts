@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 5000;
 const MIN_NODE_MAJOR = 22;
 const MIN_JAVA_MAJOR = 21;
-const TEMPLATE_PACKS = ['spring-boot', 'angular'] as const;
+const TEMPLATE_PACKS = ['spring-boot', 'angular', 'project'] as const;
 /** Limits how many template problems are printed before the rest are summarized. */
 const MAX_TEMPLATE_PROBLEMS = 5;
 /** Below this the generated project may not fit on disk. */

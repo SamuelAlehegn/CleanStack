@@ -59,16 +59,19 @@ slashes. Template names on disk keep their `.hbs` suffix; the engine appends
 
 ## Built-in packs
 
-| Pack          | Generated into   | When generated                                                    | Description                                                                   |
-| ------------- | ---------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `spring-boot` | `<name>-backend` | Always by `new`; when the backend side is enabled for the command | Spring Boot service with layered packages, JPA, Flyway or Liquibase, and auth |
-| `angular`     | `<name>-ui`      | `options.frontend` is true                                        | Standalone Angular app with routing, signals, and entity screens              |
+| Pack          | Generated into   | When generated                                                                  | Description                                                                                             |
+| ------------- | ---------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `spring-boot` | `<name>-backend` | Always by `new`; when the backend side is enabled for the command               | Spring Boot service with layered packages, JPA, Flyway or Liquibase, and auth                           |
+| `angular`     | `<name>-ui`      | `options.frontend` is true                                                      | Standalone Angular app with routing, signals, and entity screens                                        |
+| `project`     | `<name>/`        | Always by `new`; when the project skeleton (not a single entity) is regenerated | Workspace-root documentation: `AGENTS.md`, `ARCHITECTURE.md`, and the `.ai/` rules for AI coding agents |
 
 `cleanstack new` always generates the Spring Boot backend; only the Angular
 frontend is optional (`--frontend none`). Entity and regeneration commands
 generate the backend and frontend sides that exist in the target project unless
 explicitly restricted with `--backend`/`--no-backend` or
-`--frontend`/`--no-frontend`.
+`--frontend`/`--no-frontend`. The `project` pack renders once against the
+generated project root and refreshes with `cleanstack regenerate` whenever the
+skeleton is regenerated; see [AI-friendly conventions](ai-conventions.md).
 
 Individual manifest entries can be disabled by project options. Entries marked
 **entity** are rendered once per configured entity (`forEach: "entities"`).
@@ -252,6 +255,22 @@ control:
 | `src/app/pages/entity/form/EntityFormComponent.ts.hbs`       | `src/app/pages/{{entity.routeName}}/form/form.component.ts`       | Create/edit form component |
 | `src/app/pages/entity/form/EntityFormComponent.html.hbs`     | `src/app/pages/{{entity.routeName}}/form/form.component.html`     | Form template              |
 | `src/app/pages/entity/form/EntityFormComponent.scss.hbs`     | `src/app/pages/{{entity.routeName}}/form/form.component.scss`     | Form styles                |
+
+## Project templates
+
+Manifest: `templates/project/manifest.json`. This pack renders once against the
+generated project root and documents the workspace for humans and AI coding
+agents. See [AI-friendly conventions](ai-conventions.md).
+
+| Template                                   | Destination                       | Purpose                                                     |
+| ------------------------------------------ | --------------------------------- | ----------------------------------------------------------- |
+| `root/ARCHITECTURE.md.hbs`                 | `ARCHITECTURE.md`                 | Workspace layout, sides, request flow, schema-change policy |
+| `root/AGENTS.md.hbs`                       | `AGENTS.md`                       | Agent entry point with golden rules                         |
+| `root/.ai/README.md.hbs`                   | `.ai/README.md`                   | What the `.ai/` folder is and how to use it                 |
+| `root/.ai/rules/architecture.md.hbs`       | `.ai/rules/architecture.md`       | Layer responsibilities and allowed dependencies             |
+| `root/.ai/rules/naming-conventions.md.hbs` | `.ai/rules/naming-conventions.md` | Naming contract for every generated artifact                |
+| `root/.ai/rules/protected-regions.md.hbs`  | `.ai/rules/protected-regions.md`  | Marker format and safe-editing rules                        |
+| `root/.ai/rules/adding-an-entity.md.hbs`   | `.ai/rules/adding-an-entity.md`   | Descriptor-first workflow for new entities                  |
 
 ## Template context
 
