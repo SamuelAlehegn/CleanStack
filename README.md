@@ -251,6 +251,7 @@ built bundle and demo data without accessing project files.
 | [Entity descriptors](docs/entity-descriptor.md) | YAML format, field types, validations, relations                                |
 | [Protected regions](docs/protected-regions.md)  | Marker syntax, checksums, merge strategies, error codes                         |
 | [OpenAPI integration](docs/OPENAPI.md)          | springdoc, client generation, contract-first workflows, manifests               |
+| [Extensions](docs/EXTENSIONS.md)                | Adding field types and frontend frameworks without forking the core             |
 | [Comparison](docs/COMPARISON.md)                | CleanStack versus JHipster, Spring Initializr, Bootify, and Seed4J              |
 | [Contributing](docs/CONTRIBUTING.md)            | Development setup, tests, conventions, pull request checklist                   |
 

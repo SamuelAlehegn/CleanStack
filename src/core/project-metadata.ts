@@ -3,12 +3,13 @@ import path from 'node:path';
 import { z } from 'zod';
 import { ConfigLoader, findConfigFileInAncestors } from './config-loader.js';
 import {
-  EntityConfigSchema,
+  createConfigSchemas,
   GenerationOptionsSchema,
   type EntityConfig,
   type GenerationOptions,
   type ProjectConfig,
 } from './config.js';
+import { activeSchemaInput } from './extensions/registry.js';
 import { formatZodError } from './entity-parser.js';
 import type { GeneratedProject } from './project.js';
 import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
@@ -26,21 +27,25 @@ export const PROJECT_METADATA_PATH = '.cleanstack/project.json';
  * Product is written before Product is itself stored, so the file temporarily
  * contains forward references.
  */
-const StoredProjectConfigSchema = z
-  .object({
-    name: z.string().trim().min(1),
-    packageName: z.string().trim().default('com.example'),
-    entities: z.array(EntityConfigSchema).default([]),
-    options: GenerationOptionsSchema,
-  })
-  .strict();
+const storedProjectConfigSchema = () =>
+  z
+    .object({
+      name: z.string().trim().min(1),
+      packageName: z.string().trim().default('com.example'),
+      // Built at call time so entities stored with extension field types
+      // remain readable after the extensions have been loaded.
+      entities: z.array(createConfigSchemas(activeSchemaInput()).EntityConfigSchema).default([]),
+      options: GenerationOptionsSchema,
+    })
+    .strict();
 
-const ProjectMetadataSchema = z
-  .object({
-    version: z.literal(1),
-    config: StoredProjectConfigSchema,
-  })
-  .strict();
+const ProjectMetadataSchema = () =>
+  z
+    .object({
+      version: z.literal(1),
+      config: storedProjectConfigSchema(),
+    })
+    .strict();
 
 /**
  * Reads the generation metadata stored in a generated project. Metadata keeps
@@ -70,7 +75,9 @@ export async function readProjectMetadata(projectRoot: string): Promise<ProjectC
     });
   }
 
-  const result = ProjectMetadataSchema.safeParse(parsed);
+  // Built at call time so entities stored with extension field types remain
+  // readable once extensions have been loaded.
+  const result = ProjectMetadataSchema().safeParse(parsed);
   if (!result.success) {
     throw new CleanStackError(
       `Invalid project metadata in ${filePath}:\n${formatZodError(result.error)}`,

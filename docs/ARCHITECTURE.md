@@ -526,12 +526,17 @@ can be hosted under a subpath.
 
 ## Extension points
 
+- **Community extensions:** a module with `{ name, register(registry) }` adds
+  field types or frontend frameworks at runtime. Discovery, the contract, and
+  worked examples are in [EXTENSIONS.md](./EXTENSIONS.md). Extensions join the
+  same lookup tables the generator consults; the core never imports them.
 - **New CLI command:** add a `src/cli/<command>.ts` handler, register it in
   `src/cli/program.ts`, and export shared types if needed.
 - **New template pack:** add `templates/<pack>/manifest.json` and `.hbs` files,
   then call `renderManifest` from the relevant command.
-- **New field type or validation:** extend `FIELD_TYPES`/`FIELD_VALIDATIONS`,
-  the entity model mappings, templates, SQL type mapping, and tests.
+- **New built-in field type or validation:** extend `FIELD_TYPES`/
+  `FIELD_VALIDATIONS`, the entity model mappings, templates, SQL type mapping,
+  and tests. Extensions are the preferred path for new field types.
 - **Custom output:** override one template or a manifest under
   `.cleanstack/templates`; no generator change is required.
 - **Contract-first APIs:** use the `openapi` command rather than extending the

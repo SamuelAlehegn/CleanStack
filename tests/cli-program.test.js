@@ -180,6 +180,7 @@ test('--help lists every command and global flag', async () => {
     'config',
     'doctor',
     'ui',
+    'extensions',
   ]) {
     assert.match(harness.output.stdout, new RegExp(`\\b${command}\\b`));
   }

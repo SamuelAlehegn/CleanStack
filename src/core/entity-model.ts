@@ -1,4 +1,5 @@
 import type { EntityConfig, FieldConfig, RelationConfig } from './config.js';
+import { resolveActiveFieldType } from './extensions/registry.js';
 
 export interface EntityFieldModel extends FieldConfig {
   /** Java type name used by backend generators. */
@@ -337,6 +338,9 @@ function assertMappedByField(
 function buildFieldImports(fields: EntityFieldModel[]): string[] {
   const imports = new Set<string>();
   for (const field of fields) {
+    for (const importPath of resolveActiveFieldType(field.type)?.javaImports ?? []) {
+      imports.add(importPath);
+    }
     switch (field.javaType) {
       case 'BigDecimal':
         imports.add('java.math.BigDecimal');
@@ -448,12 +452,14 @@ function chooseDisplayField(fields: EntityFieldModel[]): EntityFieldModel | unde
 }
 
 function normalizeField(field: FieldConfig): EntityFieldModel {
-  const typescriptType = toTypeScriptType(field.type);
+  const custom = resolveActiveFieldType(field.type);
+  const javaType = custom?.javaType ?? field.type;
+  const typescriptType = custom?.typescriptType ?? toTypeScriptType(javaType);
   return {
     ...field,
-    javaType: field.type,
+    javaType,
     typescriptType,
-    typescriptDefault: toTypeScriptDefault(typescriptType),
+    typescriptDefault: custom?.typescriptDefault ?? toTypeScriptDefault(typescriptType),
     columnName: toSnakeCase(field.name),
     validationAnnotations: buildValidationAnnotations(field),
   };

@@ -13,6 +13,7 @@ import {
 } from '../core/migrations.js';
 import { resolveProjectConfig, writeProjectMetadata } from '../core/project-metadata.js';
 import { locateGeneratedProject, type GeneratedProject } from '../core/project.js';
+import { loadCommandExtensions } from './extensions.js';
 import { renderManifest, templateContext, type ManifestEntry } from '../templates/manifest.js';
 import { TemplateEngine } from '../templates/template-engine.js';
 import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
@@ -65,6 +66,7 @@ export async function runRegenerateCommand(
 
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const project = await locateGeneratedProject({ cwd });
+  await loadCommandExtensions({ cwd, projectRoot: project.rootDir, logger: options.logger });
   const baseConfig = await resolveProjectConfig(project, { cwd });
   const config = await withDiscoveredEntities(project, baseConfig, cwd);
   const models = buildEntityModels(config.entities);

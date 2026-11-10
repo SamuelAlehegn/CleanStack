@@ -1,10 +1,11 @@
-import { EntityConfigSchema, ProjectConfigSchema, type EntityConfig } from './config.js';
+import { createConfigSchemas, type ConfigSchemaOptions, type EntityConfig } from './config.js';
 import { buildEntityModels, type EntityModel } from './entity-model.js';
 import { FileSystemService } from '../utils/file-system.js';
 import { CleanStackError, formatZodError } from '../utils/errors.js';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import { activeSchemaInput } from './extensions/registry.js';
 
 export { formatZodError } from '../utils/errors.js';
 
@@ -13,6 +14,11 @@ export interface EntityParserOptions {
   rootDir?: string;
   /** Inject an existing filesystem service, for example one with a mock adapter. */
   fileSystem?: FileSystemService;
+  /**
+   * Extra field types accepted in descriptors, contributed by extensions.
+   * Defaults to the active registry's field types.
+   */
+  fieldTypes?: readonly string[];
 }
 
 export class EntityParserError extends CleanStackError {
@@ -31,11 +37,15 @@ export class EntityParserError extends CleanStackError {
 /** Reads entity descriptors, validates cross-entity relations, and builds normalized models. */
 export class EntityParser {
   private readonly fileSystem: FileSystemService;
+  private readonly schemas: ReturnType<typeof createConfigSchemas>;
 
   constructor(options: EntityParserOptions = {}) {
     this.fileSystem =
       options.fileSystem ??
       new FileSystemService(options.rootDir === undefined ? {} : { rootDir: options.rootDir });
+    const schemaOptions: ConfigSchemaOptions =
+      options.fieldTypes === undefined ? activeSchemaInput() : { fieldTypes: options.fieldTypes };
+    this.schemas = createConfigSchemas(schemaOptions);
   }
 
   /** Reads and validates a single YAML or JSON descriptor. Relations are resolved by parseFiles. */
@@ -65,7 +75,7 @@ export class EntityParser {
       );
     }
 
-    const result = EntityConfigSchema.safeParse(raw);
+    const result = this.schemas.EntityConfigSchema.safeParse(raw);
     if (!result.success) {
       throw new EntityParserError(filePath, formatZodError(result.error), result.error, [
         'See docs/entity-descriptor.md for the supported fields, types, and relations.',
@@ -98,7 +108,10 @@ export class EntityParser {
   async parseFileConfigs(filePaths: string[]): Promise<EntityConfig[]> {
     const entities = await Promise.all(filePaths.map((filePath) => this.parseFile(filePath)));
     try {
-      return ProjectConfigSchema.parse({ name: 'entity-descriptors', entities }).entities;
+      return this.schemas.ProjectConfigSchema.parse({
+        name: 'entity-descriptors',
+        entities,
+      }).entities;
     } catch (error) {
       if (!(error instanceof z.ZodError)) throw error;
       throw new EntityParserError('entity descriptors', formatZodError(error), error, [

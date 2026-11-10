@@ -3,6 +3,7 @@ export * from './core/config-loader.js';
 export * from './core/entity-input.js';
 export * from './core/entity-model.js';
 export * from './core/entity-parser.js';
+export * from './core/extensions/index.js';
 export * from './core/frontend-updates.js';
 export * from './core/migrations.js';
 export * from './core/openapi-client.js';

@@ -27,6 +27,7 @@ import { renderManifest, templateAliases, type ManifestEntry } from '../template
 import { TemplateEngine } from '../templates/template-engine.js';
 import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
 import type { Logger } from '../utils/logger.js';
+import { loadCommandExtensions } from './extensions.js';
 import { conflictingFiles, reportGeneratedFiles } from './file-report.js';
 
 export interface EntityCommandOptions {
@@ -297,6 +298,7 @@ export async function runEntityCommand(
   const name = parsed.name!;
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const project = await locateGeneratedProject({ cwd });
+  await loadCommandExtensions({ cwd, projectRoot: project.rootDir, logger: options.logger });
 
   let entity: EntityModel;
   let entityConfig: EntityConfig;
