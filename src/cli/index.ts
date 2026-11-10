@@ -4,7 +4,6 @@ import { CommanderError } from 'commander';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Logger } from '../utils/logger.js';
-import { formatError } from '../utils/errors.js';
 import { createProgram, extractGlobalFlags } from './program.js';
 
 interface PackageMetadata {
@@ -31,12 +30,14 @@ if (args.length === 0) {
   // No command (including when only global flags were passed): show help.
   program.outputHelp();
 } else {
-  program.parseAsync(args, { from: 'user' }).catch((error: unknown) => {
+  program.parseAsync(args, { from: 'user' }).catch(async (error: unknown) => {
     // Commander has already printed help, version, or the parse error itself.
     if (error instanceof CommanderError) {
       process.exitCode = error.exitCode;
       return;
     }
+    // Loaded on failure only; zod-backed formatting is not needed for --help.
+    const { formatError } = await import('../utils/errors.js');
     logger.error(formatError(error), error);
     process.exitCode = 1;
   });
