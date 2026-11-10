@@ -148,9 +148,7 @@ test('web API creates a project and an entity through the CLI engine', async (co
   assert.ok(fileList.body.files.length > 0);
   assert.ok(fileList.body.files.every((file) => !file.path.includes('node_modules')));
 
-  const readme = fileList.body.files.find(
-    (file) => file.path === 'README.md' || file.path.endsWith('/README.md'),
-  );
+  const readme = fileList.body.files.find((file) => file.path.endsWith('-backend/README.md'));
   assert.ok(readme, 'generated backend should include README.md');
 
   const fileContent = await call(

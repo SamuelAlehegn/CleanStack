@@ -1,0 +1,77 @@
+# Adding an entity
+
+The workflow for new entities and the follow-up code built on top of them.
+Following this workflow keeps generated code uniform and lets agents produce
+better additions.
+
+## 1. Write the descriptor
+
+Create `entities/Product.yaml` (PascalCase singular file name):
+
+```yaml
+name: Product
+fields:
+  - name: name
+    type: String
+    required: true
+    minLength: 2
+    maxLength: 100
+  - name: price
+    type: BigDecimal
+    required: true
+  - name: active
+    type: boolean
+    default: true
+
+relations:
+  - type: ManyToOne
+    target: Category
+    field: category
+    required: true
+```
+
+Field types map to Java and TypeScript automatically; see the entity
+descriptor documentation for the full list.
+
+## 2. Generate
+
+```bash
+cleanstack entity Product          # from the workspace root
+cleanstack regenerate entity Product   # after changing the descriptor
+```
+
+The command generates every artifact listed in
+[naming-conventions.md](naming-conventions.md): JPA entity, repository,
+service, controller, DTOs, mapper, exception, migration{{#if project.options.frontend}}, and the Angular
+model, service, and list/detail/form pages{{/if}}.
+
+## 3. Where agents add follow-up code
+
+| Need | Where |
+| --- | --- |
+| Extra business rules for the entity | `cleanstack:user-code` region in `<Entity>Service` |
+| Extra endpoints | New controller methods inside the region in `<Entity>Controller`, or a new controller class |
+| Extra columns/fields | Update `entities/Product.yaml`, then `cleanstack regenerate entity Product` |
+| Extra queries | Region in `<Entity>Repository` or a derived `@Query` method |
+| Custom validation beyond the descriptor | Region in `<Entity>Request` or the mapper |
+| New pages or components | New files under `src/app/pages/<route>/` following the naming contract |
+| Cross-entity use cases | New service class in `service/`, named for the use case |
+
+## 4. Verify
+
+1. `cleanstack regenerate --dry-run` shows what changed before applying.
+2. Backend: {{#if (eq project.options.buildTool "maven")}}`mvn clean verify`{{else}}`gradle clean build`{{/if}} in `{{kebabCase project.name}}-backend`.
+{{#if project.options.frontend}}3. Frontend: `npm test` and `npm start` in `{{kebabCase project.name}}-ui`.
+{{/if}}
+
+## Do not
+
+- Do not hand-write entity classes, repositories, controllers, DTOs, mappers,
+  or CRUD pages; the generator owns them.
+- Do not edit generated migrations to change a table; add a field to the
+  descriptor and regenerate, which produces an update migration.
+- Do not place custom code outside protected regions in generated files; see
+  [protected-regions.md](protected-regions.md).
+
+<!-- <cleanstack:user-code id="ai.rules.adding-an-entity"> -->
+<!-- </cleanstack:user-code> -->

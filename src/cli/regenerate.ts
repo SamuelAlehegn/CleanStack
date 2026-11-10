@@ -193,6 +193,26 @@ export async function runRegenerateCommand(
     );
   }
 
+  // Workspace-root documentation (ARCHITECTURE.md, AGENTS.md, and the .ai/
+  // rules) is part of the project skeleton: it refreshes when the skeleton is
+  // regenerated, but not when a single entity is. Side flags narrow the run to
+  // that side only, so they skip the workspace-level files.
+  if (parsed.backend === undefined && parsed.frontend === undefined) {
+    await renderManifest(
+      'project',
+      config,
+      templateContext(config, migrationVersions),
+      engine,
+      new FileSystemService({
+        rootDir: project.rootDir,
+        logger: filesystemLogger,
+        dryRun: parsed.dryRun,
+      }),
+      filesystemLogger,
+      { force: parsed.force, onFile },
+    );
+  }
+
   reportGeneratedFiles(options.logger, generatedFiles, {
     dryRun: parsed.dryRun,
     force: parsed.force,

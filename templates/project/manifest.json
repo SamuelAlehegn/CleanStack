@@ -1,0 +1,17 @@
+{
+  "name": "project",
+  "description": "Workspace-root documentation shared by every generated side: ARCHITECTURE.md, AGENTS.md, and the .ai/ rule folder for AI coding agents.",
+  "pathVariables": {
+    "package": "The configured Java package name with dots replaced by path separators.",
+    "ApplicationName": "The project name converted to PascalCase."
+  },
+  "files": [
+    { "template": "root/ARCHITECTURE.md.hbs", "destination": "ARCHITECTURE.md" },
+    { "template": "root/AGENTS.md.hbs", "destination": "AGENTS.md" },
+    { "template": "root/.ai/README.md.hbs", "destination": ".ai/README.md" },
+    { "template": "root/.ai/rules/architecture.md.hbs", "destination": ".ai/rules/architecture.md" },
+    { "template": "root/.ai/rules/naming-conventions.md.hbs", "destination": ".ai/rules/naming-conventions.md" },
+    { "template": "root/.ai/rules/protected-regions.md.hbs", "destination": ".ai/rules/protected-regions.md" },
+    { "template": "root/.ai/rules/adding-an-entity.md.hbs", "destination": ".ai/rules/adding-an-entity.md" }
+  ]
+}

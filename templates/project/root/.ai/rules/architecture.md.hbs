@@ -1,0 +1,64 @@
+# Architecture rules
+
+Binding rules for where code lives and which direction dependencies may point.
+Structure reference: [ARCHITECTURE.md](../../ARCHITECTURE.md).
+
+## Backend — `{{kebabCase project.name}}-backend`
+
+Package root: `src/main/java/{{packagePath project.packageName}}`
+
+| Layer | Package | May depend on |
+| --- | --- | --- |
+| Web | `controller`, `web.dto`, `web.mapper` | `service`, domain |
+| Application | `service` | `repository`, domain |
+| Persistence | `repository` | domain |
+| Domain | `domain` | nothing (plain Java + JPA annotations) |
+| Infrastructure | `config`, `security`, `exception` | any layer, but nothing may import them except the web layer |
+
+Rules:
+
+1. Controllers validate request DTOs and map responses; they contain no
+   business logic.
+2. DTO conversions happen only in `web.mapper`; DTOs never reach `service` or
+   `repository` signatures.
+3. Services implement use cases; one service per entity plus cross-entity use
+   cases as needed. Transactions belong here.
+4. Repositories are Spring Data interfaces; queries beyond derived names go in
+   `@Query` methods, never in services.
+5. Entities in `domain` carry JPA annotations but no HTTP or DTO types.
+6. Schema changes are generated migrations
+   {{#if (eq project.options.migrationTool "liquibase")}}under `src/main/resources/db/changelog/changes`{{else}}under `src/main/resources/db/migration`{{/if}},
+   never manual edits to an existing migration.
+7. New custom logic (extra endpoints, business rules) goes into
+   `cleanstack:user-code` regions of generated files or into new classes you
+   create following the naming contract.
+
+## {{#if project.options.frontend}}Frontend — `{{kebabCase project.name}}-ui`{{else}}Frontend{{/if}}
+
+{{#if project.options.frontend}}
+Root: `src/app`
+
+| Layer | Folder | May depend on |
+| --- | --- | --- |
+| Pages | `pages/<route>/{list,detail,form}` | services, models, shared |
+| Services | `services` | models |
+| Models | `models` | nothing |
+| Shared | `shared`, `directives`, `guards`, `interceptors` | models |
+| Generated client | `api/generated` | never hand-edit |
+
+Rules:
+
+1. One folder per route under `pages`; page components use standalone
+   components and signals, not NgModules.
+2. Components talk to the backend only through `services/<entity>.service.ts`;
+   no `HttpClient` usage in components.
+3. Types come from `models/`; do not redeclare API shapes inline.
+4. Routing changes for entities are injected by the generator into
+   `app.routes.ts` and `app-layout`; extend them only in protected regions.
+5. `api/generated` is owned by the OpenAPI generator; never edit it.
+{{else}}
+This workspace was generated without a frontend. Backend rules above apply.
+{{/if}}
+
+<!-- <cleanstack:user-code id="ai.rules.architecture"> -->
+<!-- </cleanstack:user-code> -->

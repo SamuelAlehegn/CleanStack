@@ -103,6 +103,9 @@ demo/
 │   └── src/main/java/...
 ├── demo-ui/                 Angular 22 application (optional)
 │   └── src/app/...
+├── ARCHITECTURE.md          Full-stack architecture for humans and AI agents
+├── AGENTS.md                Entry point for AI coding agents
+├── .ai/                     Architecture and naming rules for AI agents
 └── .cleanstack/
     └── project.json         Generation metadata used by regeneration
 ```
@@ -136,6 +139,13 @@ Authenticated projects include a matching Angular login page, profile page,
 route guard, and HTTP interceptor. JWT mode accepts an access token for local
 development, session mode signs in with a username and password, and OIDC modes
 use the authorization-code flow with PKCE.
+
+### AI coding agents
+
+Every project ships `AGENTS.md`, a workspace `ARCHITECTURE.md`, and a `.ai/`
+folder of binding architecture and naming rules. Agents that read them produce
+follow-up code that matches the generated conventions and survives
+`cleanstack regenerate`. See [AI-friendly conventions](docs/ai-conventions.md).
 
 ## Commands
 
@@ -243,17 +253,18 @@ built bundle and demo data without accessing project files.
 
 ## Documentation
 
-| Document                                        | Contents                                                                        |
-| ----------------------------------------------- | ------------------------------------------------------------------------------- |
-| [User guide](docs/GUIDE.md)                     | Installation, project creation, entities, regeneration, Studio, troubleshooting |
-| [Architecture](docs/ARCHITECTURE.md)            | Generator modules, pipelines, template engine, generated application design     |
-| [Templates](docs/TEMPLATES.md)                  | Template catalog, context variables, helpers, manifests, overrides              |
-| [Entity descriptors](docs/entity-descriptor.md) | YAML format, field types, validations, relations                                |
-| [Protected regions](docs/protected-regions.md)  | Marker syntax, checksums, merge strategies, error codes                         |
-| [OpenAPI integration](docs/OPENAPI.md)          | springdoc, client generation, contract-first workflows, manifests               |
-| [Extensions](docs/EXTENSIONS.md)                | Adding field types and frontend frameworks without forking the core             |
-| [Comparison](docs/COMPARISON.md)                | CleanStack versus JHipster, Spring Initializr, Bootify, and Seed4J              |
-| [Contributing](docs/CONTRIBUTING.md)            | Development setup, tests, conventions, pull request checklist                   |
+| Document                                          | Contents                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- |
+| [User guide](docs/GUIDE.md)                       | Installation, project creation, entities, regeneration, Studio, troubleshooting |
+| [Architecture](docs/ARCHITECTURE.md)              | Generator modules, pipelines, template engine, generated application design     |
+| [Templates](docs/TEMPLATES.md)                    | Template catalog, context variables, helpers, manifests, overrides              |
+| [Entity descriptors](docs/entity-descriptor.md)   | YAML format, field types, validations, relations                                |
+| [Protected regions](docs/protected-regions.md)    | Marker syntax, checksums, merge strategies, error codes                         |
+| [AI-friendly conventions](docs/ai-conventions.md) | AGENTS.md, `.ai/` rules, naming contract, customization for AI coding agents    |
+| [OpenAPI integration](docs/OPENAPI.md)            | springdoc, client generation, contract-first workflows, manifests               |
+| [Extensions](docs/EXTENSIONS.md)                  | Adding field types and frontend frameworks without forking the core             |
+| [Comparison](docs/COMPARISON.md)                  | CleanStack versus JHipster, Spring Initializr, Bootify, and Seed4J              |
+| [Contributing](docs/CONTRIBUTING.md)              | Development setup, tests, conventions, pull request checklist                   |
 
 ## Development
 
