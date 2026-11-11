@@ -4,6 +4,11 @@ import path from 'node:path';
 /** Resolves a path to its canonical form, typically `fs.realpath`. */
 export type RealPathResolver = (filePath: string) => Promise<string>;
 
+/** Characters Windows rejects in file and directory names, plus control chars. */
+const WINDOWS_INVALID_SEGMENT_CHARS = /[<>:"|?*\u0000-\u001f]/;
+/** Device names Windows reserves even when they have an extension. */
+const WINDOWS_RESERVED_SEGMENT = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i;
+
 export class UnsafePathError extends Error {
   readonly requestedPath: string;
   readonly rootDir: string;
@@ -29,12 +34,75 @@ export function assertRelativePath(input: string, rootDir: string): string {
   if (
     path.posix.isAbsolute(portablePath) ||
     path.win32.isAbsolute(input) ||
+    // Windows treats "C:foo" as relative to the current directory on drive C,
+    // which quietly escapes roots on machines that have that drive.
+    /^[A-Za-z]:/.test(input) ||
     portablePath.split('/').includes('..')
   ) {
     throw new UnsafePathError(input, rootDir);
   }
 
-  return portablePath;
+  return path.posix.normalize(portablePath);
+}
+
+/**
+ * Returns why a single path segment cannot be used as a portable file or
+ * directory name, or undefined when it is safe on Windows, macOS, and Linux.
+ */
+export function pathSegmentProblem(value: string): string | undefined {
+  if (value.trim() === '') return 'must not be empty';
+  if (value === '.' || value === '..') return 'must not be "." or ".."';
+  if (/[\\/]/.test(value)) return 'must not contain path separators';
+  if (WINDOWS_INVALID_SEGMENT_CHARS.test(value)) {
+    return 'must not contain < > : " | ? * or control characters';
+  }
+  if (/[. ]$/.test(value)) return 'must not end with a space or period';
+  if (WINDOWS_RESERVED_SEGMENT.test(value)) return 'is reserved on Windows';
+  return undefined;
+}
+
+/** Compares paths with Windows' case-insensitive semantics applied. */
+export function isSamePath(
+  left: string,
+  right: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return comparablePath(left, platform) === comparablePath(right, platform);
+}
+
+/** Returns true when `targetPath` is strictly below `rootDir`. */
+export function isPathInside(
+  rootDir: string,
+  targetPath: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  const windows = platform === 'win32';
+  const relative = windows
+    ? path.win32.relative(comparablePath(rootDir, platform), comparablePath(targetPath, platform))
+    : path.relative(comparablePath(rootDir, platform), comparablePath(targetPath, platform));
+  const separator = windows ? '\\' : path.sep;
+  const isAbsoluteRelative = windows ? path.win32.isAbsolute(relative) : path.isAbsolute(relative);
+
+  return (
+    relative !== '' &&
+    relative !== '..' &&
+    !relative.startsWith(`..${separator}`) &&
+    !isAbsoluteRelative
+  );
+}
+
+/** Returns true when `targetPath` is `rootDir` or one of its descendants. */
+export function isPathInsideOrEqual(
+  rootDir: string,
+  targetPath: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return isSamePath(rootDir, targetPath, platform) || isPathInside(rootDir, targetPath, platform);
+}
+
+function comparablePath(filePath: string, platform: NodeJS.Platform): string {
+  if (platform === 'win32') return path.win32.resolve(filePath).toLowerCase();
+  return path.resolve(filePath);
 }
 
 /**
@@ -64,8 +132,7 @@ export async function ensureWithinRoot(
     canonicalizePath(targetPath, resolveRealPath),
   ]);
 
-  const relative = path.relative(canonicalRoot, canonicalTarget);
-  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+  if (!isPathInsideOrEqual(canonicalRoot, canonicalTarget)) {
     throw new UnsafePathError(requestedPath, rootDir);
   }
 }
