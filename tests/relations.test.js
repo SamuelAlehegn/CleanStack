@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -7,6 +7,7 @@ import { runEntityCommand } from '../dist/cli/entity.js';
 import { runNewCommand } from '../dist/cli/new.js';
 import { ProjectConfigSchema } from '../dist/core/config.js';
 import { buildEntityModels } from '../dist/core/entity-model.js';
+import { orderEntitiesForMigrations } from '../dist/core/migrations.js';
 
 const logger = { debug() {}, info() {}, success() {}, warn() {} };
 
@@ -341,6 +342,8 @@ test('generates backend and frontend code for every relation type', async () => 
     );
     assert.match(listHtml, /product\.categoryLabel \?\? '—'/);
     assert.match(listHtml, /product\.tagLabels\.length \? product\.tagLabels\.join\(', '\) : '—'/);
+    assert.match(listHtml, /<th>Name<\/th>/);
+    assert.doesNotMatch(listHtml, /<th>ID<\/th>/);
 
     const detailHtml = await readProjectFile(
       projectRoot,
@@ -351,6 +354,72 @@ test('generates backend and frontend code for every relation type', async () => 
       detailHtml,
       /product\.tagLabels\.length \? product\.tagLabels\.join\(', '\) : '—'/,
     );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('rejects owning relation cycles instead of emitting broken migrations', () => {
+  const entities = ProjectConfigSchema.parse({
+    name: 'shop',
+    entities: [
+      {
+        name: 'Product',
+        fields: [],
+        relations: [{ field: 'category', type: 'ManyToOne', target: 'Category' }],
+      },
+      {
+        name: 'Category',
+        fields: [],
+        relations: [{ field: 'product', type: 'ManyToOne', target: 'Product' }],
+      },
+    ],
+  }).entities;
+
+  assert.throws(
+    () => orderEntitiesForMigrations(entities),
+    /owning relations form a cycle: (Product -> Category -> Product|Category -> Product -> Category)/,
+  );
+});
+
+test('new rejects owning relation cycles before writing the project', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-relations-cycle-'));
+  try {
+    await writeFile(
+      path.join(cwd, 'cleanstack.config.json'),
+      JSON.stringify({
+        name: 'demo',
+        packageName: 'com.example',
+        entities: [
+          {
+            name: 'Product',
+            fields: [],
+            relations: [{ field: 'category', type: 'ManyToOne', target: 'Category' }],
+          },
+          {
+            name: 'Category',
+            fields: [],
+            relations: [{ field: 'product', type: 'ManyToOne', target: 'Product' }],
+          },
+        ],
+        options: {
+          backend: true,
+          frontend: false,
+          database: 'h2',
+          auth: 'none',
+          buildTool: 'maven',
+          docker: false,
+          dryRun: false,
+          outputDir: '.',
+        },
+      }),
+    );
+
+    await assert.rejects(
+      runNewCommand(['demo', '--yes'], { cwd, logger }),
+      /owning relations form a cycle/,
+    );
+    await assert.rejects(readdir(path.join(cwd, 'demo')), { code: 'ENOENT' });
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

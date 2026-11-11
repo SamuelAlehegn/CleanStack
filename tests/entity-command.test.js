@@ -208,6 +208,52 @@ test('finds a lowercase descriptor and generates only frontend artifacts with --
   }
 });
 
+test('blocks an owning relation until the target entity has a table', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-entity-order-'));
+  try {
+    const projectRoot = await generateProject(cwd);
+    await mkdir(path.join(projectRoot, 'entities'), { recursive: true });
+    await writeFile(
+      path.join(projectRoot, 'entities', 'Category.yaml'),
+      ['name: Category', 'fields:', '  - name: name', '    type: String', ''].join('\n'),
+    );
+    await writeFile(
+      path.join(projectRoot, 'entities', 'Product.yaml'),
+      [
+        'name: Product',
+        'fields:',
+        '  - name: name',
+        '    type: String',
+        'relations:',
+        '  - type: ManyToOne',
+        '    target: Category',
+        '    field: category',
+        '',
+      ].join('\n'),
+    );
+
+    await assert.rejects(
+      runEntityCommand(['Product'], { cwd: projectRoot, logger }),
+      (error) =>
+        /relation targets have no generated create migration yet: Category/.test(error.message) &&
+        error.suggestions.includes('cleanstack entity Category'),
+    );
+
+    await runEntityCommand(['Category'], { cwd: projectRoot, logger });
+    await runEntityCommand(['Product'], { cwd: projectRoot, logger });
+
+    assert.match(
+      await readProjectFile(
+        projectRoot,
+        'demo-backend/src/main/resources/db/migration/V3__create_products_table.sql',
+      ),
+      /REFERENCES categories \(id\)/,
+    );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test('accepts an explicit descriptor outside the generated project', async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-entity-descriptor-'));
   try {

@@ -138,6 +138,10 @@ export async function runRegenerateCommand(
     config,
     filesystemLogger,
   );
+  // Validate relation ordering before writing the skeleton so a cycle fails
+  // without leaving a partially regenerated project behind.
+  const orderedEntities =
+    parsed.target === 'all' ? orderEntitiesForMigrations(config.entities) : [];
 
   if (generateBackend && project.backend) {
     const backendProject = { ...config, name: path.basename(project.backend.directory) };
@@ -156,7 +160,7 @@ export async function runRegenerateCommand(
       { filter, force: parsed.force, onFile },
     );
     if (parsed.target === 'all') {
-      for (const entity of orderEntitiesForMigrations(config.entities)) {
+      for (const entity of orderedEntities) {
         const previousEntity = findPreviousEntityModel(baseConfig.entities, entity);
         const migrations = await generateEntityMigrations({
           fileSystem: backendFileSystem,

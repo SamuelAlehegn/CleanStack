@@ -110,21 +110,32 @@ export function orderEntitiesForMigrations(entities: EntityConfig[]): EntityMode
   const visited = new Set<string>();
   const visiting = new Set<string>();
 
-  const visit = (entity: EntityModel): void => {
+  const visit = (entity: EntityModel, stack: EntityModel[]): void => {
     const key = entity.name.toLowerCase();
-    if (visited.has(key) || visiting.has(key)) return;
+    if (visited.has(key)) return;
+    if (visiting.has(key)) {
+      const start = stack.findIndex((item) => item.name.toLowerCase() === key);
+      const cycle = [...stack.slice(Math.max(start, 0)), entity]
+        .map((item) => item.className)
+        .join(' -> ');
+      throw new Error(
+        `Cannot order migrations because owning relations form a cycle: ${cycle}. Remove one owning side or add the foreign keys manually.`,
+      );
+    }
     visiting.add(key);
+    stack.push(entity);
     for (const relation of entity.relations) {
       if (!relation.owningSide || relation.type === 'one-to-many') continue;
       const target = byKey.get(relation.targetEntity.name.toLowerCase());
-      if (target && target !== entity) visit(target);
+      if (target && target !== entity) visit(target, stack);
     }
+    stack.pop();
     visiting.delete(key);
     visited.add(key);
     ordered.push(entity);
   };
 
-  for (const entity of models) visit(entity);
+  for (const entity of models) visit(entity, []);
   return ordered;
 }
 
