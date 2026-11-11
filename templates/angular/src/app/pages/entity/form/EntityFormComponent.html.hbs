@@ -14,12 +14,12 @@
 {{#if (eq typescriptType "boolean")}}
   <label class="field checkbox-field">
     <input type="checkbox" formControlName="{{name}}" />
-    <span>{{capitalize name}}</span>
+    <span>{{humanize name}}</span>
   </label>
 {{else}}
   <label class="field">
     <span class="field-label">
-      {{capitalize name}}
+      {{humanize name}}
 {{#if required}}
       <span class="required" aria-hidden="true">*</span>
 {{/if}}
@@ -73,7 +73,7 @@
 {{#each entity.owningRelations}}
 {{#if collection}}
   <label class="field">
-    <span class="field-label">{{capitalize variableName}}</span>
+    <span class="field-label">{{humanize variableName}}</span>
     <select multiple formControlName="{{idField}}" size="4">
       @for (option of {{optionsSignalName}}(); track option.id) {
         <option [value]="option.id">\{{ option.label }}</option>
@@ -87,7 +87,7 @@
 {{else}}
   <label class="field">
     <span class="field-label">
-      {{capitalize variableName}}
+      {{humanize variableName}}
 {{#if required}}
       <span class="required" aria-hidden="true">*</span>
 {{/if}}
