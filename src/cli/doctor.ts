@@ -1,16 +1,16 @@
-import { execFile } from 'node:child_process';
 import { readFile, stat, statfs } from 'node:fs/promises';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import { ZodError } from 'zod';
 import { CliOptionError, ConfigLoader, resolveConfigFile } from '../core/config-loader.js';
 import { formatZodError } from '../core/entity-parser.js';
 import { locateGeneratedProject, type GeneratedProject } from '../core/project.js';
 import type { TemplateManifest } from '../templates/manifest.js';
 import { BUILT_IN_TEMPLATE_ROOT } from '../templates/template-engine.js';
+import { execCommand } from '../utils/command.js';
 import type { Logger } from '../utils/logger.js';
+import { isPathInside } from '../utils/path-safety.js';
+import { stripBom } from '../utils/text.js';
 
-const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 5000;
 const MIN_NODE_MAJOR = 22;
 const MIN_JAVA_MAJOR = 21;
@@ -74,14 +74,12 @@ export interface DoctorCommandOptions extends DoctorCheckOptions {
   setExitCode?: (code: number) => void;
 }
 
-const defaultRunner: CommandRunner = async (command, args) => {
-  const result = await execFileAsync(command, args, {
+const defaultRunner: CommandRunner = async (command, args) =>
+  execCommand(command, args, {
     timeout: COMMAND_TIMEOUT_MS,
     windowsHide: true,
     maxBuffer: 1024 * 1024,
   });
-  return { stdout: String(result.stdout ?? ''), stderr: String(result.stderr ?? '') };
-};
 
 export async function runDoctorCommand(
   args: string[],
@@ -320,8 +318,9 @@ async function checkAngularCli(
       status: 'warn',
       detail: `Angular CLI was not found, but ${displayDirectory(frontend)} uses it.`,
       suggestions: [
-        `Install the frontend dependencies: cd ${displayDirectory(frontend)} && npm install.`,
-        'Then use "npx ng" from the frontend directory, or install the CLI globally: npm install -g @angular/cli.',
+        `Change into the frontend directory: cd "${displayDirectory(frontend)}".`,
+        'Then install the frontend dependencies: npm install.',
+        'Use "npx ng" from the frontend directory, or install the CLI globally: npm install -g @angular/cli.',
       ],
     };
   }
@@ -366,7 +365,7 @@ async function checkDiskSpace(
         detail: `Could not determine free space for ${cwd}.`,
         suggestions: [
           'Check that the directory exists and is readable.',
-          'Run "df -h ." to inspect free disk space manually.',
+          diskSpaceInspectionHint(),
         ],
       };
     }
@@ -377,7 +376,7 @@ async function checkDiskSpace(
       name: 'Disk space',
       status: 'warn',
       detail: 'Free disk space could not be determined.',
-      suggestions: ['Run "df -h ." to inspect free disk space manually.'],
+      suggestions: [diskSpaceInspectionHint()],
     };
   }
 
@@ -500,8 +499,7 @@ async function checkTemplates(templateRoot: string): Promise<DoctorCheck> {
       }
 
       const templatePath = path.resolve(packRoot, entry.template);
-      const relative = path.relative(packRoot, templatePath);
-      if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      if (!isPathInside(packRoot, templatePath)) {
         problems.push(`${label}: template path escapes the pack (${entry.template})`);
         continue;
       }
@@ -535,7 +533,7 @@ async function readTemplateManifest(manifestPath: string): Promise<TemplateManif
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(contents);
+    parsed = JSON.parse(stripBom(contents));
   } catch {
     throw new Error('manifest.json is not valid JSON');
   }
@@ -599,6 +597,12 @@ function displayDirectory(frontend: NonNullable<GeneratedProject['frontend']>): 
   return frontend.relativeDirectory === '.'
     ? path.basename(frontend.directory)
     : frontend.relativeDirectory;
+}
+
+function diskSpaceInspectionHint(): string {
+  return process.platform === 'win32'
+    ? 'Open Settings > System > Storage, or run "Get-PSDrive" in PowerShell, to inspect free disk space.'
+    : 'Run "df -h ." to inspect free disk space manually.';
 }
 
 function formatBytes(bytes: number): string {

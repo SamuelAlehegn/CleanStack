@@ -60,11 +60,18 @@ cleanstack new demo --db h2 --auth none --no-entities --yes
 cd demo
 ```
 
-Start the backend in one terminal:
+Start the backend in one terminal (macOS or Linux):
 
 ```sh
 cd demo-backend
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+On Windows, run the batch wrapper from Command Prompt or PowerShell:
+
+```powershell
+cd demo-backend
+.\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
 Start the frontend in another terminal:

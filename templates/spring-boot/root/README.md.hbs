@@ -19,13 +19,13 @@ A Spring Boot service generated with CleanStack. The code uses a simple package 
 ## Run locally
 
 ```bash
-{{#if (eq project.options.buildTool "maven")}}mvn org.springframework.boot:spring-boot-maven-plugin:4.1.2:run -Dspring-boot.run.profiles=dev{{else}}gradle bootRun --args='--spring.profiles.active=dev'{{/if}}
+{{#if (eq project.options.buildTool "maven")}}mvn org.springframework.boot:spring-boot-maven-plugin:4.1.2:run -Dspring-boot.run.profiles=dev{{else}}gradle bootRun "--args=--spring.profiles.active=dev"{{/if}}
 ```
 
 The application starts on `http://localhost:8080`.
 
 ```bash
-curl 'http://localhost:8080/api/greetings?name=Ada'
+curl "http://localhost:8080/api/greetings?name=Ada"
 ```
 
 ```json

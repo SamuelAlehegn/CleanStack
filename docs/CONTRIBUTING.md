@@ -59,7 +59,9 @@ development workflow. Use `npm link`, `node dist/cli/index.js`, or
 
 Prettier is the source of truth for formatting: single quotes, trailing commas,
 100-column lines, LF endings. Do not hand-format around it. The template packs
-under `templates/` are intentionally excluded from Prettier.
+under `templates/` are intentionally excluded from Prettier. Generated Windows
+scripts (`.cmd`, `.bat`, `.ps1`, `.reg`, `.vbs`) are the exception: CleanStack
+writes them with CRLF on every platform.
 
 ## Repository layout
 
@@ -199,8 +201,8 @@ optional `partials/` directory.
 - Add a manifest entry for every new template, with a stable destination.
 - Use `when` for option-dependent files and `forEach: "entities"` for
   entity-scoped files.
-- Use `executable: true` only for files that must be executable, such as
-  `mvnw`.
+- Use `executable: true` only for files that must be executable on POSIX, such
+  as `mvnw`. Windows ignores the mode bit; `mvnw.cmd` is generated separately.
 - Destination interpolation is limited to `{{package}}`, `{{ApplicationName}}`,
   and `{{entity.<property>}}`. Handlebars helpers are not evaluated in
   `destination`.
@@ -262,8 +264,9 @@ a change; the npm script builds automatically for this reason.
   or network unless they are explicitly opt-in.
 - Assert both the success path and the failure message. Error paths are part of
   the user experience.
-- Keep tests platform-neutral. CI runs on Ubuntu and Windows; use `path.join`,
-  avoid shell-specific commands, and account for executable bits only on POSIX.
+- Keep tests platform-neutral. CI runs on Ubuntu, Windows, and macOS; use
+  `path.join`, avoid shell-specific commands, normalize line endings before
+  comparing text, and account for executable bits only on POSIX.
 - Do not write into the repository during tests; use temporary workspaces.
 
 ### End-to-end test
@@ -339,8 +342,8 @@ change.
 - [ ] Template changes still regenerate safely and preserve protected regions.
 - [ ] Generated files were not committed by accident.
 - [ ] User-facing docs and command help are updated.
-- [ ] The change works with relative paths and on Windows (no shell-only
-      assumptions).
+- [ ] The change works with relative and absolute paths on Windows, macOS, and
+      Linux (no shell-only assumptions), with CRLF-sensitive files checked too.
 - [ ] No secrets, personal paths, or workspace-specific values are committed.
 
 ## Reporting issues

@@ -86,7 +86,7 @@ Manifest: `templates/spring-boot/manifest.json`.
 | ------------------------------------ | --------------------------------------- | --------- | ----------------------------------------------------------------------- |
 | `build/pom.xml.hbs`                  | `pom.xml`                               | Maven     | Spring Boot, JPA, Flyway or Liquibase, validation, springdoc, auth deps |
 | `build/mvnw.hbs`                     | `mvnw`                                  | Maven     | Maven wrapper script (generated executable)                             |
-| `build/mvnw.cmd.hbs`                 | `mvnw.cmd`                              | Maven     | Maven wrapper script for Windows                                        |
+| `build/mvnw.cmd.hbs`                 | `mvnw.cmd`                              | Maven     | Maven wrapper script for Windows (written with CRLF)                    |
 | `build/maven-wrapper.properties.hbs` | `.mvn/wrapper/maven-wrapper.properties` | Maven     | Maven distribution and wrapper version                                  |
 | `build/build.gradle.kts.hbs`         | `build.gradle.kts`                      | Gradle    | Kotlin DSL build file with the same dependencies                        |
 | `build/settings.gradle.kts.hbs`      | `settings.gradle.kts`                   | Gradle    | Gradle project name and repositories                                    |
@@ -465,7 +465,7 @@ Manifest fields:
 | `files[].destination` | yes      | Output path relative to the generated project subset                                |
 | `files[].when`        | no       | Equality conditions checked against `project.options` (or top-level project fields) |
 | `files[].forEach`     | no       | Only `"entities"` today: render once per entity with `entity` in context            |
-| `files[].executable`  | no       | Mark the generated file executable (`0755`); used by the Maven wrapper script       |
+| `files[].executable`  | no       | Mark the generated file executable (`0755`) on POSIX; used by the Maven wrapper     |
 | `files[].internal`    | no       | Skip the entry in the manifest pass; rendered by a dedicated planner (migrations)   |
 
 Destination interpolation is intentionally limited to:

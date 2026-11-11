@@ -301,7 +301,8 @@ manifest maps templates to destinations and declares conditions:
 - `when` is an equality check against `options` or a top-level project field.
 - `forEach: "entities"` renders the entry once per entity with `entity` added to
   the context.
-- `executable: true` marks a generated file for mode `0755` (used by `mvnw`).
+- `executable: true` marks a generated file for mode `0755` on POSIX (used by
+  `mvnw`); Windows has no executable bit and ignores it.
 - Destination interpolation is limited to `{{package}}`, `{{ApplicationName}}`,
   and `{{entity.<ownProperty>}}`. Handlebars helpers are intentionally not
   evaluated in destinations.
@@ -334,6 +335,13 @@ casing (`camelCase`, `pascalCase`, `kebabCase`, `snakeCase`, `capitalize`,
 | Both have regions                         | Merge region by region                  |
 | Merge has unresolved conflicts            | Report `conflict`, do not write         |
 
+`writeGeneratedFile` strips UTF-8 BOMs from input and writes newly created or
+forced files with the destination line ending: CRLF for Windows scripts
+(`.cmd`, `.bat`, `.ps1`, `.reg`, `.vbs`) and LF for everything else. Merged files
+keep the existing file's dominant line ending, except Windows scripts, which are
+always normalized to CRLF. Generated workspaces include a `.gitattributes` file
+that records the same policy for Git checkouts.
+
 A protected region is a start/end marker pair in the file's comment syntax:
 
 ```text
@@ -363,7 +371,10 @@ backups.
 stays under a root:
 
 - Paths must be relative and cannot contain `..` segments or NUL bytes.
-- Absolute POSIX/Windows paths are rejected.
+- Absolute POSIX/Windows paths, UNC paths, and Windows drive-relative paths such
+  as `C:work` are rejected.
+- Same-path and inside-root checks compare case-insensitively on Windows.
+- Portable path segments reject Windows-reserved device names and characters.
 - Real paths are resolved through symlinks and checked again before access.
 - Destructive operations refuse the filesystem root.
 - Template names are normalized, must be relative, and cannot escape the pack.
