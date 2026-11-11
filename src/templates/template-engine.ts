@@ -5,6 +5,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureWithinRoot, isMissingPath, resolveWithinRoot } from '../utils/path-safety.js';
 import { CleanStackError } from '../utils/errors.js';
+import {
+  lineEndingForFile,
+  normalizeLineEndings,
+  stripBom,
+  type LineEnding,
+} from '../utils/text.js';
 
 export interface TemplateEngineOptions {
   /** Root of the project whose templates are rendered. Defaults to process.cwd(). */
@@ -110,7 +116,11 @@ export class TemplateEngine {
     try {
       // Generated source code must not be HTML-escaped.
       const compiled = await this.getCompiledTemplate(resolved.filePath);
-      return compiled(context);
+      const rendered = stripBom(compiled(context));
+      return normalizeLineEndings(
+        rendered,
+        lineEndingForTemplate(resolved.filePath, this.extension),
+      );
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(
@@ -184,7 +194,7 @@ export class TemplateEngine {
     if (pending) return pending;
 
     const compilation = (async () => {
-      const source = await readFile(filePath, 'utf8');
+      const source = stripBom(await readFile(filePath, 'utf8'));
       const handlebars = await this.getEnvironment();
       const compiled = handlebars.compile(source, { strict: true, noEscape: true });
       this.compiledTemplates.set(filePath, {
@@ -231,7 +241,7 @@ export class TemplateEngine {
         if (registered.has(partialName)) continue;
 
         try {
-          handlebars.registerPartial(partialName, await readFile(filePath, 'utf8'));
+          handlebars.registerPartial(partialName, stripBom(await readFile(filePath, 'utf8')));
           registered.add(partialName);
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
@@ -347,6 +357,18 @@ function normalizeTemplateName(name: string, extension: string): string {
 
 function normalizeExtension(extension: string): string {
   return extension.startsWith('.') ? extension : `.${extension}`;
+}
+
+/**
+ * Template filenames mirror their destination names, apart from the trailing
+ * template extension. That lets direct renders of mvnw.cmd.hbs emit CRLF just
+ * like manifest-driven generation does.
+ */
+function lineEndingForTemplate(filePath: string, extension: string): LineEnding {
+  const destination = filePath.endsWith(extension)
+    ? filePath.slice(0, -extension.length)
+    : filePath;
+  return lineEndingForFile(destination);
 }
 
 /**

@@ -14,6 +14,7 @@ import { formatZodError } from './entity-parser.js';
 import type { GeneratedProject } from './project.js';
 import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
 import { CleanStackError } from '../utils/errors.js';
+import { stripBom } from '../utils/text.js';
 
 /** Project-relative path of the generation metadata written by `cleanstack new`. */
 export const PROJECT_METADATA_PATH = '.cleanstack/project.json';
@@ -64,7 +65,7 @@ export async function readProjectMetadata(projectRoot: string): Promise<ProjectC
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(contents);
+    parsed = JSON.parse(stripBom(contents));
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new CleanStackError(`Unable to read project metadata from ${filePath}: ${detail}`, {
