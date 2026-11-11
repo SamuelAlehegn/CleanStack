@@ -21,6 +21,7 @@ import {
   generateEntityMigrations,
   isGeneratedEntityMigrationEntry,
   nextMigrationVersion,
+  type MigrationTool,
 } from '../core/migrations.js';
 import type { GeneratedFileResult } from '../core/generated-file.js';
 import { renderManifest, templateAliases, type ManifestEntry } from '../templates/manifest.js';
@@ -216,6 +217,14 @@ export async function generateEntityInProject(
     generatedFiles.push(result);
   };
 
+  if (generateBackend && backendFileSystem) {
+    await assertRelationTargetsReady({
+      entity,
+      fileSystem: backendFileSystem,
+      migrationTool: projectConfig.options.migrationTool,
+    });
+  }
+
   if (generateBackend && backendProject && backendFileSystem) {
     await renderManifest(
       'spring-boot',
@@ -283,6 +292,39 @@ export async function generateEntityInProject(
   }
 
   return { targets };
+}
+
+/**
+ * Fails before rendering when an owning relation target has no table. Missing
+ * inverse classes are allowed because forward references are resolved as the
+ * remaining entities are generated; a foreign key to a missing table is not.
+ */
+async function assertRelationTargetsReady(options: {
+  entity: EntityModel;
+  fileSystem: FileSystemService;
+  migrationTool: MigrationTool;
+}): Promise<void> {
+  const { entity, fileSystem, migrationTool } = options;
+  const missing = new Set<string>();
+
+  for (const relation of entity.relations) {
+    const target = relation.targetEntity;
+    if (!relation.owningSide) continue;
+    if (target.tableName === entity.tableName) continue;
+    if ((await findCreateMigration(fileSystem, migrationTool, target.tableName)) === undefined) {
+      missing.add(target.className);
+    }
+  }
+
+  if (missing.size === 0) return;
+
+  throw new CliOptionError(
+    `Cannot generate ${entity.className} because its relation targets have no generated create migration yet: ${[...missing].join(', ')}.`,
+    [
+      ...[...missing].map((className) => `cleanstack entity ${className}`),
+      'Then run this command again.',
+    ],
+  );
 }
 
 export async function runEntityCommand(

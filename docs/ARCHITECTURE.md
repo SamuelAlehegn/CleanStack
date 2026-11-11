@@ -363,7 +363,10 @@ decision table and error codes.
 The merge manager is pure: it receives existing and generated text and returns
 the merged text plus decisions/conflicts. `FileSystemService` separately handles
 dry-run behavior, overwrite protection, structured action logging, and optional
-backups.
+backups. Writes are atomic: content is staged in a temporary file beside the
+destination and installed with `rename` for overwrites or a hard link for
+create-only writes. A failed write therefore leaves the previous file intact,
+and a create-only write cannot clobber a file that appears concurrently.
 
 ## Path safety
 
@@ -430,7 +433,14 @@ The sample `GET /api/greetings?name=...` demonstrates the controller → use cas
 - `spring.jpa.hibernate.ddl-auto=validate`; Flyway or Liquibase owns the schema.
 - A `V1` baseline is generated for every project. Entity migrations start at
   `V2` and include columns, primary keys, foreign keys, join tables, and
-  optional seed rows. Descriptor changes append update migrations.
+  optional seed rows. Descriptor changes append update migrations. The planner
+  rejects owning-relation cycles and refuses to generate a migration that
+  references a table without a create migration.
+- Fields marked `generated` are excluded from request DTOs and Angular inputs.
+  JPA lifecycle callbacks initialize timestamp and UUID values; fields named
+  `updated*`, `modified*`, `lastModified*`, or `changed*` refresh on update.
+  Updates copy only editable fields onto the loaded entity, so server-owned
+  values survive a `PUT`.
 - Hibernate uses UTC for JDBC timestamps.
 - `open-in-view` is disabled.
 

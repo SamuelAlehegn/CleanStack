@@ -27,7 +27,7 @@
         </div>
 {{#each entity.fields}}
         <div class="detail-row">
-          <dt>{{capitalize name}}</dt>
+          <dt>{{humanize name}}</dt>
           <dd>
 {{#if (eq typescriptType "boolean")}}
 {{#if required}}
@@ -47,7 +47,7 @@
 {{/each}}
 {{#each entity.relations}}
         <div class="detail-row">
-          <dt>{{capitalize variableName}}</dt>
+          <dt>{{humanize variableName}}</dt>
           <dd>
 {{#if collection}}
             \{{ {{../entity.variableName}}.{{labelField}}.length ? {{../entity.variableName}}.{{labelField}}.join(', ') : '—' }}

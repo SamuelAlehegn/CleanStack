@@ -24,12 +24,11 @@
     <table>
       <thead>
         <tr>
-          <th>ID</th>
 {{#each entity.fields}}
-          <th>{{capitalize name}}</th>
+          <th>{{humanize name}}</th>
 {{/each}}
 {{#each entity.relations}}
-          <th>{{capitalize variableName}}</th>
+          <th>{{humanize variableName}}</th>
 {{/each}}
           <th class="actions-heading">Actions</th>
         </tr>
@@ -37,7 +36,6 @@
       <tbody>
         @for ({{entity.variableName}} of {{entity.pluralVariableName}}(); track {{entity.variableName}}.id) {
           <tr>
-            <td><code>\{{ {{entity.variableName}}.id }}</code></td>
 {{#each entity.fields}}
             <td>
 {{#if (eq typescriptType "boolean")}}

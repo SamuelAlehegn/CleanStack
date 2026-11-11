@@ -41,13 +41,15 @@ public final class {{entity.className}}Controller {
         return ResponseEntity.created(URI.create("/api/{{entity.routeName}}/" + created.getId())).body(mapper.toResponse(created));
     }
     @PutMapping("/{id}") public {{entity.className}}Response update(@PathVariable UUID id, @Valid @RequestBody {{entity.className}}Request request) {
-        return mapper.toResponse(service.update(id, mapper.toEntity(request)));
+        var entity = service.get(id);
+        mapper.copyToEntity(request, entity);
+        return mapper.toResponse(service.update(id, entity));
     }
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable UUID id) {
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
 
-    // <cleanstack:protected id="controller-{{entity.variableName}}">
-    // </cleanstack:protected>
+    // <cleanstack:user-code id="controller-{{entity.variableName}}">
+    // </cleanstack:user-code>
 }

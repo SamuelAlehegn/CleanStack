@@ -7,9 +7,10 @@ export interface FileReportOptions {
 }
 
 /**
- * Prints what the generator did, or would do in dry-run mode. Only files that
- * changed (or failed to change because of a conflict) are shown at info level;
- * unchanged files stay available through verbose output.
+ * Prints what the generator did, or would do in dry-run mode. Per-file lines
+ * stay at debug level during a real run so `new` and `entity` end with a short
+ * summary; dry-run keeps them visible because inspecting each change is the
+ * purpose of that mode.
  */
 export function reportGeneratedFiles(
   logger: Logger,
@@ -49,17 +50,15 @@ export function reportGeneratedFiles(
       continue;
     }
 
-    if (result.status === 'created') {
-      logger.info(`${options.dryRun ? 'would create' : 'created'} ${result.path}${suffix}`);
-      continue;
+    const prefix = options.dryRun ? 'would ' : '';
+    const verb =
+      result.status === 'created' ? 'create' : result.status === 'updated' ? 'update' : 'overwrite';
+    const line = `${prefix}${verb} ${result.path}${suffix}`;
+    if (options.dryRun) {
+      logger.info(line);
+    } else {
+      logger.debug(line);
     }
-
-    if (result.status === 'updated') {
-      logger.info(`${options.dryRun ? 'would update' : 'updated'} ${result.path}${suffix}`);
-      continue;
-    }
-
-    logger.info(`${options.dryRun ? 'would overwrite' : 'overwrote'} ${result.path}${suffix}`);
   }
 
   for (const warning of results.flatMap((result) =>
@@ -72,6 +71,16 @@ export function reportGeneratedFiles(
     logger.info(
       `Dry run: ${counts.created} to create, ${counts.updated} to update, ${counts.overwritten} to overwrite, ${counts.unchanged} unchanged, ${counts.preserved} preserved, ${counts.conflict} conflicted.`,
     );
+    return;
+  }
+
+  const changed = counts.created + counts.updated + counts.overwritten;
+  if (changed > 0) {
+    logger.info(
+      `Files: ${counts.created} created, ${counts.updated} updated, ${counts.overwritten} overwritten, ${counts.unchanged} unchanged.`,
+    );
+  } else if (counts.preserved === 0 && counts.conflict === 0) {
+    logger.info('Files: no changes.');
   }
 }
 

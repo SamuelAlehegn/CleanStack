@@ -24,21 +24,36 @@ public class {{entity.className}}Mapper {
 {{/if}}
     public {{entity.className}} toEntity({{entity.className}}Request request) {
         return new {{entity.className}}(
-                null{{#each entity.fields}},
+                null{{#each entity.inputFields}},
                 request.{{name}}(){{/each}}{{#each entity.owningRelations}},
                 {{#if collection}}request.{{idField}}() == null ? List.of() : {{targetEntity.variableName}}Repository.findAllById(request.{{idField}}()){{else if required}}{{targetEntity.variableName}}Repository.getReferenceById(request.{{idField}}()){{else}}request.{{idField}}() == null ? null : {{targetEntity.variableName}}Repository.getReferenceById(request.{{idField}}()){{/if}}{{/each}});
+    }
+
+    public void copyToEntity({{entity.className}}Request request, {{entity.className}} entity) {
+{{#each entity.inputFields}}
+        entity.set{{capitalize name}}(request.{{name}}());
+{{/each}}
+{{#each entity.owningRelations}}
+{{#if collection}}
+        entity.set{{capitalize variableName}}(request.{{idField}}() == null ? List.of() : {{targetEntity.variableName}}Repository.findAllById(request.{{idField}}()));
+{{else if required}}
+        entity.set{{capitalize variableName}}({{targetEntity.variableName}}Repository.getReferenceById(request.{{idField}}()));
+{{else}}
+        entity.set{{capitalize variableName}}(request.{{idField}}() == null ? null : {{targetEntity.variableName}}Repository.getReferenceById(request.{{idField}}()));
+{{/if}}
+{{/each}}
     }
 
     public {{entity.className}}Response toResponse({{entity.className}} entity) {
         return new {{entity.className}}Response(
                 entity.getId(){{#each entity.fields}},
-                entity.get{{capitalize name}}(){{/each}}{{#each entity.relations}}{{#if collection}},
+                entity.{{javaGetter}}(){{/each}}{{#each entity.relations}}{{#if collection}},
                 entity.get{{capitalize variableName}}().stream().map(item -> item.getId()).toList(),
                 entity.get{{capitalize variableName}}().stream().map(item -> {{#if targetEntity.labelGetter}}item.{{targetEntity.labelGetter}}(){{else}}item.getId().toString(){{/if}}).toList(){{else}},
                 entity.get{{capitalize variableName}}() == null ? null : entity.get{{capitalize variableName}}().getId(),
                 entity.get{{capitalize variableName}}() == null ? null : entity.get{{capitalize variableName}}().{{#if targetEntity.labelGetter}}{{targetEntity.labelGetter}}(){{else}}getId().toString(){{/if}}{{/if}}{{/each}});
     }
 
-    // <cleanstack:protected id="web-mapper-{{entity.variableName}}">
-    // </cleanstack:protected>
+    // <cleanstack:user-code id="web-mapper-{{entity.variableName}}">
+    // </cleanstack:user-code>
 }

@@ -12,7 +12,7 @@ public class {{entity.className}} {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 {{#each entity.fields}}
-    @Column(name = "{{columnName}}"{{#if required}}, nullable = false{{/if}}{{#if unique}}, unique = true{{/if}}{{#if maxLength}}, length = {{maxLength}}{{/if}})
+    @Column(name = "{{columnName}}"{{#if required}}, nullable = false{{/if}}{{#if unique}}, unique = true{{/if}}{{#if maxLength}}, length = {{maxLength}}{{/if}}{{#if generated}}{{#unless generatedOnUpdate}}, updatable = false{{/unless}}{{/if}})
     private {{javaType}} {{name}};
 {{/each}}
 {{#each entity.relations}}
@@ -49,9 +49,9 @@ public class {{entity.className}} {
         // Required by JPA.
     }
 
-    public {{entity.className}}(UUID id{{#each entity.fields}}, {{javaType}} {{name}}{{/each}}{{#each entity.owningRelations}}, {{javaType}} {{variableName}}{{/each}}) {
+    public {{entity.className}}(UUID id{{#each entity.inputFields}}, {{javaType}} {{name}}{{/each}}{{#each entity.owningRelations}}, {{javaType}} {{variableName}}{{/each}}) {
         this.id = id;
-{{#each entity.fields}}
+{{#each entity.inputFields}}
         this.{{name}} = {{name}};
 {{/each}}
 {{#each entity.owningRelations}}
@@ -62,12 +62,46 @@ public class {{entity.className}} {
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
 {{#each entity.fields}}
-    public {{javaType}} get{{capitalize name}}() { return {{name}}; }
+    public {{javaType}} {{javaGetter}}() { return {{name}}; }
 {{/each}}
 {{#each entity.relations}}
     public {{javaType}} get{{capitalize variableName}}() { return {{variableName}}; }
 {{/each}}
+{{#each entity.inputFields}}
+    public void set{{capitalize name}}({{javaType}} {{name}}) { this.{{name}} = {{name}}; }
+{{/each}}
+{{#each entity.owningRelations}}
+    public void set{{capitalize variableName}}({{javaType}} {{variableName}}) { this.{{variableName}} = {{variableName}}; }
+{{/each}}
+{{#if entity.hasGeneratedLifecycle}}
 
-    // <cleanstack:protected id="domain-{{entity.variableName}}">
-    // </cleanstack:protected>
+    @PrePersist
+    void initializeGeneratedFields() {
+{{#each entity.generatedFields}}
+{{#if generatedExpression}}
+{{#if generatedOnUpdate}}
+        this.{{name}} = {{generatedExpression}};
+{{else}}
+        if (this.{{name}} == null) {
+            this.{{name}} = {{generatedExpression}};
+        }
+{{/if}}
+{{/if}}
+{{/each}}
+    }
+{{/if}}
+{{#if entity.hasGeneratedUpdates}}
+
+    @PreUpdate
+    void refreshGeneratedFields() {
+{{#each entity.generatedFields}}
+{{#if generatedOnUpdate}}
+        this.{{name}} = {{generatedExpression}};
+{{/if}}
+{{/each}}
+    }
+{{/if}}
+
+    // <cleanstack:user-code id="domain-{{entity.variableName}}">
+    // </cleanstack:user-code>
 }

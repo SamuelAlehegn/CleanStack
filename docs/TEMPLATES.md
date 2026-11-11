@@ -397,6 +397,7 @@ block helpers (`if`, `unless`, `each`, `with`, `lookup`):
 | `snakeCase`   | `{{snakeCase project.name}}`                 | `demo_backend`               |
 | `packagePath` | `{{packagePath project.packageName}}`        | `com/example`                |
 | `capitalize`  | `{{capitalize entity.variableName}}`         | `Product`                    |
+| `humanize`    | `{{humanize "createdAt"}}`                   | `Created at`                 |
 | `lowercase`   | `{{lowercase entity.name}}`                  | `product`                    |
 | `uppercase`   | `{{uppercase entity.name}}`                  | `PRODUCT`                    |
 | `pluralize`   | `{{pluralize entity.name}}`                  | `Products` (irregular-aware) |

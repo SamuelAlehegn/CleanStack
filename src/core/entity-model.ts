@@ -1,6 +1,16 @@
 import type { EntityConfig, FieldConfig, RelationConfig } from './config.js';
 import { resolveActiveFieldType } from './extensions/registry.js';
 
+const PRIMITIVE_JAVA_TYPES = new Set([
+  'boolean',
+  'byte',
+  'short',
+  'int',
+  'long',
+  'float',
+  'double',
+]);
+
 export interface EntityFieldModel extends FieldConfig {
   /** Java type name used by backend generators. */
   javaType: string;
@@ -10,8 +20,20 @@ export interface EntityFieldModel extends FieldConfig {
   typescriptDefault: string;
   /** Snake-case database column name. */
   columnName: string;
-  /** Fully qualified Jakarta Bean Validation annotations. */
+  /** JavaBean getter, using `isX` for primitive booleans and `getX` otherwise. */
+  javaGetter: string;
+  /** Jakarta Bean Validation annotations using simple names, for example `@NotNull`. */
   validationAnnotations: string[];
+  /** Expression that initializes a server-generated field, when the type is known. */
+  generatedExpression: string | undefined;
+  /** True when the generated value is refreshed before every update. */
+  generatedOnUpdate: boolean;
+}
+
+/** A request DTO record component, already rendered with validation annotations. */
+export interface RequestParameterModel {
+  name: string;
+  declaration: string;
 }
 
 /** Normalized metadata for the entity on the other side of a relation. */
@@ -95,6 +117,14 @@ export interface EntityModel extends Omit<EntityConfig, 'tableName' | 'fields' |
   routeName: string;
   tableName: string;
   fields: EntityFieldModel[];
+  /** Fields accepted from HTTP requests; server-generated fields are excluded. */
+  inputFields: EntityFieldModel[];
+  /** Server-generated fields, populated by the entity lifecycle callbacks. */
+  generatedFields: EntityFieldModel[];
+  /** Request DTO components in declaration order. */
+  requestParameters: RequestParameterModel[];
+  hasGeneratedLifecycle: boolean;
+  hasGeneratedUpdates: boolean;
   relations: ResolvedRelationModel[];
   owningRelations: ResolvedRelationModel[];
   displayField: EntityFieldModel | undefined;
@@ -139,6 +169,11 @@ export function buildEntityModels(entities: EntityConfig[]): EntityModel[] {
       routeName: toKebabCase(pluralClassName),
       tableName,
       fields,
+      inputFields: [],
+      generatedFields: [],
+      requestParameters: [],
+      hasGeneratedLifecycle: false,
+      hasGeneratedUpdates: false,
       relations: [],
       displayField: chooseDisplayField(fields),
       hasRelations: false,
@@ -178,15 +213,28 @@ export function buildEntityModels(entities: EntityConfig[]): EntityModel[] {
     const source = normalized.get(entity.name.toLowerCase())!;
     const relations = relationSets.get(entity.name.toLowerCase())!;
     const owningRelations = relations.filter((relation) => relation.owningSide);
+    const inputFields = source.fields.filter((field) => !field.generated);
+    const generatedFields = source.fields.filter((field) => field.generated);
     const fieldImports = buildFieldImports(source.fields);
+    const inputFieldImports = buildFieldImports(inputFields);
     const persistenceImports = buildPersistenceImports(relations);
     const hasOwningCollections = owningRelations.some((relation) => relation.collection);
     const hasOwningSingles = owningRelations.some((relation) => !relation.collection);
+    const hasGeneratedLifecycle = generatedFields.some(
+      (field) => field.generatedExpression !== undefined,
+    );
+    const hasGeneratedUpdates = generatedFields.some((field) => field.generatedOnUpdate);
+    const validationImports = buildValidationImports(inputFields, owningRelations);
 
     return {
       ...source,
       relations,
       owningRelations,
+      inputFields,
+      generatedFields,
+      requestParameters: buildRequestParameters(inputFields, owningRelations),
+      hasGeneratedLifecycle,
+      hasGeneratedUpdates,
       hasRelations: relations.length > 0,
       hasCollections: relations.some((relation) => relation.collection),
       hasOwningCollections,
@@ -199,6 +247,8 @@ export function buildEntityModels(entities: EntityConfig[]): EntityModel[] {
         'jakarta.persistence.GenerationType',
         'jakarta.persistence.Id',
         'jakarta.persistence.Table',
+        ...(hasGeneratedLifecycle ? ['jakarta.persistence.PrePersist'] : []),
+        ...(hasGeneratedUpdates ? ['jakarta.persistence.PreUpdate'] : []),
         ...persistenceImports,
         ...fieldImports,
         'java.util.UUID',
@@ -206,7 +256,8 @@ export function buildEntityModels(entities: EntityConfig[]): EntityModel[] {
       requestImports: sortImports([
         ...(hasOwningCollections ? ['java.util.List'] : []),
         ...(hasOwningSingles ? ['java.util.UUID'] : []),
-        ...fieldImports,
+        ...inputFieldImports,
+        ...validationImports,
       ]),
       responseImports: sortImports([
         'java.util.UUID',
@@ -267,8 +318,7 @@ function resolveRelation(
       routeName: target.routeName,
       tableName: target.tableName,
       labelField: target.displayField?.name,
-      labelGetter:
-        target.displayField === undefined ? undefined : getterName(target.displayField.name),
+      labelGetter: target.displayField === undefined ? undefined : getterName(target.displayField),
     },
     collection,
     owningSide,
@@ -455,14 +505,89 @@ function normalizeField(field: FieldConfig): EntityFieldModel {
   const custom = resolveActiveFieldType(field.type);
   const javaType = custom?.javaType ?? field.type;
   const typescriptType = custom?.typescriptType ?? toTypeScriptType(javaType);
+  const generatedExpression = field.generated ? generatedExpressionFor(javaType) : undefined;
+  const generatedOnUpdate =
+    generatedExpression !== undefined && field.generated && isUpdatedFieldName(field.name);
   return {
     ...field,
     javaType,
     typescriptType,
     typescriptDefault: custom?.typescriptDefault ?? toTypeScriptDefault(typescriptType),
     columnName: toSnakeCase(field.name),
+    javaGetter: javaGetterFor(field.name, javaType),
     validationAnnotations: buildValidationAnnotations(field),
+    generatedExpression,
+    generatedOnUpdate,
   };
+}
+
+function javaGetterFor(fieldName: string, javaType: string): string {
+  const suffix = fieldName[0]!.toUpperCase() + fieldName.slice(1);
+  return javaType === 'boolean' ? `is${suffix}` : `get${suffix}`;
+}
+
+/** Returns a deterministic initializer for server-generated field types. */
+function generatedExpressionFor(javaType: string): string | undefined {
+  switch (javaType) {
+    case 'Instant':
+      return 'Instant.now()';
+    case 'LocalDate':
+      return 'LocalDate.now()';
+    case 'LocalTime':
+      return 'LocalTime.now()';
+    case 'LocalDateTime':
+      return 'LocalDateTime.now()';
+    case 'OffsetDateTime':
+      return 'OffsetDateTime.now()';
+    case 'UUID':
+      return 'UUID.randomUUID()';
+    default:
+      return undefined;
+  }
+}
+
+/** True for generated fields that represent the last modification time. */
+function isUpdatedFieldName(fieldName: string): boolean {
+  return /^(updated|modified|lastModified|changed)/i.test(fieldName);
+}
+
+function buildValidationImports(
+  fields: EntityFieldModel[],
+  owningRelations: ResolvedRelationModel[],
+): string[] {
+  const imports = new Set<string>();
+  for (const field of fields) {
+    for (const annotation of field.validationAnnotations) {
+      const name = /^@([A-Za-z][A-Za-z0-9]*)/.exec(annotation)?.[1];
+      if (name !== undefined) imports.add(`jakarta.validation.constraints.${name}`);
+    }
+  }
+  if (owningRelations.some((relation) => !relation.collection && relation.required)) {
+    imports.add('jakarta.validation.constraints.NotNull');
+  }
+  return [...imports];
+}
+
+function buildRequestParameters(
+  fields: EntityFieldModel[],
+  owningRelations: ResolvedRelationModel[],
+): RequestParameterModel[] {
+  const parameters = fields.map((field) => ({
+    name: field.name,
+    declaration: `${field.validationAnnotations.map((annotation) => `${annotation} `).join('')}${field.javaType} ${field.name}`,
+  }));
+  for (const relation of owningRelations) {
+    if (relation.collection) {
+      parameters.push({ name: relation.idField, declaration: `List<UUID> ${relation.idField}` });
+    } else {
+      const annotation = relation.required ? '@NotNull ' : '';
+      parameters.push({
+        name: relation.idField,
+        declaration: `${annotation}UUID ${relation.idField}`,
+      });
+    }
+  }
+  return parameters;
 }
 
 function toTypeScriptDefault(typescriptType: string): string {
@@ -488,30 +613,26 @@ function toTypeScriptType(javaType: string): string {
 
 function buildValidationAnnotations(field: FieldConfig): string[] {
   const annotations = new Set<string>();
-  if (field.required) annotations.add('@jakarta.validation.constraints.NotNull');
+  const javaType = resolveActiveFieldType(field.type)?.javaType ?? field.type;
+  const primitive = PRIMITIVE_JAVA_TYPES.has(javaType);
+  if (field.required && !primitive) annotations.add('@NotNull');
   for (const validation of field.validations) {
-    annotations.add(`@jakarta.validation.constraints.${validation}`);
+    annotations.add(`@${validation}`);
   }
   const lengthParts: string[] = [];
   if (field.minLength !== undefined) lengthParts.push(`min = ${field.minLength}`);
   if (field.maxLength !== undefined) lengthParts.push(`max = ${field.maxLength}`);
   if (lengthParts.length > 0) {
-    annotations.add(`@jakarta.validation.constraints.Size(${lengthParts.join(', ')})`);
+    annotations.add(`@Size(${lengthParts.join(', ')})`);
   }
   if (field.min !== undefined) {
-    annotations.add(
-      `@jakarta.validation.constraints.DecimalMin("${escapeJavaString(String(field.min))}")`,
-    );
+    annotations.add(`@DecimalMin("${escapeJavaString(String(field.min))}")`);
   }
   if (field.max !== undefined) {
-    annotations.add(
-      `@jakarta.validation.constraints.DecimalMax("${escapeJavaString(String(field.max))}")`,
-    );
+    annotations.add(`@DecimalMax("${escapeJavaString(String(field.max))}")`);
   }
   if (field.pattern !== undefined) {
-    annotations.add(
-      `@jakarta.validation.constraints.Pattern(regexp = "${escapeJavaString(field.pattern)}")`,
-    );
+    annotations.add(`@Pattern(regexp = "${escapeJavaString(field.pattern)}")`);
   }
   return [...annotations];
 }
@@ -520,8 +641,8 @@ function escapeJavaString(value: string): string {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
 }
 
-function getterName(fieldName: string): string {
-  return `get${fieldName[0]!.toUpperCase()}${fieldName.slice(1)}`;
+function getterName(field: EntityFieldModel): string {
+  return field.javaGetter;
 }
 
 function toPascalCase(value: string): string {

@@ -125,6 +125,9 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
     }
     generationProject = { ...project, entities };
   }
+  // Validate relation ordering before creating the output directory so a cycle
+  // fails without leaving a partially generated project behind.
+  const orderedEntities = orderEntitiesForMigrations(generationProject.entities);
   const outputRoot = await resolveOutputRoot(cwd, project.options.outputDir);
   const targetRoot = path.join(outputRoot, project.name);
   const filesystemLogger: FileSystemLogger = {
@@ -172,7 +175,7 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
     filesystemLogger,
     { force, onFile: collect(backendDirectory) },
   );
-  for (const entity of orderEntitiesForMigrations(generationProject.entities)) {
+  for (const entity of orderedEntities) {
     const previousEntity = findPreviousEntityModel(previousConfig?.entities ?? [], entity);
     const migrations = await generateEntityMigrations({
       fileSystem: backendFs,

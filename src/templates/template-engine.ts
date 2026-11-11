@@ -273,6 +273,14 @@ function registerHelpers(handlebars: typeof Handlebars): void {
     const text = String(value ?? '');
     return text.length === 0 ? text : text[0]!.toUpperCase() + text.slice(1);
   });
+  handlebars.registerHelper('humanize', (value: unknown) => {
+    const words = toWords(String(value ?? ''));
+    return words
+      .map((word, index) =>
+        index === 0 ? word[0]!.toUpperCase() + word.slice(1).toLowerCase() : word.toLowerCase(),
+      )
+      .join(' ');
+  });
   handlebars.registerHelper('lowercase', (value: unknown) => String(value ?? '').toLowerCase());
   handlebars.registerHelper('uppercase', (value: unknown) => String(value ?? '').toUpperCase());
   handlebars.registerHelper('pluralize', (...args: unknown[]) => pluralizeHelper(args));
