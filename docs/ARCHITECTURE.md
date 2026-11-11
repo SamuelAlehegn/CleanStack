@@ -430,7 +430,14 @@ The sample `GET /api/greetings?name=...` demonstrates the controller → use cas
 - `spring.jpa.hibernate.ddl-auto=validate`; Flyway or Liquibase owns the schema.
 - A `V1` baseline is generated for every project. Entity migrations start at
   `V2` and include columns, primary keys, foreign keys, join tables, and
-  optional seed rows. Descriptor changes append update migrations.
+  optional seed rows. Descriptor changes append update migrations. The planner
+  rejects owning-relation cycles and refuses to generate a migration that
+  references a table without a create migration.
+- Fields marked `generated` are excluded from request DTOs and Angular inputs.
+  JPA lifecycle callbacks initialize timestamp and UUID values; fields named
+  `updated*`, `modified*`, `lastModified*`, or `changed*` refresh on update.
+  Updates copy only editable fields onto the loaded entity, so server-owned
+  values survive a `PUT`.
 - Hibernate uses UTC for JDBC timestamps.
 - `open-in-view` is disabled.
 

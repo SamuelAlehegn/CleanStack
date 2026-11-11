@@ -524,6 +524,11 @@ The shorthand is `name:type[:modifier...]`. Supported modifiers:
 | `validations=NotBlank\|Email` | Additional Bean Validation constraints               |
 | `default=<value>`             | Default value; booleans, `null`, and numbers convert |
 
+Fields marked `generated` are server-owned: they are omitted from the request
+DTO and Angular form. Timestamp and `UUID` fields are initialized with JPA
+lifecycle callbacks, and fields named `updated*`, `modified*`, `lastModified*`,
+or `changed*` refresh on update.
+
 Use a JSON object for options without a shorthand:
 
 ```sh
@@ -582,7 +587,8 @@ template removes them.
 
 Every relation target must exist in the descriptor set when the entity is
 generated. For relations that own a foreign key or join table, generate the
-target first:
+target first. The command stops before writing files and prints the missing
+targets when the target table has no create migration yet:
 
 ```sh
 cleanstack entity Category
@@ -593,7 +599,9 @@ cleanstack entity Product
 `ManyToOne` is always owning. `OneToMany` is always inverse and requires
 `mappedBy` or an inferable `ManyToOne` on the target. `OneToOne` and
 `ManyToMany` are owning by default; use `inverse: true` or `mappedBy` on the
-other side.
+other side. Owning relations must form a directed acyclic graph; a cycle is
+rejected instead of generating a foreign key that points at a table created
+later.
 
 To keep the first version simple, to-many relations are fetched eagerly. The
 mapper includes labels so list and detail pages do not need extra requests.

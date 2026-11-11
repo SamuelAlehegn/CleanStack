@@ -193,6 +193,8 @@ Field names and relation fields use Java-style identifiers. Names are case-sensi
 
 Length and pattern properties are only valid for `String`; `min` and `max` are only valid for numeric fields. Minimum values cannot exceed maximum values.
 
+Fields marked `generated` are server-owned: they are omitted from the request DTO and Angular input, and the generated entity initializes supported values in JPA lifecycle callbacks. `Instant`, `LocalDate`, `LocalTime`, `LocalDateTime`, `OffsetDateTime`, and `UUID` are initialized automatically; fields whose name starts with `updated`, `modified`, `lastModified`, or `changed` are refreshed before every update. Use a protected region for any other generated type.
+
 ### Supported field types
 
 | Descriptor type                                                    | Java type                          | Typical use                           |
@@ -295,7 +297,9 @@ relations:
 
 Every related descriptor must be available in `entities/` when the entity is
 generated, because relation targets are validated up front. Generate the
-target entity first when the relation owns the foreign key or join table:
+target entity first when the relation owns the foreign key or join table.
+The command refuses to write a migration that references a table without a
+create migration and prints the commands to run first:
 
 ```sh
 cleanstack entity Category

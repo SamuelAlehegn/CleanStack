@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { collectDoctorReport, parseDoctorArguments, runDoctorCommand } from '../dist/cli/doctor.js';
+import {
+  GENERATED_ANGULAR_NODE_RANGE,
+  collectDoctorReport,
+  parseDoctorArguments,
+  runDoctorCommand,
+} from '../dist/cli/doctor.js';
 
 function recordingLogger() {
   const messages = [];
@@ -105,6 +110,80 @@ test('reports a healthy environment', async () => {
   }
 });
 
+test('prefers the generated project Maven wrapper over a global install', async () => {
+  const root = await createWorkspace();
+  try {
+    const backend = path.join(root, 'demo-backend');
+    await mkdir(path.join(backend, 'src', 'main', 'java', 'com', 'example'), { recursive: true });
+    await writeFile(path.join(backend, 'pom.xml'), '<project/>\n');
+    await writeFile(
+      path.join(backend, 'src', 'main', 'java', 'com', 'example', 'DemoApplication.java'),
+      'package com.example;\npublic class DemoApplication {}\n',
+    );
+    await writeFile(path.join(backend, 'mvnw'), '#!/bin/sh\n');
+
+    const calls = [];
+    const baseRunner = runnerFrom(healthyOutputs);
+    const report = await collectDoctorReport({
+      cwd: root,
+      env: {},
+      nodeVersion: '22.5.1',
+      commandRunner: async (command, args) => {
+        calls.push(command);
+        if (command.endsWith('mvnw')) {
+          return { stdout: 'Apache Maven 3.9.9 (wrapper)', stderr: '' };
+        }
+        if (command === 'mvn') throw new Error('mvn is not on PATH');
+        return baseRunner(command, args);
+      },
+      templateRoot: path.resolve('templates'),
+      freeDiskBytes: 10 * 1024 ** 3,
+    });
+
+    const build = check(report, 'Build tool');
+    assert.equal(build.status, 'ok');
+    assert.match(build.detail, /Maven 3\.9\.9 \(project wrapper\)/);
+    assert.ok(calls.some((command) => command.endsWith('mvnw')));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('explains when a project wrapper exists but cannot run', async () => {
+  const root = await createWorkspace();
+  try {
+    const backend = path.join(root, 'demo-backend');
+    await mkdir(path.join(backend, 'src', 'main', 'java', 'com', 'example'), { recursive: true });
+    await writeFile(path.join(backend, 'pom.xml'), '<project/>\n');
+    await writeFile(
+      path.join(backend, 'src', 'main', 'java', 'com', 'example', 'DemoApplication.java'),
+      'package com.example;\npublic class DemoApplication {}\n',
+    );
+    await writeFile(path.join(backend, 'mvnw'), '#!/bin/sh\n');
+
+    const report = await collectDoctorReport({
+      cwd: root,
+      env: {},
+      nodeVersion: '22.5.1',
+      commandRunner: async (command, args) => {
+        if (command.endsWith('mvnw') || command === 'mvn') {
+          throw new Error(`${command} could not run`);
+        }
+        return runnerFrom(healthyOutputs)(command, args);
+      },
+      templateRoot: path.resolve('templates'),
+      freeDiskBytes: 10 * 1024 ** 3,
+    });
+
+    const build = check(report, 'Build tool');
+    assert.equal(build.status, 'warn');
+    assert.match(build.detail, /Maven was not found/);
+    assert.ok(build.suggestions.some((suggestion) => /is executable/.test(suggestion)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('detects old Node.js and Java versions with upgrade suggestions', async () => {
   const root = await createWorkspace();
   try {
@@ -128,6 +207,65 @@ test('detects old Node.js and Java versions with upgrade suggestions', async () 
     assert.equal(java.status, 'fail');
     assert.match(java.detail, /target Java 21\+/);
     assert.ok(java.suggestions.some((suggestion) => /JDK 21/.test(suggestion)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('keeps the doctor Node.js range in sync with the Angular template', async () => {
+  const template = await readFile(path.resolve('templates/angular/root/package.json.hbs'), 'utf8');
+  const engines = /"node":\s*"([^"]+)"/.exec(template);
+  assert.ok(engines, 'expected an engines.node range in the Angular template');
+  assert.equal(engines[1], GENERATED_ANGULAR_NODE_RANGE);
+});
+
+test('warns when Node.js does not satisfy the generated Angular engine range', async () => {
+  const root = await createWorkspace();
+  try {
+    await createFrontend(root);
+    const collect = (nodeVersion) =>
+      collectDoctorReport({
+        cwd: root,
+        env: {},
+        nodeVersion,
+        commandRunner: runnerFrom(healthyOutputs),
+        templateRoot: path.resolve('templates'),
+        freeDiskBytes: 10 * 1024 ** 3,
+      });
+
+    for (const nodeVersion of ['22.5.1', '23.11.0', '24.14.0']) {
+      const node = check(await collect(nodeVersion), 'Node.js');
+      assert.equal(node.status, 'warn', `${nodeVersion} should not satisfy the range`);
+      assert.match(node.detail, /generated Angular engine range/);
+      assert.ok(node.suggestions.some((suggestion) => /\^22\.22\.3/.test(suggestion)));
+    }
+
+    for (const nodeVersion of ['22.22.3', '22.99.0', '24.15.0', '26.0.0']) {
+      const node = check(await collect(nodeVersion), 'Node.js');
+      assert.equal(node.status, 'ok', `${nodeVersion} should satisfy the range`);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('accepts Node.js versions outside the Angular range when there is no frontend', async () => {
+  const root = await createWorkspace();
+  try {
+    const node = check(
+      await collectDoctorReport({
+        cwd: root,
+        env: {},
+        nodeVersion: '23.11.0',
+        commandRunner: runnerFrom(healthyOutputs),
+        templateRoot: path.resolve('templates'),
+        freeDiskBytes: 10 * 1024 ** 3,
+      }),
+      'Node.js',
+    );
+
+    assert.equal(node.status, 'ok');
+    assert.match(node.detail, /Node\.js 23\.11\.0/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -161,7 +299,7 @@ test('warns when Angular CLI is missing for a generated frontend and accepts a l
     const missing = await collectDoctorReport({
       cwd: root,
       env: {},
-      nodeVersion: '22.5.1',
+      nodeVersion: '24.15.0',
       commandRunner: runnerFrom(healthyOutputs),
       templateRoot: path.resolve('templates'),
       freeDiskBytes: 10 * 1024 ** 3,
@@ -176,7 +314,7 @@ test('warns when Angular CLI is missing for a generated frontend and accepts a l
     const local = await collectDoctorReport({
       cwd: root,
       env: {},
-      nodeVersion: '22.5.1',
+      nodeVersion: '24.15.0',
       commandRunner: runnerFrom(healthyOutputs),
       templateRoot: path.resolve('templates'),
       freeDiskBytes: 10 * 1024 ** 3,

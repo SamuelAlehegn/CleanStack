@@ -13,6 +13,8 @@ import { stripBom } from '../utils/text.js';
 
 const COMMAND_TIMEOUT_MS = 5000;
 const MIN_NODE_MAJOR = 22;
+/** Keep in sync with `templates/angular/root/package.json.hbs`. */
+export const GENERATED_ANGULAR_NODE_RANGE = '^22.22.3 || ^24.15.0 || ^26.0.0';
 const MIN_JAVA_MAJOR = 21;
 const TEMPLATE_PACKS = ['spring-boot', 'angular', 'project'] as const;
 /** Limits how many template problems are printed before the rest are summarized. */
@@ -112,7 +114,7 @@ export async function collectDoctorReport(options: DoctorCheckOptions = {}): Pro
   const project = await detectProject(cwd);
 
   const checks = await Promise.all([
-    checkNode(options.nodeVersion ?? process.versions.node),
+    checkNode(options.nodeVersion ?? process.versions.node, project?.frontend !== undefined),
     checkJava(runner),
     checkBuildTool(project, runner),
     checkAngularCli(project, runner),
@@ -157,9 +159,9 @@ export function parseDoctorArguments(args: string[]): { help: boolean } {
   return { help };
 }
 
-function checkNode(version: string): DoctorCheck {
-  const major = Number.parseInt(version.split('.')[0] ?? '', 10);
-  if (Number.isNaN(major)) {
+function checkNode(version: string, hasFrontend = false): DoctorCheck {
+  const parsed = parseNodeVersion(version);
+  if (parsed === undefined) {
     return {
       name: 'Node.js',
       status: 'warn',
@@ -167,18 +169,79 @@ function checkNode(version: string): DoctorCheck {
       suggestions: ['Run "node --version" and check that Node.js is on PATH.'],
     };
   }
-  if (major >= MIN_NODE_MAJOR) {
-    return { name: 'Node.js', status: 'ok', detail: `Node.js ${version}` };
+
+  if (parsed.major < MIN_NODE_MAJOR) {
+    return {
+      name: 'Node.js',
+      status: 'fail',
+      detail: `Node.js ${version} is too old; CleanStack requires ${MIN_NODE_MAJOR}+.`,
+      suggestions: [
+        `Install Node.js ${MIN_NODE_MAJOR} or newer from https://nodejs.org.`,
+        'With nvm: "nvm install 22 && nvm use 22".',
+      ],
+    };
   }
-  return {
-    name: 'Node.js',
-    status: 'fail',
-    detail: `Node.js ${version} is too old; CleanStack requires ${MIN_NODE_MAJOR}+.`,
-    suggestions: [
-      `Install Node.js ${MIN_NODE_MAJOR} or newer from https://nodejs.org.`,
-      'With nvm: "nvm install 22 && nvm use 22".',
-    ],
+
+  if (hasFrontend && !satisfiesNodeRange(parsed, GENERATED_ANGULAR_NODE_RANGE)) {
+    return {
+      name: 'Node.js',
+      status: 'warn',
+      detail: `Node.js ${version} does not satisfy the generated Angular engine range (${GENERATED_ANGULAR_NODE_RANGE}).`,
+      suggestions: [
+        `Use a supported Node.js release: ${GENERATED_ANGULAR_NODE_RANGE}.`,
+        'With nvm: "nvm install 22 && nvm use 22" (or the latest supported LTS line).',
+        'Check the "engines" field in the generated frontend package.json for the exact range.',
+      ],
+    };
+  }
+
+  return { name: 'Node.js', status: 'ok', detail: `Node.js ${version}` };
+}
+
+interface ParsedNodeVersion {
+  major: number;
+  minor: number;
+  patch: number;
+}
+
+function parseNodeVersion(version: string): ParsedNodeVersion | undefined {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
+  if (match === null) return undefined;
+  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) };
+}
+
+/** Handles the caret/OR ranges used by the generated Angular package.json. */
+function satisfiesNodeRange(version: ParsedNodeVersion, range: string): boolean {
+  return range
+    .split('||')
+    .map((alternative) => alternative.trim())
+    .some((alternative) => satisfiesCaretRange(version, alternative));
+}
+
+function satisfiesCaretRange(version: ParsedNodeVersion, range: string): boolean {
+  const match = /^\^(\d+)\.(\d+)\.(\d+)$/.exec(range);
+  if (match === null) return false;
+
+  const lower: ParsedNodeVersion = {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
   };
+  if (compareNodeVersions(version, lower) < 0) return false;
+
+  const upper: ParsedNodeVersion =
+    lower.major > 0
+      ? { major: lower.major + 1, minor: 0, patch: 0 }
+      : lower.minor > 0
+        ? { major: 0, minor: lower.minor + 1, patch: 0 }
+        : { major: 0, minor: 0, patch: lower.patch + 1 };
+  return compareNodeVersions(version, upper) < 0;
+}
+
+function compareNodeVersions(a: ParsedNodeVersion, b: ParsedNodeVersion): number {
+  if (a.major !== b.major) return a.major - b.major;
+  if (a.minor !== b.minor) return a.minor - b.minor;
+  return a.patch - b.patch;
 }
 
 async function checkJava(runner: CommandRunner): Promise<DoctorCheck> {
@@ -226,8 +289,23 @@ async function checkBuildTool(
 ): Promise<DoctorCheck> {
   const expected = project?.backend?.buildTool;
   const tools: Array<'maven' | 'gradle'> = expected ? [expected] : ['maven', 'gradle'];
+  let wrapperFound = false;
 
   for (const tool of tools) {
+    const wrapper = await projectBuildWrapper(project, tool);
+    if (wrapper !== undefined) {
+      wrapperFound = true;
+      const probe = await probeBuildTool(tool, runner, wrapper);
+      if (probe.available) {
+        const version = probe.version === undefined ? '' : ` ${probe.version}`;
+        return {
+          name: 'Build tool',
+          status: 'ok',
+          detail: `${labelFor(tool)}${version} (project wrapper)`,
+        };
+      }
+    }
+
     const probe = await probeBuildTool(tool, runner);
     if (probe.available) {
       const version = probe.version === undefined ? '' : ` ${probe.version}`;
@@ -240,10 +318,15 @@ async function checkBuildTool(
       name: 'Build tool',
       status: 'warn',
       detail: `${labelFor(expected)} was not found, but this project uses ${expected}.`,
-      suggestions: [
-        `Install ${labelFor(expected)} or use a machine that has it.`,
-        `Alternatively regenerate with --build ${expected === 'maven' ? 'gradle' : 'maven'}.`,
-      ],
+      suggestions: wrapperFound
+        ? [
+            `The project wrapper could not run; check that "${wrapperName(expected)}" is executable, or install ${labelFor(expected)}.`,
+            `Alternatively regenerate with --build ${expected === 'maven' ? 'gradle' : 'maven'}.`,
+          ]
+        : [
+            `Install ${labelFor(expected)} or regenerate the project so it includes "${wrapperName(expected)}".`,
+            `Alternatively regenerate with --build ${expected === 'maven' ? 'gradle' : 'maven'}.`,
+          ],
     };
   }
 
@@ -258,13 +341,45 @@ async function checkBuildTool(
   };
 }
 
+/** Returns the project-local build wrapper when the generated project ships one. */
+async function projectBuildWrapper(
+  project: GeneratedProject | undefined,
+  tool: 'maven' | 'gradle',
+): Promise<string | undefined> {
+  const backend = project?.backend;
+  if (backend === undefined || backend.buildTool !== tool) return undefined;
+
+  const names = tool === 'maven' ? ['mvnw', 'mvnw.cmd'] : ['gradlew', 'gradlew.bat'];
+  const preferred =
+    process.platform === 'win32'
+      ? tool === 'maven'
+        ? 'mvnw.cmd'
+        : 'gradlew.bat'
+      : tool === 'maven'
+        ? 'mvnw'
+        : 'gradlew';
+  for (const name of [preferred, ...names]) {
+    const wrapper = path.join(backend.directory, name);
+    if (await fileExists(wrapper)) return wrapper;
+  }
+  return undefined;
+}
+
+function wrapperName(tool: 'maven' | 'gradle'): string {
+  if (tool === 'maven') return process.platform === 'win32' ? '.\\mvnw.cmd' : './mvnw';
+  return process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew';
+}
+
 async function probeBuildTool(
   tool: 'maven' | 'gradle',
   runner: CommandRunner,
+  executable?: string,
 ): Promise<{ available: boolean; version?: string }> {
   try {
     const result =
-      tool === 'maven' ? await runner('mvn', ['-version']) : await runner('gradle', ['--version']);
+      tool === 'maven'
+        ? await runner(executable ?? 'mvn', ['-version'])
+        : await runner(executable ?? 'gradle', ['--version']);
     const output = `${result.stdout}\n${result.stderr}`;
     const version =
       tool === 'maven'
