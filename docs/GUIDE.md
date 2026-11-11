@@ -81,8 +81,14 @@ cleanstack new <name> [options]
 ```
 
 The project name must be a single directory name. It may contain hyphens and
-spaces, but not path separators. CleanStack creates `<name>/` under the current
-directory (or under `--output-dir`).
+spaces, but not path separators or characters Windows rejects (`< > : " | ? *`).
+Names reserved by Windows, such as `con`, `nul`, or `com1`, and names ending in a
+space or period are also rejected.
+CleanStack creates `<name>/` under the current directory (or under
+`--output-dir`).
+
+The output directory may be relative or absolute. Relative paths must stay
+inside the current directory; absolute paths are useful for automation and CI.
 
 ### Options
 
@@ -162,6 +168,7 @@ demo/
 ├── AGENTS.md
 ├── ARCHITECTURE.md
 ├── .ai/rules/...
+├── .gitattributes
 └── .cleanstack/
     └── project.json
 ```
@@ -171,8 +178,10 @@ folders use the kebab-case name plus `-backend` and `-ui`. Gradle projects get
 `build.gradle.kts` and `settings.gradle.kts` instead of the Maven files. Maven
 projects include a wrapper; Gradle projects use an installed Gradle 8.14+.
 
-The `.cleanstack/project.json` file records the normalized project configuration
-and known entities. `cleanstack entity` and `cleanstack regenerate` use it to
+The generated `.gitattributes` keeps source files LF in Git checkouts and
+Windows scripts CRLF, so the project behaves the same on Windows, macOS, and
+Linux. The `.cleanstack/project.json` file records the normalized project
+configuration and known entities. `cleanstack entity` and `cleanstack regenerate` use it to
 recover settings when no nearby configuration file exists. Commit it with the
 project.
 
@@ -221,11 +230,18 @@ precedence.
 
 ### Backend
 
-Maven:
+Maven on macOS or Linux:
 
 ```sh
 cd demo-backend
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+Maven on Windows (Command Prompt or PowerShell):
+
+```powershell
+cd demo-backend
+.\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
 If the wrapper is unavailable or you prefer a local Maven installation:
@@ -234,11 +250,12 @@ If the wrapper is unavailable or you prefer a local Maven installation:
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-Gradle:
+Gradle (the quoted argument works in POSIX shells, Command Prompt, and
+PowerShell):
 
 ```sh
 cd demo-backend
-gradle bootRun --args='--spring.profiles.active=dev'
+gradle bootRun "--args=--spring.profiles.active=dev"
 ```
 
 The service listens on <http://localhost:8080>. Set `SERVER_PORT` to change the

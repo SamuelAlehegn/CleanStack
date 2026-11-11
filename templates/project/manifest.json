@@ -6,6 +6,7 @@
     "ApplicationName": "The project name converted to PascalCase."
   },
   "files": [
+    { "template": "root/.gitattributes.hbs", "destination": ".gitattributes" },
     { "template": "root/ARCHITECTURE.md.hbs", "destination": "ARCHITECTURE.md" },
     { "template": "root/AGENTS.md.hbs", "destination": "AGENTS.md" },
     { "template": "root/.ai/README.md.hbs", "destination": ".ai/README.md" },

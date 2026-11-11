@@ -6,6 +6,7 @@ import { parse as parseYaml } from 'yaml';
 import { createConfigSchemas, type ProjectConfig, type ProjectDefaults } from './config.js';
 import { activeSchemaInput } from './extensions/registry.js';
 import { CleanStackError } from '../utils/errors.js';
+import { stripBom } from '../utils/text.js';
 
 export type ConfigInput = Record<string, unknown>;
 
@@ -423,7 +424,7 @@ export async function findConfigFileInAncestors(
 async function readJsonConfig(filePath: string): Promise<ConfigInput> {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await readFile(filePath, 'utf8'));
+    parsed = JSON.parse(stripBom(await readFile(filePath, 'utf8')));
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new CleanStackError(`Unable to read configuration from ${filePath}: ${detail}`, {
@@ -442,7 +443,7 @@ async function readJsonConfig(filePath: string): Promise<ConfigInput> {
 async function readYamlConfig(filePath: string): Promise<ConfigInput> {
   let parsed: unknown;
   try {
-    parsed = parseYaml(await readFile(filePath, 'utf8'));
+    parsed = parseYaml(stripBom(await readFile(filePath, 'utf8')));
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new CleanStackError(`Unable to read configuration from ${filePath}: ${detail}`, {

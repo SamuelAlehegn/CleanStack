@@ -10,6 +10,7 @@ import {
 } from '../templates/template-engine.js';
 import { FileExistsError, FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
 import { isMissingPath } from '../utils/path-safety.js';
+import { normalizeLineEndings, stripBom } from '../utils/text.js';
 import type { Logger } from '../utils/logger.js';
 
 export interface TemplatesCommandOptions {
@@ -299,8 +300,13 @@ async function diffTemplates(
         continue;
       }
 
-      const builtIn = await builtInReader.readFile(builtInPath);
-      const current = await reader.readFile(overridePath);
+      // Compare and diff normalized text so a CRLF checkout does not make
+      // every template look modified.
+      const builtIn = normalizeLineEndings(
+        stripBom(await builtInReader.readFile(builtInPath)),
+        '\n',
+      );
+      const current = normalizeLineEndings(stripBom(await reader.readFile(overridePath)), '\n');
       if (builtIn === current) {
         logger.debug(`unchanged ${pack}/${relative} (${level})`);
         continue;
@@ -431,7 +437,13 @@ async function walkFiles(directory: string): Promise<string[]> {
 /** Accepts names with or without the template extension and no traversal. */
 function normalizeOverrideName(name: string): string {
   const normalized = name.replace(/\\/g, '/').replace(/^\.\//u, '');
-  if (!normalized || normalized.split('/').includes('..') || path.posix.isAbsolute(normalized)) {
+  if (
+    !normalized ||
+    normalized.split('/').includes('..') ||
+    path.posix.isAbsolute(normalized) ||
+    path.win32.isAbsolute(name) ||
+    /^[A-Za-z]:/.test(name)
+  ) {
     throw new CliOptionError(`Template name must be a relative path: "${name}".`);
   }
   return path.extname(normalized) ? normalized : `${normalized}.hbs`;

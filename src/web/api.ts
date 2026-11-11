@@ -30,7 +30,12 @@ import { planManifest, templateAliases } from '../templates/manifest.js';
 import { TemplateEngine } from '../templates/template-engine.js';
 import { FileSystemService } from '../utils/file-system.js';
 import { CleanStackError, formatError, formatZodError } from '../utils/errors.js';
-import { ensureWithinRoot, isMissingPath, resolveWithinRoot } from '../utils/path-safety.js';
+import {
+  ensureWithinRoot,
+  isMissingPath,
+  pathSegmentProblem,
+  resolveWithinRoot,
+} from '../utils/path-safety.js';
 import { Logger } from '../utils/logger.js';
 import type {
   ApiErrorResponse,
@@ -485,8 +490,14 @@ async function createProjectArchive(workspace: string, raw: unknown): Promise<Pr
 function parseProjectRequest(raw: unknown): ParsedProjectRequest {
   const body = asRecord(raw, 'project');
   const name = requiredString(body, 'name');
-  if (name === '.' || name === '..' || /[\\/]/.test(name)) {
-    throw new ApiError('Project name must be a single directory name without path separators.');
+  const nameProblem = pathSegmentProblem(name);
+  if (nameProblem !== undefined) {
+    throw new ApiError(`Project name ${nameProblem}.`);
+  }
+
+  const outputDir = optionalString(body, 'outputDir') || '.';
+  if (outputDir.includes('\0') || /^[A-Za-z]:/.test(outputDir)) {
+    throw new ApiError('The output directory must be relative to the active workspace.');
   }
 
   return {
@@ -498,7 +509,7 @@ function parseProjectRequest(raw: unknown): ParsedProjectRequest {
     frontend: optionalBoolean(body, 'frontend') ?? true,
     docker: optionalBoolean(body, 'docker') ?? false,
     includeEntities: optionalBoolean(body, 'includeEntities') ?? false,
-    outputDir: optionalString(body, 'outputDir') || '.',
+    outputDir,
     git: optionalBoolean(body, 'git') ?? false,
     force: optionalBoolean(body, 'force') ?? false,
   };

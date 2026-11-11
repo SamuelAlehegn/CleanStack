@@ -8,6 +8,7 @@ import {
   type GeneratedFileResult,
 } from '../core/generated-file.js';
 import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
+import { stripBom } from '../utils/text.js';
 import type { TemplateEngine } from './template-engine.js';
 
 export interface ManifestEntry {
@@ -153,7 +154,7 @@ export async function readManifest(
 
 /** Validates the emitted manifest entry list and fails with its source on bad shapes. */
 function parseTemplateManifest(contents: string, source: string): TemplateManifest {
-  const parsed = JSON.parse(contents) as { files?: unknown };
+  const parsed = JSON.parse(stripBom(contents)) as { files?: unknown };
   if (!Array.isArray(parsed.files)) {
     throw new Error(
       `Template manifest (${source}) must declare a "files" array; received ${typeof parsed.files}.`,
@@ -249,7 +250,8 @@ export async function renderManifest(
           result.status !== 'conflict' &&
           result.status !== 'preserved' &&
           item.entry.executable &&
-          !output.dryRun
+          !output.dryRun &&
+          process.platform !== 'win32'
         ) {
           await output.chmod(item.destination, 0o755);
         }

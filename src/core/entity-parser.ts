@@ -6,6 +6,7 @@ import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { activeSchemaInput } from './extensions/registry.js';
+import { stripBom } from '../utils/text.js';
 
 export { formatZodError } from '../utils/errors.js';
 
@@ -57,7 +58,7 @@ export class EntityParser {
       ]);
     }
 
-    const contents = await this.fileSystem.readFile(filePath);
+    const contents = stripBom(await this.fileSystem.readFile(filePath));
     let raw: unknown;
     try {
       raw = extension === '.json' ? JSON.parse(contents) : parseYaml(contents);

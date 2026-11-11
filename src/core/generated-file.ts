@@ -11,6 +11,12 @@ import {
   type ProtectedRegionWarning,
 } from './protected-region-manager.js';
 import type { FileSystemService } from '../utils/file-system.js';
+import {
+  isWindowsScript,
+  normalizeFileContents,
+  normalizeLineEndings,
+  stripBom,
+} from '../utils/text.js';
 
 export type GeneratedFileStatus =
   'created' | 'updated' | 'unchanged' | 'overwritten' | 'preserved' | 'conflict';
@@ -60,12 +66,15 @@ export async function writeGeneratedFile(
   const manager = options.manager ?? defaultManager;
   const language = languageForFile(relativePath);
   const exists = await output.exists(relativePath);
+  // New and forced files follow the destination policy. Merged files keep the
+  // existing style, except Windows scripts which are always CRLF.
+  const destinationSource = normalizeFileContents(relativePath, generatedSource);
 
   if (!exists) {
     const prepared =
       language === undefined
-        ? plainSource(generatedSource)
-        : prepareGeneratedSource(manager, generatedSource, language);
+        ? plainSource(destinationSource)
+        : prepareGeneratedSource(manager, destinationSource, language);
     if (!options.dryRun) {
       await output.writeFile(relativePath, prepared.content, { overwrite: false });
     }
@@ -79,13 +88,13 @@ export async function writeGeneratedFile(
     };
   }
 
-  const existingSource = await output.readFile(relativePath);
+  const existingSource = stripBom(await output.readFile(relativePath));
 
   if (options.force === true) {
     const prepared =
       language === undefined
-        ? plainSource(generatedSource)
-        : prepareGeneratedSource(manager, generatedSource, language);
+        ? plainSource(destinationSource)
+        : prepareGeneratedSource(manager, destinationSource, language);
     if (!options.dryRun) {
       await output.writeFile(relativePath, prepared.content, { overwrite: true });
     }
@@ -100,7 +109,7 @@ export async function writeGeneratedFile(
   }
 
   if (language === undefined) {
-    return existingSource === generatedSource
+    return existingSource === destinationSource
       ? unchanged(relativePath)
       : preserved(
           relativePath,
@@ -108,9 +117,9 @@ export async function writeGeneratedFile(
         );
   }
 
-  const generatedRegions = manager.parse(generatedSource, { language }).regions;
+  const generatedRegions = manager.parse(destinationSource, { language }).regions;
   if (generatedRegions.length === 0) {
-    return existingSource === generatedSource
+    return existingSource === destinationSource
       ? unchanged(relativePath)
       : preserved(
           relativePath,
@@ -126,7 +135,7 @@ export async function writeGeneratedFile(
     );
   }
 
-  const merged = manager.merge(existingSource, generatedSource, {
+  const merged = manager.merge(existingSource, destinationSource, {
     language,
     ...(options.strategy === undefined ? {} : { strategy: options.strategy }),
     ...(options.strategies === undefined ? {} : { strategies: options.strategies }),
@@ -144,7 +153,14 @@ export async function writeGeneratedFile(
     };
   }
 
-  if (merged.content === existingSource) {
+  // The manager preserves the existing file's line endings. Windows scripts
+  // are the one exception: they must be CRLF even when an older generated
+  // project or an editor left them as LF.
+  const mergedContent = isWindowsScript(relativePath)
+    ? normalizeLineEndings(merged.content, '\r\n')
+    : merged.content;
+
+  if (mergedContent === existingSource) {
     return {
       path: relativePath,
       status: 'unchanged',
@@ -156,7 +172,7 @@ export async function writeGeneratedFile(
   }
 
   if (!options.dryRun) {
-    await output.writeFile(relativePath, merged.content, { overwrite: true });
+    await output.writeFile(relativePath, mergedContent, { overwrite: true });
   }
 
   return {

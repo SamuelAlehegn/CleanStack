@@ -1,3 +1,10 @@
 # Check out text files with LF on every platform (Windows Git defaults to CRLF),
 # so Prettier's endOfLine check and the .editorconfig agree everywhere.
 * text=auto eol=lf
+
+# Windows scripts must keep CRLF so cmd.exe and PowerShell can run them.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.reg text eol=crlf
+*.vbs text eol=crlf

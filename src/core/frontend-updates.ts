@@ -1,4 +1,5 @@
 import type { EntityModel } from './entity-model.js';
+import { detectLineEnding, type LineEnding } from '../utils/text.js';
 
 const ROUTES_MARKER = '// </cleanstack:entity-routes>';
 const NAV_MARKER = '<!-- </cleanstack:entity-nav> -->';
@@ -15,24 +16,25 @@ export function hasEntityNavLink(source: string, entity: Pick<EntityModel, 'rout
 
 /** Inserts the list, create, detail, and edit routes for an entity. */
 export function addEntityRoutes(source: string, entity: EntityModel): string {
-  const block = routeBlock(entity);
+  const lineEnding = detectLineEnding(source) ?? '\n';
+  const block = routeBlock(entity, lineEnding);
 
   if (source.includes(ROUTES_MARKER)) {
-    return insertBefore(source, source.indexOf(ROUTES_MARKER), block);
+    return insertBefore(source, source.indexOf(ROUTES_MARKER), block, lineEnding);
   }
 
   const childrenIndex = source.indexOf('children: [');
   if (childrenIndex !== -1) {
     const open = source.indexOf('[', childrenIndex);
     const close = findMatchingBracket(source, open);
-    if (close !== -1) return insertBefore(source, close, block);
+    if (close !== -1) return insertBefore(source, close, block, lineEnding);
   }
 
   const routesIndex = source.indexOf('export const routes');
   if (routesIndex !== -1) {
     const open = source.indexOf('[', routesIndex);
     const close = findMatchingBracket(source, open);
-    if (close !== -1) return insertBefore(source, close, block);
+    if (close !== -1) return insertBefore(source, close, block, lineEnding);
   }
 
   throw new Error(
@@ -42,21 +44,22 @@ export function addEntityRoutes(source: string, entity: EntityModel): string {
 
 /** Inserts the entity list link into the application layout navigation. */
 export function addEntityNavLink(source: string, entity: EntityModel): string {
-  const block = navLinkBlock(entity);
+  const lineEnding = detectLineEnding(source) ?? '\n';
+  const block = navLinkBlock(entity, lineEnding);
 
   if (source.includes(NAV_MARKER)) {
-    return insertBefore(source, source.indexOf(NAV_MARKER), block);
+    return insertBefore(source, source.indexOf(NAV_MARKER), block, lineEnding);
   }
 
   const navClose = source.lastIndexOf('</nav>');
-  if (navClose !== -1) return insertBefore(source, navClose, block);
+  if (navClose !== -1) return insertBefore(source, navClose, block, lineEnding);
 
   throw new Error(
     'Could not find the navigation in app-layout.component.html. Add the entity link manually.',
   );
 }
 
-function routeBlock(entity: EntityModel): string {
+function routeBlock(entity: EntityModel, lineEnding: LineEnding): string {
   const route = entity.routeName;
   const component = entity.className;
   return [
@@ -92,25 +95,30 @@ function routeBlock(entity: EntityModel): string {
     `            (module) => module.${component}FormComponent,`,
     '          ),',
     '      },',
-  ].join('\n');
+  ].join(lineEnding);
 }
 
-function navLinkBlock(entity: EntityModel): string {
+function navLinkBlock(entity: EntityModel, lineEnding: LineEnding): string {
   return [
     `      <a routerLink="/${entity.routeName}" routerLinkActive="nav-link-active" (click)="closeMenu()">`,
     '        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 5.5h12M4 10h12M4 14.5h8"/></svg>',
     `        <span>${escapeHtml(entity.pluralName)}</span>`,
     '      </a>',
-  ].join('\n');
+  ].join(lineEnding);
 }
 
-function insertBefore(source: string, index: number, block: string): string {
+function insertBefore(
+  source: string,
+  index: number,
+  block: string,
+  lineEnding: LineEnding,
+): string {
   const lineStart = source.lastIndexOf('\n', index - 1) + 1;
   const prefix = source.slice(lineStart, index);
   if (prefix.trim() === '') {
-    return `${source.slice(0, lineStart)}${block}\n${source.slice(lineStart)}`;
+    return `${source.slice(0, lineStart)}${block}${lineEnding}${source.slice(lineStart)}`;
   }
-  return `${source.slice(0, index)}\n${block}\n${source.slice(index)}`;
+  return `${source.slice(0, index)}${lineEnding}${block}${lineEnding}${source.slice(index)}`;
 }
 
 function findMatchingBracket(source: string, openIndex: number): number {

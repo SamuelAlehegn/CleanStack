@@ -120,6 +120,7 @@ test('renders a complete Maven, PostgreSQL, Docker project', async () => {
     /public GreetingService\(Clock clock\)/,
   );
   assert.match(files.get('README.md'), /src\/main\/java\/com\/acme\/shop\//);
+  assert.match(files.get('README.md'), /curl "http:\/\/localhost:8080\/api\/greetings\?name=Ada"/);
   assert.match(files.get('docker-compose.yml'), /SPRING_DATASOURCE_URL/);
 
   for (const [destination, content] of files) {
@@ -148,6 +149,8 @@ test('renders a Gradle and H2 project without Docker files', async () => {
   assert.match(files.get('build.gradle.kts'), /spring-boot-h2console/);
   assert.match(files.get('build.gradle.kts'), /runtimeOnly\("com\.h2database:h2"\)/);
   assert.doesNotMatch(files.get('build.gradle.kts'), /org\.postgresql:postgresql/);
+  assert.match(files.get('README.md'), /gradle bootRun "--args=--spring\.profiles\.active=dev"/);
+  assert.doesNotMatch(files.get('README.md'), /--args='/);
 });
 
 test('renders JWT, OIDC, Keycloak, and Auth0 resource-server configuration', async () => {

@@ -10,7 +10,13 @@ import {
   writeFile as nodeWriteFile,
 } from 'node:fs/promises';
 import path from 'node:path';
-import { ensureWithinRoot, isMissingPath, resolveWithinRoot } from './path-safety.js';
+import {
+  ensureWithinRoot,
+  isMissingPath,
+  isPathInside,
+  isSamePath,
+  resolveWithinRoot,
+} from './path-safety.js';
 
 export interface FileSystemEntry {
   name: string;
@@ -222,12 +228,12 @@ export class FileSystemService {
   ): Promise<void> {
     const source = await this.resolvePath(sourcePath);
     const destination = await this.resolvePath(destinationPath);
-    if (source === this.rootDir || destination === this.rootDir) {
+    if (isSamePath(source, this.rootDir) || isSamePath(destination, this.rootDir)) {
       throw new InvalidOperationError(
         `Refusing to copy to or from the filesystem root "${this.rootDir}". Choose a path inside the root.`,
       );
     }
-    if (destination === source || destination.startsWith(`${source}${path.sep}`)) {
+    if (isSamePath(destination, source) || isPathInside(source, destination)) {
       throw new InvalidOperationError(
         `Cannot copy "${sourcePath}" into itself or one of its descendants ("${destinationPath}").`,
       );
@@ -256,7 +262,7 @@ export class FileSystemService {
 
   async delete(filePath: string, options: DeleteOptions = {}): Promise<void> {
     const target = await this.resolvePath(filePath);
-    if (target === this.rootDir) {
+    if (isSamePath(target, this.rootDir)) {
       throw new InvalidOperationError(`Refusing to delete the filesystem root "${this.rootDir}".`);
     }
     await this.perform(

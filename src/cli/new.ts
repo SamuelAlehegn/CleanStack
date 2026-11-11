@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { confirm, input as inputPrompt, select } from '@inquirer/prompts';
 import path from 'node:path';
 import { ConfigLoader, CliOptionError, parseCommandLineOptions } from '../core/config-loader.js';
@@ -17,8 +16,15 @@ import {
   withProjectSuffix,
 } from '../templates/manifest.js';
 import { TemplateEngine } from '../templates/template-engine.js';
+import { execCommandSync } from '../utils/command.js';
 import { FileSystemService, type FileSystemLogger } from '../utils/file-system.js';
-import { isMissingPath } from '../utils/path-safety.js';
+import {
+  assertRelativePath,
+  ensureWithinRoot,
+  isMissingPath,
+  pathSegmentProblem,
+  UnsafePathError,
+} from '../utils/path-safety.js';
 import type { Logger } from '../utils/logger.js';
 import { loadCommandExtensions } from './extensions.js';
 import { conflictingFiles, reportGeneratedFiles } from './file-report.js';
@@ -119,19 +125,20 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
     }
     generationProject = { ...project, entities };
   }
-  const targetRelative = path.posix.join(project.options.outputDir, project.name);
+  const outputRoot = await resolveOutputRoot(cwd, project.options.outputDir);
+  const targetRoot = path.join(outputRoot, project.name);
   const filesystemLogger: FileSystemLogger = {
     log: (action) =>
       options.logger.debug(`[filesystem] ${action.operation} ${action.path}: ${action.status}`),
   };
-  const targetFs = new FileSystemService({
-    rootDir: cwd,
+  const outputFs = new FileSystemService({
+    rootDir: outputRoot,
     logger: filesystemLogger,
     dryRun,
   });
-  await targetFs.createDirectory(targetRelative);
+  await outputFs.createDirectory(project.name);
   const projectRootFs = new FileSystemService({
-    rootDir: path.resolve(cwd, targetRelative),
+    rootDir: targetRoot,
     logger: filesystemLogger,
     dryRun,
   });
@@ -220,29 +227,88 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
   await writeProjectMetadata(projectRootFs, generationProject);
 
   if (initializeGit && !dryRun) {
-    execFileSync('git', ['init'], { cwd: projectRootFs.rootDir, stdio: 'ignore' });
+    execCommandSync('git', ['init'], { cwd: projectRootFs.rootDir, stdio: 'ignore' });
     options.logger.success('Initialized git repository.');
   }
   if (dryRun) {
-    options.logger.info(
-      `Dry run: ${project.name} was not written to ${path.resolve(cwd, targetRelative)}.`,
-    );
+    options.logger.info(`Dry run: ${project.name} was not written to ${targetRoot}.`);
     return;
   }
 
-  options.logger.success(`Generated ${project.name} in ${path.resolve(cwd, targetRelative)}.`);
+  options.logger.success(`Generated ${project.name} in ${targetRoot}.`);
   const nextSteps = [
-    `cd ${targetRelative}`,
-    ...(project.options.frontend ? [`(cd ${uiDirectory} && npm install && npm start)`] : []),
+    `cd ${quoteShellPath(targetRoot)}`,
+    ...(project.options.frontend
+      ? [`cd ${quoteShellPath(path.join(targetRoot, uiDirectory))}`, 'npm install', 'npm start']
+      : []),
     ...(project.options.docker
-      ? [`(cd ${backendDirectory} && docker compose up --build)`]
+      ? [
+          `cd ${quoteShellPath(path.join(targetRoot, backendDirectory))}`,
+          'docker compose up --build',
+        ]
       : [
+          `cd ${quoteShellPath(path.join(targetRoot, backendDirectory))}`,
           project.options.buildTool === 'maven'
-            ? `(cd ${backendDirectory} && mvn org.springframework.boot:spring-boot-maven-plugin:4.1.2:run -Dspring-boot.run.profiles=dev)`
-            : `(cd ${backendDirectory} && gradle bootRun --args='--spring.profiles.active=dev')`,
+            ? `${mavenWrapperCommand()} org.springframework.boot:spring-boot-maven-plugin:4.1.2:run -Dspring-boot.run.profiles=dev`
+            : 'gradle bootRun "--args=--spring.profiles.active=dev"',
         ]),
   ];
   options.logger.info(`Next steps:\n  ${nextSteps.join('\n  ')}`);
+}
+
+/**
+ * Resolves `outputDir` to an absolute directory. Relative values stay inside
+ * the working directory; absolute values are allowed so automation can choose
+ * any location on the current drive.
+ */
+async function resolveOutputRoot(cwd: string, outputDir: string): Promise<string> {
+  if (outputDir.includes('\0')) {
+    throw new CliOptionError('Output directory must not contain NUL characters.');
+  }
+  if (path.isAbsolute(outputDir)) return path.resolve(outputDir);
+
+  let relative: string;
+  try {
+    relative = assertRelativePath(outputDir, cwd);
+  } catch (error) {
+    if (error instanceof UnsafePathError || error instanceof TypeError) {
+      throw new CliOptionError(
+        `Output directory must be absolute or a relative path inside the current directory: "${outputDir}".`,
+      );
+    }
+    throw error;
+  }
+
+  for (const segment of relative.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    const problem = pathSegmentProblem(segment);
+    if (problem !== undefined) {
+      throw new CliOptionError(`Output directory segment "${segment}" ${problem}.`);
+    }
+  }
+
+  const resolved = path.resolve(cwd, relative);
+  try {
+    await ensureWithinRoot(cwd, resolved, outputDir);
+  } catch (error) {
+    if (error instanceof UnsafePathError) {
+      throw new CliOptionError(
+        `Output directory must stay inside the current directory: "${outputDir}".`,
+      );
+    }
+    throw error;
+  }
+  return resolved;
+}
+
+/** Quotes a path so the displayed `cd` command works in POSIX shells and cmd.exe. */
+function quoteShellPath(filePath: string): string {
+  return `"${filePath.replaceAll('"', '\\"')}"`;
+}
+
+/** The Maven wrapper filename differs between POSIX and Windows checkouts. */
+function mavenWrapperCommand(): string {
+  return process.platform === 'win32' ? '.\\mvnw.cmd' : './mvnw';
 }
 
 function mapFrontendOption(input: Record<string, unknown>): Record<string, unknown> {
@@ -321,10 +387,9 @@ function validateProjectName(value: unknown): void {
     );
   }
   const projectName = value.trim();
-  if (projectName === '.' || projectName === '..' || /[\\/]/.test(projectName)) {
-    throw new CliOptionError(
-      'Project name must be a single directory name without path separators.',
-    );
+  const problem = pathSegmentProblem(projectName);
+  if (problem !== undefined) {
+    throw new CliOptionError(`Project name ${problem}.`);
   }
 }
 

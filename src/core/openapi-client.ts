@@ -1,16 +1,19 @@
-import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, readdir, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import { parse as parseYaml } from 'yaml';
 import { CleanStackError } from '../utils/errors.js';
-import { ensureWithinRoot, isMissingPath, resolveWithinRoot } from '../utils/path-safety.js';
+import { execCommand } from '../utils/command.js';
+import {
+  ensureWithinRoot,
+  isMissingPath,
+  isPathInside,
+  resolveWithinRoot,
+} from '../utils/path-safety.js';
 import type { Logger } from '../utils/logger.js';
+import { stripBom } from '../utils/text.js';
 import type { BackendProject, GeneratedProject } from './project.js';
-
-const execFileAsync = promisify(execFile);
 
 /** Marker file written into a generated client directory. */
 export const OPENAPI_CLIENT_MARKER = '.cleanstack-openapi.json';
@@ -478,9 +481,10 @@ export function parseOpenApiDocument(
   contents: string,
   source: string,
 ): Omit<OpenApiDocumentInfo, 'filePath'> {
+  const documentContents = stripBom(contents);
   let document: unknown;
   try {
-    document = parseYaml(contents);
+    document = parseYaml(documentContents);
   } catch (error) {
     throw new CleanStackError(`Could not parse the OpenAPI document "${source}".`, {
       suggestions: [
@@ -525,9 +529,9 @@ export function parseOpenApiDocument(
   const version = typeof info.version === 'string' ? info.version : '';
 
   return {
-    contents,
+    contents: documentContents,
     source,
-    hash: sha256(contents),
+    hash: sha256(documentContents),
     specVersion: document.openapi,
     title,
     version,
@@ -797,7 +801,7 @@ async function runGeneratorCli(options: GeneratorCliOptions): Promise<void> {
     : ['--yes', OPENAPI_GENERATOR_PACKAGE, ...options.args];
 
   try {
-    await execFileAsync(command, args, {
+    await execCommand(command, args, {
       cwd: options.workingDirectory,
       encoding: 'utf8',
       maxBuffer: 20 * 1024 * 1024,
@@ -846,7 +850,7 @@ async function resolveClientDirectory(
   output: string | undefined,
 ): Promise<{ absolute: string; relative: string }> {
   const requested = output ?? DEFAULT_OPENAPI_CLIENT_DIRECTORY;
-  if (path.isAbsolute(requested)) {
+  if (isAbsoluteOrDriveRelative(requested)) {
     throw new CleanStackError('The OpenAPI client output must be inside the Angular project.', {
       suggestions: ['Pass a relative path such as --output src/app/api/generated.'],
     });
@@ -878,7 +882,7 @@ async function resolveSpringDirectory(
   const packagePath = backend.packageName.split('.');
   const requested =
     output ?? path.posix.join('src', 'main', 'java', ...packagePath, 'api', 'generated');
-  if (path.isAbsolute(requested)) {
+  if (isAbsoluteOrDriveRelative(requested)) {
     throw new CleanStackError('The Spring API output must be inside the Spring Boot project.', {
       suggestions: ['Pass a relative path such as --backend-output src/main/java/com/acme/api.'],
     });
@@ -983,7 +987,7 @@ async function readManifest(manifestPath: string): Promise<OpenApiClientManifest
   }
 
   try {
-    const value = JSON.parse(contents) as unknown;
+    const value = JSON.parse(stripBom(contents)) as unknown;
     if (
       !isRecord(value) ||
       value.version !== 1 ||
@@ -1021,7 +1025,7 @@ async function safeTargetPath(rootDir: string, relativePath: string): Promise<st
 
 async function removeEmptyParents(rootDir: string, directory: string): Promise<void> {
   let current = directory;
-  while (current !== rootDir && current.startsWith(`${rootDir}${path.sep}`)) {
+  while (isPathInside(rootDir, current)) {
     try {
       await rmdir(current);
     } catch {
@@ -1059,9 +1063,19 @@ function isPlaceholder(relativePath: string): boolean {
 }
 
 function isSafeRelativePath(value: string): boolean {
-  if (value === '' || path.isAbsolute(value) || path.win32.isAbsolute(value)) return false;
+  if (value === '' || value.includes('\0') || isAbsoluteOrDriveRelative(value)) return false;
   const normalized = value.replace(/\\/g, '/');
   return !normalized.split('/').includes('..');
+}
+
+/** Rejects POSIX, Windows, UNC, and drive-relative paths on every platform. */
+function isAbsoluteOrDriveRelative(value: string): boolean {
+  return (
+    value.includes('\0') ||
+    path.isAbsolute(value) ||
+    path.win32.isAbsolute(value) ||
+    /^[A-Za-z]:/.test(value)
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
