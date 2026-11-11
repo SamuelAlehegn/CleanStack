@@ -363,7 +363,10 @@ decision table and error codes.
 The merge manager is pure: it receives existing and generated text and returns
 the merged text plus decisions/conflicts. `FileSystemService` separately handles
 dry-run behavior, overwrite protection, structured action logging, and optional
-backups.
+backups. Writes are atomic: content is staged in a temporary file beside the
+destination and installed with `rename` for overwrites or a hard link for
+create-only writes. A failed write therefore leaves the previous file intact,
+and a create-only write cannot clobber a file that appears concurrently.
 
 ## Path safety
 

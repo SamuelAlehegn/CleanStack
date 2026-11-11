@@ -1,5 +1,19 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, symlink, writeFile as writeNodeFile } from 'node:fs/promises';
+import {
+  access as nodeAccess,
+  chmod as nodeChmod,
+  cp as nodeCopy,
+  link as nodeLink,
+  mkdir,
+  mkdtemp,
+  readFile as nodeReadFile,
+  readdir,
+  realpath as nodeRealpath,
+  rename as nodeRename,
+  rm,
+  symlink,
+  writeFile as writeNodeFile,
+} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -9,6 +23,33 @@ import {
   InvalidOperationError,
 } from '../dist/utils/file-system.js';
 import { UnsafePathError } from '../dist/utils/path-safety.js';
+
+/** The Node adapter with individual operations replaceable for failure tests. */
+function nodeAdapter(overrides = {}) {
+  return {
+    access: (filePath) => nodeAccess(filePath),
+    chmod: (filePath, mode) => nodeChmod(filePath, mode),
+    copy: (source, destination, options) =>
+      nodeCopy(source, destination, {
+        recursive: true,
+        force: options.overwrite,
+        errorOnExist: !options.overwrite,
+      }),
+    link: (source, destination) => nodeLink(source, destination),
+    mkdir: (directoryPath) => mkdir(directoryPath, { recursive: true }),
+    readFile: (filePath) => nodeReadFile(filePath, 'utf8'),
+    readdir: (directoryPath) => readdir(directoryPath, { withFileTypes: true }),
+    realpath: (filePath) => nodeRealpath(filePath),
+    remove: (filePath, options) => rm(filePath, options),
+    rename: (source, destination) => nodeRename(source, destination),
+    writeFile: (filePath, contents, options) =>
+      writeNodeFile(filePath, contents, {
+        encoding: 'utf8',
+        flag: options.overwrite ? 'w' : 'wx',
+      }),
+    ...overrides,
+  };
+}
 
 async function createFixture() {
   const parent = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-filesystem-'));
@@ -74,6 +115,116 @@ test('backs up overwritten files without replacing previous backups', async () =
     assert.equal(await fs.readFile('notes.txt'), 'three');
     assert.equal(await fs.readFile('notes.txt.bak'), 'one');
     assert.equal(await fs.readFile('notes.txt.bak.1'), 'two');
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('writes atomically without leaving temporary files behind', async () => {
+  const fixture = await createFixture();
+  try {
+    const fs = fixture.service();
+    await fs.writeFile('notes.txt', 'first');
+    await fs.writeFile('notes.txt', 'second', { overwrite: true });
+
+    assert.equal(await fs.readFile('notes.txt'), 'second');
+    assert.deepEqual((await readdir(fixture.rootDir)).sort(), ['notes.txt']);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('preserves the previous file and cleans up when an atomic replace fails', async () => {
+  const fixture = await createFixture();
+  try {
+    const fs = fixture.service();
+    await fs.writeFile('notes.txt', 'first');
+    const failing = fixture.service({
+      adapter: nodeAdapter({
+        rename: async () => {
+          throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
+        },
+      }),
+    });
+
+    await assert.rejects(failing.writeFile('notes.txt', 'second', { overwrite: true }), {
+      message: 'disk full',
+    });
+    assert.equal(await fs.readFile('notes.txt'), 'first');
+    assert.deepEqual((await readdir(fixture.rootDir)).sort(), ['notes.txt']);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('create-only writes refuse a destination that appears after the pre-check', async () => {
+  const fixture = await createFixture();
+  try {
+    const fs = fixture.service();
+    await fs.writeFile('notes.txt', 'first');
+    const targetPath = path.join(fixture.rootDir, 'notes.txt');
+    const racing = fixture.service({
+      adapter: nodeAdapter({
+        access: async (filePath) => {
+          if (filePath === targetPath) {
+            throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+          }
+          await nodeAccess(filePath);
+        },
+      }),
+    });
+
+    await assert.rejects(racing.writeFile('notes.txt', 'second'), FileExistsError);
+    assert.equal(await fs.readFile('notes.txt'), 'first');
+    assert.deepEqual((await readdir(fixture.rootDir)).sort(), ['notes.txt']);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('falls back to rename when the filesystem cannot create hard links', async () => {
+  const fixture = await createFixture();
+  try {
+    const fs = fixture.service({
+      adapter: nodeAdapter({
+        link: async () => {
+          throw Object.assign(new Error('hard links unsupported'), { code: 'EPERM' });
+        },
+      }),
+    });
+
+    await fs.writeFile('notes.txt', 'first');
+    assert.equal(await fs.readFile('notes.txt'), 'first');
+    assert.deepEqual((await readdir(fixture.rootDir)).sort(), ['notes.txt']);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('rename fallback re-checks the destination before replacing it', async () => {
+  const fixture = await createFixture();
+  try {
+    const fs = fixture.service();
+    await fs.writeFile('notes.txt', 'first');
+    const targetPath = path.join(fixture.rootDir, 'notes.txt');
+    let targetChecks = 0;
+    const racing = fixture.service({
+      adapter: nodeAdapter({
+        access: async (filePath) => {
+          if (filePath === targetPath && targetChecks++ === 0) {
+            throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+          }
+          await nodeAccess(filePath);
+        },
+        link: async () => {
+          throw Object.assign(new Error('hard links unsupported'), { code: 'EPERM' });
+        },
+      }),
+    });
+
+    await assert.rejects(racing.writeFile('notes.txt', 'second'), FileExistsError);
+    assert.equal(await fs.readFile('notes.txt'), 'first');
+    assert.deepEqual((await readdir(fixture.rootDir)).sort(), ['notes.txt']);
   } finally {
     await fixture.cleanup();
   }

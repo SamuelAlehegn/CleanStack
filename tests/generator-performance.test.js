@@ -3,11 +3,13 @@ import {
   access as nodeAccess,
   chmod as nodeChmod,
   cp as nodeCopy,
+  link as nodeLink,
   mkdir as nodeMkdir,
   mkdtemp,
   readFile as nodeReadFile,
   readdir as nodeReaddir,
   realpath as nodeRealpath,
+  rename as nodeRename,
   rm as nodeRemove,
   writeFile as nodeWriteFile,
 } from 'node:fs/promises';
@@ -54,11 +56,13 @@ function createTrackingAdapter(delayMs) {
         force: options.overwrite,
         errorOnExist: !options.overwrite,
       }),
+    link: (source, destination) => nodeLink(source, destination),
     mkdir: (directoryPath) => nodeMkdir(directoryPath, { recursive: true }),
     readFile: (filePath) => nodeReadFile(filePath, 'utf8'),
     readdir: (directoryPath) => nodeReaddir(directoryPath, { withFileTypes: true }),
     realpath: (filePath) => nodeRealpath(filePath),
     remove: (filePath, options) => nodeRemove(filePath, options),
+    rename: (source, destination) => nodeRename(source, destination),
     async writeFile(filePath, contents, options) {
       state.active += 1;
       state.maxActive = Math.max(state.maxActive, state.active);

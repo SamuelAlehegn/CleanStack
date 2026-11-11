@@ -1,11 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import {
   access as nodeAccess,
   chmod as nodeChmod,
   cp as nodeCopy,
+  link as nodeLink,
   mkdir as nodeMkdir,
   readFile as nodeReadFile,
   readdir as nodeReaddir,
   realpath as nodeRealpath,
+  rename as nodeRename,
   rm as nodeRemove,
   writeFile as nodeWriteFile,
 } from 'node:fs/promises';
@@ -28,11 +31,13 @@ export interface FileSystemAdapter {
   access(filePath: string): Promise<void>;
   chmod(filePath: string, mode: number): Promise<void>;
   copy(sourcePath: string, destinationPath: string, options: { overwrite: boolean }): Promise<void>;
+  link(sourcePath: string, destinationPath: string): Promise<void>;
   mkdir(directoryPath: string): Promise<void>;
   readFile(filePath: string): Promise<string>;
   readdir(directoryPath: string): Promise<FileSystemEntry[]>;
   realpath(filePath: string): Promise<string>;
   remove(filePath: string, options: { recursive: boolean; force: boolean }): Promise<void>;
+  rename(sourcePath: string, destinationPath: string): Promise<void>;
   writeFile(filePath: string, contents: string, options: { overwrite: boolean }): Promise<void>;
 }
 
@@ -124,6 +129,9 @@ const nodeFileSystemAdapter: FileSystemAdapter = {
       errorOnExist: !options.overwrite,
     });
   },
+  async link(sourcePath, destinationPath) {
+    await nodeLink(sourcePath, destinationPath);
+  },
   async mkdir(directoryPath) {
     await nodeMkdir(directoryPath, { recursive: true });
   },
@@ -139,6 +147,9 @@ const nodeFileSystemAdapter: FileSystemAdapter = {
   async remove(filePath, options) {
     await nodeRemove(filePath, options);
   },
+  async rename(sourcePath, destinationPath) {
+    await nodeRename(sourcePath, destinationPath);
+  },
   async writeFile(filePath, contents, options) {
     await nodeWriteFile(filePath, contents, {
       encoding: 'utf8',
@@ -146,6 +157,30 @@ const nodeFileSystemAdapter: FileSystemAdapter = {
     });
   },
 };
+
+function hasErrorCode(error: unknown, ...codes: string[]): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    codes.includes(error.code)
+  );
+}
+
+/** Hard links are unavailable on some filesystems and on restricted shares. */
+function isHardLinkUnsupported(error: unknown): boolean {
+  return hasErrorCode(
+    error,
+    'EPERM',
+    'EACCES',
+    'ENOSYS',
+    'EXDEV',
+    'EMLINK',
+    'ENOTSUP',
+    'EOPNOTSUPP',
+  );
+}
 
 const consoleLogger: FileSystemLogger = {
   log(action) {
@@ -200,10 +235,65 @@ export class FileSystemService {
         const fileExists = await this.pathExists(target);
         if (fileExists && !overwrite) throw new FileExistsError(filePath);
         if (fileExists && backup) await this.createBackup(target, filePath);
-        await this.adapter.writeFile(target, contents, { overwrite });
+        await this.writeFileAtomically(target, filePath, contents, overwrite);
       },
       true,
     );
+  }
+
+  /**
+   * Writes a temporary file in the destination directory, then installs it with
+   * rename (overwrite) or a hard link (create-only). Readers therefore see
+   * either the previous contents or the complete new contents, never a
+   * partially written file, and create-only writes cannot clobber a file that
+   * appears between the existence check and the write.
+   */
+  private async writeFileAtomically(
+    target: string,
+    relativePath: string,
+    contents: string,
+    overwrite: boolean,
+  ): Promise<void> {
+    const temporaryPath = path.join(
+      path.dirname(target),
+      `.${path.basename(target)}.${randomUUID()}.tmp`,
+    );
+
+    try {
+      await this.adapter.writeFile(temporaryPath, contents, { overwrite: false });
+
+      if (overwrite) {
+        await this.adapter.rename(temporaryPath, target);
+        return;
+      }
+
+      try {
+        await this.adapter.link(temporaryPath, target);
+      } catch (error) {
+        if (hasErrorCode(error, 'EEXIST')) throw new FileExistsError(relativePath);
+        if (!isHardLinkUnsupported(error)) throw error;
+
+        // Some filesystems (for example FAT and some network shares) cannot
+        // create hard links. Rename can replace the destination, so re-check it
+        // before falling back to keep create-only semantics.
+        if (await this.pathExists(target)) throw new FileExistsError(relativePath);
+        await this.adapter.rename(temporaryPath, target);
+        return;
+      }
+
+      await this.removeTemporaryFile(temporaryPath);
+    } catch (error) {
+      await this.removeTemporaryFile(temporaryPath);
+      throw error;
+    }
+  }
+
+  private async removeTemporaryFile(temporaryPath: string): Promise<void> {
+    try {
+      await this.adapter.remove(temporaryPath, { recursive: false, force: true });
+    } catch {
+      // Cleanup is best-effort; report the original failure instead.
+    }
   }
 
   async chmod(filePath: string, mode: number): Promise<void> {
