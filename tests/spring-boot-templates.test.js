@@ -290,6 +290,51 @@ test('renders entity artifacts and a Flyway migration for configured entities', 
   );
 });
 
+test('keeps server-generated fields out of requests and initializes them', async () => {
+  const product = {
+    name: 'Product',
+    relations: [],
+    fields: [
+      { name: 'name', type: 'String', required: true, validations: [] },
+      { name: 'active', type: 'boolean', required: true, default: true, validations: [] },
+      { name: 'createdAt', type: 'Instant', required: true, generated: true, validations: [] },
+      { name: 'updatedAt', type: 'Instant', generated: true, validations: [] },
+    ],
+  };
+  const files = await renderProject({ entities: [product] });
+
+  const request = files.get('src/main/java/com/acme/shop/web/dto/ProductRequest.java');
+  assert.doesNotMatch(request, /createdAt|updatedAt/);
+  assert.doesNotMatch(request, /import jakarta\.validation\.constraints\.\*/);
+  assert.match(request, /import jakarta\.validation\.constraints\.NotNull;/);
+  assert.match(request, /@NotNull String name/);
+  assert.match(request, /boolean active/);
+  assert.doesNotMatch(request, /@NotNull boolean active/);
+
+  const entity = files.get('src/main/java/com/acme/shop/domain/Product.java');
+  assert.match(entity, /public boolean isActive\(\)/);
+  assert.doesNotMatch(entity, /public boolean getActive\(\)/);
+  assert.match(entity, /public void setName\(String name\)/);
+  assert.match(entity, /@Column\(name = "created_at", nullable = false, updatable = false\)/);
+  assert.match(entity, /@PrePersist/);
+  assert.match(entity, /this\.createdAt = Instant\.now\(\);/);
+  assert.match(entity, /@PreUpdate/);
+  assert.match(entity, /this\.updatedAt = Instant\.now\(\);/);
+
+  const mapper = files.get('src/main/java/com/acme/shop/web/mapper/ProductMapper.java');
+  assert.match(mapper, /request\.name\(\)/);
+  assert.doesNotMatch(mapper, /request\.createdAt\(\)|request\.updatedAt\(\)/);
+  assert.match(mapper, /entity\.isActive\(\)/);
+  assert.doesNotMatch(mapper, /entity\.getActive\(\)/);
+  assert.match(mapper, /public void copyToEntity\(ProductRequest request, Product entity\)/);
+  assert.match(mapper, /entity\.setName\(request\.name\(\)\)/);
+
+  const controller = files.get('src/main/java/com/acme/shop/controller/ProductController.java');
+  assert.match(controller, /var entity = service\.get\(id\);/);
+  assert.match(controller, /mapper\.copyToEntity\(request, entity\);/);
+  assert.match(controller, /service\.update\(id, entity\)/);
+});
+
 test('renders Liquibase changelogs and dependencies when selected', async () => {
   const product = {
     name: 'Product',

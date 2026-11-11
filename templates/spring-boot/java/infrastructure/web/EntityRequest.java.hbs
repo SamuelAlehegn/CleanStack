@@ -1,18 +1,14 @@
 package {{project.packageName}}.web.dto;
 
-import jakarta.validation.constraints.*;
 {{#each entity.requestImports}}import {{this}};
 {{/each}}
 
 /** Validated HTTP input for creating or replacing a {{entity.className}}. */
 public record {{entity.className}}Request(
-{{#each entity.fields}}
-        {{#each validationAnnotations}}{{this}} {{/each}}{{javaType}} {{name}}{{#if @last}}{{#if ../entity.owningRelations}},{{/if}}{{else}},{{/if}}
-{{/each}}
-{{#each entity.owningRelations}}
-        {{#if collection}}List<UUID> {{idField}}{{else}}{{#if required}}@NotNull {{/if}}UUID {{idField}}{{/if}}{{#unless @last}},{{/unless}}
+{{#each entity.requestParameters}}
+        {{declaration}}{{#unless @last}},{{/unless}}
 {{/each}}
 ) {
-    // <cleanstack:protected id="request-{{entity.variableName}}">
-    // </cleanstack:protected>
+    // <cleanstack:user-code id="request-{{entity.variableName}}">
+    // </cleanstack:user-code>
 }

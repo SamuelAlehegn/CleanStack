@@ -11,6 +11,6 @@ public record {{entity.className}}Response(
         List<String> {{labelField}}{{else}},
         UUID {{idField}},
         String {{labelField}}{{/if}}{{/each}}) {
-    // <cleanstack:protected id="response-{{entity.variableName}}">
-    // </cleanstack:protected>
+    // <cleanstack:user-code id="response-{{entity.variableName}}">
+    // </cleanstack:user-code>
 }
