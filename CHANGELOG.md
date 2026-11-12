@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1
+
+### Patch Changes
+
+- c006551: Update the installation instructions in the README and user guide to use the
+  published npm package: `npm install -g cleanstack-generator`, or
+  `npx cleanstack-generator` for a one-off run. The previous clone-and-link
+  instructions were stale after the first public release.
+
 ## [0.1.0] - 2026-11-12
 
 First public release.
