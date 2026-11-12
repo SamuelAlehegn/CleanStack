@@ -39,30 +39,23 @@ details.
 | Node.js (Angular)   | 22.22.3+, 24.15.0+, or 26.0.0+ for the generated Angular application    |
 | Java (OpenAPI)      | 11 or later when running openapi-generator                              |
 
-### Install from the repository
-
-The CLI is currently used from a checkout:
+### Install from npm
 
 ```sh
-git clone https://github.com/SamuelAlehegn/CleanStack.git
-cd CleanStack
-npm install
-npm run build
-npm link
-
+npm install -g cleanstack-generator
 cleanstack --version
 ```
 
-`npm link` makes `cleanstack` available on your `PATH`. If you do not want a
-global link, run the built entry point directly:
+To try the generator without a global install:
 
 ```sh
-node /absolute/path/to/CleanStack/dist/cli/index.js --version
+npx cleanstack-generator --version
 ```
 
-The root package is the generator, not a generated application. Use the built
-CLI (`node dist/cli/index.js`) or `cleanstack` after linking. Building is
-required after source changes because the `bin` entry points at `dist/`.
+The published package includes the built CLI, templates, and Studio assets, so
+no build step is required. The root package is the generator, not a generated
+application. Building from source is only necessary when developing CleanStack
+itself; see [Contributing](CONTRIBUTING.md).
 
 ### Check the installation
 
@@ -1016,7 +1009,7 @@ not block generation but may prevent a generated project from building.
 
 | Symptom                                         | Cause and fix                                                                                                                                                          |
 | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cleanstack: command not found`                 | Run `npm run build && npm link`, or invoke `node dist/cli/index.js`.                                                                                                   |
+| `cleanstack: command not found`                 | Install with `npm install -g cleanstack-generator`, or run `npx cleanstack-generator`.                                                                                 |
 | Generated app fails on `npm install`            | Use a Node version allowed by the generated `package.json` (`^22.22.3`, `^24.15.0`, or `^26.0.0`).                                                                     |
 | `No generated CleanStack project was found`     | Run the command inside a project created by `cleanstack new`, or in a directory containing exactly one such project.                                                   |
 | `contains multiple generated projects`          | Change into the specific project directory; CleanStack will not guess.                                                                                                 |

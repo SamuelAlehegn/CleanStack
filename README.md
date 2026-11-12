@@ -46,16 +46,22 @@ suggested fixes for anything missing.
 
 ## Quick start
 
-CleanStack is currently installed from a checkout. The CLI is not required to
-be published to npm for local use.
+Install the generator from npm:
 
 ```sh
-git clone https://github.com/SamuelAlehegn/CleanStack.git
-cd CleanStack
-npm install
-npm run build
-npm link
+npm install -g cleanstack-generator
+cleanstack --version
+```
 
+Or run it without a global install:
+
+```sh
+npx cleanstack-generator --version
+```
+
+Create a project:
+
+```sh
 cleanstack new demo --db h2 --auth none --no-entities --yes
 cd demo
 ```
@@ -94,11 +100,8 @@ database or identity provider. The defaults are PostgreSQL, JWT, Maven, and an
 Angular frontend; run `cleanstack new demo` without `--yes` for an interactive
 wizard, or pass flags explicitly.
 
-If you prefer not to install a global link, run the built CLI directly:
-
-```sh
-node /path/to/CleanStack/dist/cli/index.js new demo --db h2 --auth none --no-entities --yes
-```
+If you prefer not to install globally, run the same commands through npx, for
+example `npx cleanstack-generator new demo --db h2 --auth none --no-entities --yes`.
 
 ## What you get
 
