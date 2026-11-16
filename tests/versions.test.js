@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   ANGULAR_VERSIONS,
   COMPATIBILITY_MATRIX,
+  DEFAULT_VERSION_CONFIG,
   JAVA_VERSIONS,
   SPRING_BOOT_LINES,
   assertSupportedVersions,
@@ -13,6 +14,12 @@ import {
   versionVariants,
 } from '../dist/core/versions.js';
 import { CleanStackError } from '../dist/utils/errors.js';
+
+test('exposes the shipped VersionConfig default', () => {
+  assert.deepEqual(DEFAULT_VERSION_CONFIG, { java: 21, springBoot: '4.1', angular: 22 });
+  assert.deepEqual(resolveVersions(), DEFAULT_VERSION_CONFIG);
+  assert.deepEqual(COMPATIBILITY_MATRIX.defaults, DEFAULT_VERSION_CONFIG);
+});
 
 test('resolves the shipped baseline when nothing is requested', () => {
   assert.deepEqual(resolveVersions(), { java: 21, springBoot: '4.1', angular: 22 });
