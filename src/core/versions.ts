@@ -25,12 +25,28 @@ export interface RequestedVersions {
   angular?: Requested<AngularVersion>;
 }
 
-/** Version values every downstream consumer sees. Always concrete. */
-export interface ResolvedVersions {
+/**
+ * A complete, validated version selection. Every value is concrete, so
+ * generation code can persist and use it without resolving keywords again.
+ */
+export interface VersionConfig {
   java: JavaVersion;
   springBoot: SpringBootLine;
   angular: AngularVersion;
 }
+
+/** Alias kept for callers that describe the value as "resolved" versions. */
+export type ResolvedVersions = VersionConfig;
+
+/**
+ * Baseline toolchain used when no versions are supplied. Keeping it here
+ * means the matrix, CLI defaults, and configuration schemas share one value.
+ */
+export const DEFAULT_VERSION_CONFIG: VersionConfig = {
+  java: 21,
+  springBoot: '4.1',
+  angular: 22,
+};
 
 export type SupportLevel = 'default' | 'supported' | 'legacy';
 
@@ -55,8 +71,8 @@ export interface CompatibilityMatrix {
   schemaVersion: 1;
   /** Date the upstream support windows were last verified. */
   verifiedOn: string;
-  defaults: ResolvedVersions;
-  keywords: Record<VersionKeyword, ResolvedVersions>;
+  defaults: VersionConfig;
+  keywords: Record<VersionKeyword, VersionConfig>;
   springBoot: readonly SpringBootRelease[];
   angular: readonly AngularRelease[];
 }
@@ -68,7 +84,7 @@ export interface CompatibilityMatrix {
 export const COMPATIBILITY_MATRIX: CompatibilityMatrix = {
   schemaVersion: 1,
   verifiedOn: '2026-11-16',
-  defaults: { java: 21, springBoot: '4.1', angular: 22 },
+  defaults: DEFAULT_VERSION_CONFIG,
   keywords: {
     // Newest supported entry in each dimension.
     latest: { java: 25, springBoot: '4.1', angular: 22 },
@@ -156,8 +172,8 @@ export function getAngularRelease(major: AngularVersion): AngularRelease {
  * returned object never contains a keyword, so downstream code cannot
  * accidentally persist `"latest"` into project metadata.
  */
-export function resolveVersions(requested: RequestedVersions = {}): ResolvedVersions {
-  const versions: ResolvedVersions = {
+export function resolveVersions(requested: RequestedVersions = {}): VersionConfig {
+  const versions: VersionConfig = {
     java: resolveRequestedVersion(
       'Java',
       requested.java,
@@ -218,7 +234,7 @@ function resolveRequestedVersion<T extends string | number>(
  * Validates a resolved toolchain without throwing. Use this for interactive
  * feedback; use {@link assertSupportedVersions} at command boundaries.
  */
-export function validateVersions(versions: ResolvedVersions): VersionValidationResult {
+export function validateVersions(versions: VersionConfig): VersionValidationResult {
   const errors: VersionValidationIssue[] = [];
 
   if (!JAVA_VERSIONS.includes(versions.java)) {
@@ -266,7 +282,7 @@ export function validateVersions(versions: ResolvedVersions): VersionValidationR
 }
 
 /** Throws a {@link CleanStackError} with suggestions when the toolchain is invalid. */
-export function assertSupportedVersions(versions: ResolvedVersions): void {
+export function assertSupportedVersions(versions: VersionConfig): void {
   const result = validateVersions(versions);
   if (result.valid) return;
 
@@ -280,7 +296,7 @@ export function assertSupportedVersions(versions: ResolvedVersions): void {
   throw new CleanStackError(message, { suggestions });
 }
 
-export function formatVersions(versions: ResolvedVersions): string {
+export function formatVersions(versions: VersionConfig): string {
   return `Java ${versions.java} + Spring Boot ${versions.springBoot} + Angular ${versions.angular}`;
 }
 
@@ -288,7 +304,7 @@ export function formatVersions(versions: ResolvedVersions): string {
  * Ordered overlay tags for the template engine. Runtime lines come before
  * language lines so a Spring Boot-specific file wins over a Java-specific one.
  */
-export function versionVariants(versions: ResolvedVersions, pack: TemplatePack): string[] {
+export function versionVariants(versions: VersionConfig, pack: TemplatePack): string[] {
   if (pack === 'spring-boot') {
     return [`spring-boot-${versions.springBoot}`, `java-${versions.java}`];
   }
@@ -298,7 +314,7 @@ export function versionVariants(versions: ResolvedVersions, pack: TemplatePack):
   return [];
 }
 
-export function buildToolchainContext(versions: ResolvedVersions): ToolchainContext {
+export function buildToolchainContext(versions: VersionConfig): ToolchainContext {
   const springBoot = getSpringBootRelease(versions.springBoot);
   const angular = getAngularRelease(versions.angular);
   return {
