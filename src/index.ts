@@ -12,6 +12,7 @@ export * from './core/project.js';
 export * from './core/protected-region-manager.js';
 export * from './core/protected-regions.js';
 export * from './core/sql-types.js';
+export * from './core/versions.js';
 export * from './templates/manifest.js';
 export * from './templates/template-engine.js';
 export * from './utils/file-system.js';
