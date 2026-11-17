@@ -26,6 +26,7 @@ import {
 import { withSqlMetadata } from '../core/sql-types.js';
 import { resolveProjectConfig } from '../core/project-metadata.js';
 import { locateGeneratedProject, type GeneratedProject } from '../core/project.js';
+import { buildToolchainContext } from '../core/versions.js';
 import { planManifest, templateAliases } from '../templates/manifest.js';
 import { TemplateEngine } from '../templates/template-engine.js';
 import { FileSystemService } from '../utils/file-system.js';
@@ -892,6 +893,7 @@ async function renderEntityPreview(
     name: path.basename(project.rootDir),
     packageName: project.backend?.packageName ?? config.packageName,
     entities: [],
+    versions: config.versions,
     options: {
       ...config.options,
       backend: project.backend !== undefined,
@@ -930,6 +932,8 @@ async function renderEntityPreview(
   const context = {
     project: { ...projectConfig, entities: [entityContext] },
     ...projectConfig,
+    versions: projectConfig.versions,
+    toolchain: buildToolchainContext(projectConfig.versions),
     entities: [entityContext],
     entity: entityContext,
     ...templateAliases(projectConfig),
