@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.2</version>
+        <version>{{toolchain.springBoot.version}}</version>
         <relativePath/>
     </parent>
 
@@ -18,14 +18,14 @@
     <description>{{pascalCase project.name}} service generated with CleanStack.</description>
 
     <properties>
-        <java.version>21</java.version>
-        <springdoc.version>3.2.0</springdoc.version>
+        <java.version>{{toolchain.java.version}}</java.version>
+        <springdoc.version>{{#if (eq toolchain.springBoot.line "3.5")}}2.8.13{{else}}3.2.0{{/if}}</springdoc.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
+            <artifactId>{{#if (eq toolchain.springBoot.line "3.5")}}spring-boot-starter-web{{else}}spring-boot-starter-webmvc{{/if}}</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -50,10 +50,17 @@
             <artifactId>liquibase-core</artifactId>
         </dependency>
 {{else}}
+{{#if (eq toolchain.springBoot.line "3.5")}}
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+{{else}}
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
+{{/if}}
 {{/if}}
 {{#if (or (eq project.options.auth "jwt") (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
         <dependency>
@@ -101,11 +108,13 @@
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
+{{#unless (eq toolchain.springBoot.line "3.5")}}
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-h2console</artifactId>
             <scope>runtime</scope>
         </dependency>
+{{/unless}}
 {{/if}}
         <dependency>
             <groupId>org.springframework.boot</groupId>

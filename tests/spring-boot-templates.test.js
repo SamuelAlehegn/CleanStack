@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { buildEntityModels } from '../dist/core/entity-model.js';
 import { withSqlMetadata } from '../dist/core/sql-types.js';
+import { buildToolchainContext, resolveVersions } from '../dist/core/versions.js';
 import { TemplateEngine } from '../dist/templates/template-engine.js';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -13,6 +14,7 @@ const manifest = JSON.parse(await readFile(path.join(templateRoot, 'manifest.jso
 
 function createContext(options, configuredEntities = []) {
   const database = options.database ?? 'postgresql';
+  const versions = resolveVersions(options.versions);
   const entities = buildEntityModels(configuredEntities).map((entity, index) => ({
     ...withSqlMetadata(entity, database),
     migrationVersion: index + 2,
@@ -22,6 +24,7 @@ function createContext(options, configuredEntities = []) {
       name: 'demo-shop',
       packageName: 'com.acme.shop',
       entities,
+      versions,
       options: {
         backend: true,
         frontend: false,
@@ -36,6 +39,8 @@ function createContext(options, configuredEntities = []) {
         ...options,
       },
     },
+    versions,
+    toolchain: buildToolchainContext(versions),
     entities,
   };
 }

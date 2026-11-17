@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -9,6 +9,8 @@ import {
   parseDoctorArguments,
   runDoctorCommand,
 } from '../dist/cli/doctor.js';
+import { DEFAULT_VERSION_CONFIG, buildToolchainContext } from '../dist/core/versions.js';
+import { TemplateEngine } from '../dist/templates/template-engine.js';
 
 function recordingLogger() {
   const messages = [];
@@ -213,10 +215,19 @@ test('detects old Node.js and Java versions with upgrade suggestions', async () 
 });
 
 test('keeps the doctor Node.js range in sync with the Angular template', async () => {
-  const template = await readFile(path.resolve('templates/angular/root/package.json.hbs'), 'utf8');
-  const engines = /"node":\s*"([^"]+)"/.exec(template);
-  assert.ok(engines, 'expected an engines.node range in the Angular template');
-  assert.equal(engines[1], GENERATED_ANGULAR_NODE_RANGE);
+  const templateRoot = path.resolve('templates/angular');
+  const engine = new TemplateEngine({
+    projectRoot: path.resolve('tests/.render'),
+    userTemplatesDir: path.resolve('tests/.render/user'),
+    builtInTemplatesDir: templateRoot,
+  });
+  const rendered = await engine.render('root/package.json.hbs', {
+    project: { name: 'demo-shop', options: { auth: 'none' } },
+    versions: DEFAULT_VERSION_CONFIG,
+    toolchain: buildToolchainContext(DEFAULT_VERSION_CONFIG),
+  });
+  const packageJson = JSON.parse(rendered);
+  assert.equal(packageJson.engines.node, GENERATED_ANGULAR_NODE_RANGE);
 });
 
 test('warns when Node.js does not satisfy the generated Angular engine range', async () => {
@@ -244,6 +255,49 @@ test('warns when Node.js does not satisfy the generated Angular engine range', a
       const node = check(await collect(nodeVersion), 'Node.js');
       assert.equal(node.status, 'ok', `${nodeVersion} should satisfy the range`);
     }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('checks Node.js against the Angular version stored in project metadata', async () => {
+  const root = await createWorkspace();
+  try {
+    await createFrontend(root);
+    const metadataPath = path.join(root, '.cleanstack', 'project.json');
+    await mkdir(path.dirname(metadataPath), { recursive: true });
+    const writeVersions = (angular) =>
+      writeFile(
+        metadataPath,
+        JSON.stringify({
+          version: 1,
+          config: {
+            name: 'demo',
+            packageName: 'com.example',
+            entities: [],
+            versions: { java: 21, springBoot: '4.1', angular },
+            options: {},
+          },
+        }),
+      );
+    const collect = () =>
+      collectDoctorReport({
+        cwd: root,
+        env: {},
+        nodeVersion: '22.13.0',
+        commandRunner: runnerFrom(healthyOutputs),
+        templateRoot: path.resolve('templates'),
+        freeDiskBytes: 10 * 1024 ** 3,
+      });
+
+    // Angular 20 accepts Node 22.13; the default Angular 22 range does not.
+    await writeVersions(20);
+    assert.equal(check(await collect(), 'Node.js').status, 'ok');
+
+    await writeVersions(22);
+    const angular22 = check(await collect(), 'Node.js');
+    assert.equal(angular22.status, 'warn');
+    assert.ok(angular22.suggestions.some((suggestion) => /\^22\.22\.3/.test(suggestion)));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

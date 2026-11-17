@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "^22.22.3 || ^24.15.0 || ^26.0.0"
+    "node": "{{toolchain.angular.node}}"
   },
   "scripts": {
     "start": "ng serve",
@@ -12,12 +12,12 @@
     "build:development": "ng build --configuration development"
   },
   "dependencies": {
-    "@angular/common": "^22.2.0",
-    "@angular/compiler": "^22.2.0",
-    "@angular/core": "^22.2.0",
-    "@angular/forms": "^22.2.0",
-    "@angular/platform-browser": "^22.2.0",
-    "@angular/router": "^22.2.0",
+    "@angular/common": "{{toolchain.angular.version}}",
+    "@angular/compiler": "{{toolchain.angular.version}}",
+    "@angular/core": "{{toolchain.angular.version}}",
+    "@angular/forms": "{{toolchain.angular.version}}",
+    "@angular/platform-browser": "{{toolchain.angular.version}}",
+    "@angular/router": "{{toolchain.angular.version}}",
 {{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
     "angular-auth-oidc-client": "^22.0.2",
 {{/if}}
@@ -25,11 +25,11 @@
     "tslib": "^2.8.1"
   },
   "devDependencies": {
-    "@angular/build": "^22.2.0",
-    "@angular/cli": "^22.2.0",
-    "@angular/compiler-cli": "^22.2.0",
+    "@angular/build": "{{toolchain.angular.version}}",
+    "@angular/cli": "{{toolchain.angular.version}}",
+    "@angular/compiler-cli": "{{toolchain.angular.version}}",
     "@openapitools/openapi-generator-cli": "^2.42.0",
     "@types/jasmine": "^5.1.0",
-    "typescript": "~6.0.0"
+    "typescript": "{{#if (eq versions.angular 20)}}~5.8.0{{else}}{{#if (eq versions.angular 21)}}~5.9.0{{else}}~6.0.0{{/if}}{{/if}}"
   }
 }

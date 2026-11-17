@@ -4,8 +4,8 @@ A Spring Boot service generated with CleanStack. The code uses a simple package 
 
 ## Stack
 
-- Java 21
-- Spring Boot 4.1
+- Java {{toolchain.java.version}}
+- Spring Boot {{toolchain.springBoot.line}} ({{toolchain.springBoot.version}})
 - Spring Web MVC, Spring Data JPA, and {{#if (eq project.options.migrationTool "liquibase")}}Liquibase{{else}}Flyway{{/if}}
 - {{#if (eq project.options.database "postgresql")}}PostgreSQL{{/if}}{{#if (eq project.options.database "mysql")}}MySQL{{/if}}{{#if (eq project.options.database "h2")}}H2 (in-memory, for local development){{/if}}
 - {{#if (eq project.options.auth "jwt")}}JWT bearer-token authentication{{/if}}{{#if (eq project.options.auth "session")}}Session-based authentication with username and password login{{/if}}{{#if (eq project.options.auth "oidc")}}OIDC bearer-token authentication{{/if}}{{#if (eq project.options.auth "keycloak")}}Keycloak OIDC bearer-token authentication{{/if}}{{#if (eq project.options.auth "auth0")}}Auth0 OIDC bearer-token authentication{{/if}}{{#if (eq project.options.auth "none")}}No authentication{{/if}}
@@ -13,13 +13,13 @@ A Spring Boot service generated with CleanStack. The code uses a simple package 
 
 ## Requirements
 
-- JDK 21 or later
+- JDK {{toolchain.java.version}} or later
 {{#if (eq project.options.buildTool "maven")}}- Maven 3.9 or later{{else}}- Gradle 8.14 or later{{/if}}
 
 ## Run locally
 
 ```bash
-{{#if (eq project.options.buildTool "maven")}}mvn org.springframework.boot:spring-boot-maven-plugin:4.1.2:run -Dspring-boot.run.profiles=dev{{else}}gradle bootRun "--args=--spring.profiles.active=dev"{{/if}}
+{{#if (eq project.options.buildTool "maven")}}mvn org.springframework.boot:spring-boot-maven-plugin:{{toolchain.springBoot.version}}:run -Dspring-boot.run.profiles=dev{{else}}gradle bootRun "--args=--spring.profiles.active=dev"{{/if}}
 ```
 
 The application starts on `http://localhost:8080`.

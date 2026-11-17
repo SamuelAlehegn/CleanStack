@@ -99,6 +99,106 @@ test('--migrations liquibase and --seed generate changelogs with seed data', asy
   }
 });
 
+test('toolchain flags flow into build files, metadata, and the pre-generation summary', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-new-versions-'));
+  const messages = [];
+  const recordingLogger = {
+    debug() {},
+    info(message) {
+      messages.push(message);
+    },
+    success() {},
+    warn() {},
+  };
+  try {
+    await runNewCommand(
+      ['demo', '--yes', '--no-entities', '--java', '17', '--spring-boot', '3.5', '--angular', '20'],
+      { cwd, logger: recordingLogger },
+    );
+
+    const pom = await readFile(path.join(cwd, 'demo', 'demo-backend', 'pom.xml'), 'utf8');
+    assert.match(pom, /<version>3\.5\.6<\/version>/);
+    assert.match(pom, /<java\.version>17<\/java\.version>/);
+    assert.match(pom, /<artifactId>spring-boot-starter-web<\/artifactId>/);
+    assert.doesNotMatch(pom, /spring-boot-starter-webmvc/);
+    assert.match(pom, /<artifactId>flyway-core<\/artifactId>/);
+    assert.match(pom, /<springdoc\.version>2\.8\.13<\/springdoc\.version>/);
+
+    const packageJson = JSON.parse(
+      await readFile(path.join(cwd, 'demo', 'demo-ui', 'package.json'), 'utf8'),
+    );
+    assert.equal(packageJson.dependencies['@angular/core'], '^20.3.0');
+    assert.equal(packageJson.engines.node, '^20.19.0 || ^22.12.0 || >=24.0.0');
+    assert.equal(packageJson.devDependencies.typescript, '~5.8.0');
+
+    const metadata = JSON.parse(
+      await readFile(path.join(cwd, 'demo', '.cleanstack', 'project.json'), 'utf8'),
+    );
+    assert.deepEqual(metadata.config.versions, { java: 17, springBoot: '3.5', angular: 20 });
+
+    assert.ok(messages.includes('Toolchain'));
+    assert.ok(messages.some((message) => /Java\s+17/.test(message)));
+    assert.ok(messages.some((message) => /Spring Boot\s+3\.5\.6/.test(message)));
+    assert.ok(messages.some((message) => /Angular\s+20/.test(message)));
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('config versions drive generation and invalid combinations fail before writing', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-new-version-config-'));
+  const configPath = path.join(cwd, 'cleanstack.config.json');
+  const baseConfig = {
+    name: 'configured-name',
+    packageName: 'com.example',
+    options: {
+      backend: true,
+      frontend: true,
+      database: 'h2',
+      auth: 'none',
+      buildTool: 'maven',
+      docker: false,
+      dryRun: false,
+      outputDir: '.',
+    },
+  };
+  try {
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        ...baseConfig,
+        versions: { java: 'lts', springBoot: 'lts', angular: 21 },
+      }),
+    );
+    await runNewCommand(['demo', '--yes', '--no-entities'], { cwd, logger });
+
+    const pom = await readFile(path.join(cwd, 'demo', 'demo-backend', 'pom.xml'), 'utf8');
+    assert.match(pom, /<version>4\.0\.6<\/version>/);
+    assert.match(pom, /<java\.version>21<\/java\.version>/);
+    const packageJson = JSON.parse(
+      await readFile(path.join(cwd, 'demo', 'demo-ui', 'package.json'), 'utf8'),
+    );
+    assert.equal(packageJson.dependencies['@angular/core'], '^21.2.0');
+    assert.equal(packageJson.devDependencies.typescript, '~5.9.0');
+    const metadata = JSON.parse(
+      await readFile(path.join(cwd, 'demo', '.cleanstack', 'project.json'), 'utf8'),
+    );
+    assert.deepEqual(metadata.config.versions, { java: 21, springBoot: '4.0', angular: 21 });
+
+    await writeFile(
+      configPath,
+      JSON.stringify({ ...baseConfig, versions: { java: 17, springBoot: '4.1' } }),
+    );
+    await assert.rejects(
+      runNewCommand(['ghost', '--yes', '--no-entities'], { cwd, logger }),
+      /Spring Boot 4\.1 does not support Java 17/,
+    );
+    await assert.rejects(readFile(path.join(cwd, 'ghost')), { code: 'ENOENT' });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test('--no-entities skips configured entities', async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-new-no-entities-'));
   try {

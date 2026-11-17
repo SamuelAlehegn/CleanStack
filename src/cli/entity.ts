@@ -15,6 +15,7 @@ import {
 } from '../core/frontend-updates.js';
 import { resolveProjectConfig, updateProjectMetadataEntity } from '../core/project-metadata.js';
 import { locateGeneratedProject, type GeneratedProject } from '../core/project.js';
+import { buildToolchainContext } from '../core/versions.js';
 import {
   findCreateMigration,
   findPreviousEntityModel,
@@ -155,10 +156,12 @@ export async function generateEntityInProject(
     options.previousEntity ?? findPreviousEntityModel(metadataConfig.entities, entity);
 
   const projectName = path.basename(project.rootDir);
+  const versions = metadataConfig.versions;
   const projectConfig: ProjectConfig = {
     name: projectName,
     packageName: packageName ?? metadataConfig.packageName ?? 'com.example',
     entities: [],
+    versions,
     options: {
       ...metadataConfig.options,
       backend: generateBackend,
@@ -192,6 +195,8 @@ export async function generateEntityInProject(
   const context = {
     project: { ...projectConfig, entities: [entityContext] },
     ...projectConfig,
+    versions,
+    toolchain: buildToolchainContext(versions),
     entities: [entityContext],
     ...templateAliases(projectConfig),
   } as unknown as Record<string, unknown>;
