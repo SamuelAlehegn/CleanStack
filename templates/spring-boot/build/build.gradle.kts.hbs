@@ -1,6 +1,6 @@
 plugins {
     java
-    id("org.springframework.boot") version "4.1.2"
+    id("org.springframework.boot") version "{{toolchain.springBoot.version}}"
 }
 
 group = "{{project.packageName}}"
@@ -8,7 +8,7 @@ version = "0.0.1-SNAPSHOT"
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of({{toolchain.java.version}})
     }
 }
 
@@ -17,18 +17,22 @@ repositories {
 }
 
 dependencies {
-    implementation(platform("org.springframework.boot:spring-boot-dependencies:4.1.2"))
+    implementation(platform("org.springframework.boot:spring-boot-dependencies:{{toolchain.springBoot.version}}"))
 
-    implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    implementation("org.springframework.boot:spring-boot-starter-{{#if (eq toolchain.springBoot.line "3.5")}}web{{else}}webmvc{{/if}}")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
 {{#if (eq project.options.migrationTool "liquibase")}}
     implementation("org.liquibase:liquibase-core")
 {{else}}
+{{#if (eq toolchain.springBoot.line "3.5")}}
+    implementation("org.flywaydb:flyway-core")
+{{else}}
     implementation("org.springframework.boot:spring-boot-starter-flyway")
 {{/if}}
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
+{{/if}}
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:{{#if (eq toolchain.springBoot.line "3.5")}}2.8.13{{else}}3.2.0{{/if}}")
 {{#if (or (eq project.options.auth "jwt") (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
 {{/if}}
@@ -52,7 +56,9 @@ dependencies {
 {{#if (eq project.options.database "h2")}}
 
     runtimeOnly("com.h2database:h2")
+{{#unless (eq toolchain.springBoot.line "3.5")}}
     runtimeOnly("org.springframework.boot:spring-boot-h2console")
+{{/unless}}
 {{/if}}
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")

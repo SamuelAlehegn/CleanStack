@@ -1,6 +1,6 @@
 {
   "name": "angular",
-  "description": "A minimal Angular 22 standalone application with a page-first structure, signals, and routing.",
+  "description": "A minimal Angular standalone application with a page-first structure, signals, and routing.",
   "files": [
     { "template": "root/package.json.hbs", "destination": "package.json" },
     { "template": "root/angular.json.hbs", "destination": "angular.json" },

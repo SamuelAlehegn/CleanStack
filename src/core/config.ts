@@ -1,4 +1,13 @@
 import { z, type RefinementCtx } from 'zod';
+import {
+  DEFAULT_VERSION_CONFIG,
+  resolveVersions,
+  type AngularVersion,
+  type JavaVersion,
+  type RequestedVersions,
+  type SpringBootLine,
+  type VersionKeyword,
+} from './versions.js';
 
 const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const PACKAGE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
@@ -56,6 +65,25 @@ export const MIGRATION_TOOLS = ['flyway', 'liquibase'] as const;
 
 const identifier = (label: string) =>
   z.string().trim().min(1).regex(IDENTIFIER_PATTERN, `${label} must be a valid identifier.`);
+
+/** Version values accepted in configuration files: majors, lines, or keywords. */
+const RequestedVersionValueSchema = z.union([z.string().trim().min(1), z.number().finite()]);
+
+/**
+ * Resolves the optional `versions` block into a complete {@link VersionConfig}.
+ * Keywords such as `latest` are resolved here so no command, template, or
+ * metadata file ever sees an unresolved value.
+ */
+export const VersionSelectionSchema = z
+  .object({
+    java: RequestedVersionValueSchema.optional(),
+    springBoot: RequestedVersionValueSchema.optional(),
+    angular: RequestedVersionValueSchema.optional(),
+  })
+  .strict()
+  .transform((requested) => resolveVersions(normalizeRequestedVersions(requested)));
+
+export type VersionSelection = z.infer<typeof VersionSelectionSchema>;
 
 const RELATION_TYPES = [
   'OneToOne',
@@ -274,6 +302,11 @@ export function createConfigSchemas(options: ConfigSchemaOptions = {}) {
       )
       .default('com.example'),
     entities: z.array(EntityConfigSchema).default([]),
+    /**
+     * Toolchain selection. Missing keys inherit the matrix defaults and
+     * keywords are resolved before the configuration leaves the loader.
+     */
+    versions: VersionSelectionSchema.default(() => ({ ...DEFAULT_VERSION_CONFIG })),
     options: GenerationOptionsSchema.default(DEFAULT_GENERATION_OPTIONS),
     /**
      * Extension module names or paths registered before generation.
@@ -301,6 +334,57 @@ export const FieldConfigSchema = builtInSchemas.FieldConfigSchema;
 export const EntityConfigSchema = builtInSchemas.EntityConfigSchema;
 export const ProjectConfigSchema = builtInSchemas.ProjectConfigSchema;
 export const ProjectDefaultsSchema = builtInSchemas.ProjectDefaultsSchema;
+
+/**
+ * Converts configuration-file and CLI spellings into typed version requests.
+ * Numeric strings are accepted because CLI flags and environment variables are
+ * always strings, while YAML may parse a version as a number.
+ */
+function normalizeRequestedVersions(requested: {
+  java?: string | number | undefined;
+  springBoot?: string | number | undefined;
+  angular?: string | number | undefined;
+}): RequestedVersions {
+  const versions: RequestedVersions = {};
+  if (requested.java !== undefined) {
+    versions.java = normalizeJavaVersion(requested.java);
+  }
+  if (requested.springBoot !== undefined) {
+    versions.springBoot = normalizeSpringBootLine(requested.springBoot);
+  }
+  if (requested.angular !== undefined) {
+    versions.angular = normalizeAngularVersion(requested.angular);
+  }
+  return versions;
+}
+
+function normalizeJavaVersion(value: string | number): JavaVersion | VersionKeyword {
+  if (typeof value === 'number') return value as JavaVersion;
+  const text = value.trim();
+  if (text === 'latest' || text === 'lts') return text;
+  const numeric = Number(text);
+  return Number.isFinite(numeric) ? (numeric as JavaVersion) : (text as unknown as JavaVersion);
+}
+
+function normalizeSpringBootLine(value: string | number): SpringBootLine | VersionKeyword {
+  if (typeof value === 'number') {
+    // YAML treats 4.0 as the number 4; restore the line spelling.
+    return (Number.isInteger(value) && value >= 4 ? `${value}.0` : String(value)) as SpringBootLine;
+  }
+  const text = value.trim();
+  if (text === 'latest' || text === 'lts') return text;
+  return text as SpringBootLine;
+}
+
+function normalizeAngularVersion(value: string | number): AngularVersion | VersionKeyword {
+  if (typeof value === 'number') return value as AngularVersion;
+  const text = value.trim();
+  if (text === 'latest' || text === 'lts') return text;
+  const numeric = Number(text);
+  return Number.isFinite(numeric)
+    ? (numeric as AngularVersion)
+    : (text as unknown as AngularVersion);
+}
 
 function refineProjectConfig(config: { entities: EntityConfig[] }, ctx: RefinementCtx): void {
   const entityIndexes = new Map<string, number>();

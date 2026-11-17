@@ -441,6 +441,50 @@ test('regenerate --all keeps migrations at their generated version', async () =>
 // Integration – generation metadata
 // ---------------------------------------------------------------------------
 
+test('regenerate keeps the toolchain stored in project metadata', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-regen-versions-'));
+  try {
+    const projectRoot = await generateProject(cwd, [
+      '--java',
+      '17',
+      '--spring-boot',
+      '3.5',
+      '--angular',
+      '20',
+    ]);
+
+    const pomPath = path.join(projectRoot, 'demo-backend', 'pom.xml');
+    const originalPom = await readFile(pomPath, 'utf8');
+    await writeFile(
+      pomPath,
+      originalPom
+        .replace('<version>3.5.6</version>', '<version>9.9.9</version>')
+        .replace('<java.version>17</java.version>', '<java.version>99</java.version>'),
+    );
+
+    await runRegenerateCommand(['--all', '--force'], { cwd: projectRoot, logger });
+
+    const pom = await readFile(pomPath, 'utf8');
+    assert.match(pom, /<version>3\.5\.6<\/version>/);
+    assert.match(pom, /<java\.version>17<\/java\.version>/);
+    assert.match(pom, /<artifactId>spring-boot-starter-web<\/artifactId>/);
+    assert.doesNotMatch(pom, /spring-boot-starter-webmvc/);
+
+    const packageJson = JSON.parse(
+      await readFile(path.join(projectRoot, 'demo-ui', 'package.json'), 'utf8'),
+    );
+    assert.equal(packageJson.dependencies['@angular/core'], '^20.3.0');
+
+    const metadata = JSON.parse(
+      await readFile(path.join(projectRoot, '.cleanstack', 'project.json'), 'utf8'),
+    );
+    assert.equal(metadata.version, 1);
+    assert.deepEqual(metadata.config.versions, { java: 17, springBoot: '3.5', angular: 20 });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test('cleanstack new records generation metadata for regeneration', async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-regen-metadata-'));
   try {

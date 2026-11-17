@@ -59,7 +59,7 @@ const CLI_COMMANDS = new Set([
 ]);
 
 type OptionKind = 'string' | 'boolean';
-type OptionScope = 'project' | 'options';
+type OptionScope = 'project' | 'options' | 'versions';
 
 interface OptionSpec {
   key: string;
@@ -71,6 +71,9 @@ const OPTION_SPECS: Record<string, OptionSpec> = {
   name: { key: 'name', kind: 'string', scope: 'project' },
   package: { key: 'packageName', kind: 'string', scope: 'project' },
   packageName: { key: 'packageName', kind: 'string', scope: 'project' },
+  java: { key: 'java', kind: 'string', scope: 'versions' },
+  springBoot: { key: 'springBoot', kind: 'string', scope: 'versions' },
+  angular: { key: 'angular', kind: 'string', scope: 'versions' },
   backend: { key: 'backend', kind: 'boolean', scope: 'options' },
   frontend: { key: 'frontend', kind: 'boolean', scope: 'options' },
   db: { key: 'database', kind: 'string', scope: 'options' },
@@ -94,6 +97,9 @@ const ENVIRONMENT_SPECS: Record<string, OptionSpec> = {
   NAME: { key: 'name', kind: 'string', scope: 'project' },
   PACKAGE: { key: 'packageName', kind: 'string', scope: 'project' },
   PACKAGE_NAME: { key: 'packageName', kind: 'string', scope: 'project' },
+  JAVA: { key: 'java', kind: 'string', scope: 'versions' },
+  SPRING_BOOT: { key: 'springBoot', kind: 'string', scope: 'versions' },
+  ANGULAR: { key: 'angular', kind: 'string', scope: 'versions' },
   BACKEND: { key: 'backend', kind: 'boolean', scope: 'options' },
   FRONTEND: { key: 'frontend', kind: 'boolean', scope: 'options' },
   DATABASE: { key: 'database', kind: 'string', scope: 'options' },
@@ -194,6 +200,7 @@ export class ConfigLoader {
 export function parseCommandLineOptions(args: string[]): ConfigInput {
   const result: ConfigInput = {};
   const optionValues: ConfigInput = {};
+  const versionValues: ConfigInput = {};
   const positionals: string[] = [];
 
   for (let index = 0; index < args.length; index += 1) {
@@ -233,7 +240,7 @@ export function parseCommandLineOptions(args: string[]): ConfigInput {
       if (inlineValue !== undefined) {
         throw new CliOptionError(`Negated option "--${rawName}" does not accept a value.`);
       }
-      assignOption(result, optionValues, spec, false);
+      assignOption(result, optionValues, versionValues, spec, false);
       continue;
     }
 
@@ -245,7 +252,13 @@ export function parseCommandLineOptions(args: string[]): ConfigInput {
       const booleanValue =
         inlineValue ??
         (next !== undefined && /^(true|false)$/i.test(next) ? args[++index] : undefined);
-      assignOption(result, optionValues, spec, parseBooleanOption(rawName, booleanValue));
+      assignOption(
+        result,
+        optionValues,
+        versionValues,
+        spec,
+        parseBooleanOption(rawName, booleanValue),
+      );
       continue;
     }
 
@@ -254,7 +267,7 @@ export function parseCommandLineOptions(args: string[]): ConfigInput {
     if (value === undefined) {
       throw new CliOptionError(`Option "--${rawName}" requires a value.`);
     }
-    assignOption(result, optionValues, spec, value);
+    assignOption(result, optionValues, versionValues, spec, value);
   }
 
   const command = positionals.find((token) => CLI_COMMANDS.has(token));
@@ -278,6 +291,7 @@ export function parseCommandLineOptions(args: string[]): ConfigInput {
   }
 
   if (Object.keys(optionValues).length > 0) result.options = optionValues;
+  if (Object.keys(versionValues).length > 0) result.versions = versionValues;
   return result;
 }
 
@@ -291,6 +305,7 @@ export function parseEnvironmentOptions(
 ): EnvironmentOptions {
   const config: ConfigInput = {};
   const optionValues: ConfigInput = {};
+  const versionValues: ConfigInput = {};
   const seen = new Map<string, string>();
 
   for (const [name, spec] of Object.entries(ENVIRONMENT_SPECS)) {
@@ -308,11 +323,13 @@ export function parseEnvironmentOptions(
     }
     seen.set(spec.key, variable);
 
-    const target = spec.scope === 'project' ? config : optionValues;
+    const target =
+      spec.scope === 'project' ? config : spec.scope === 'versions' ? versionValues : optionValues;
     target[spec.key] = spec.kind === 'boolean' ? parseEnvironmentBoolean(variable, value) : value;
   }
 
   if (Object.keys(optionValues).length > 0) config.options = optionValues;
+  if (Object.keys(versionValues).length > 0) config.versions = versionValues;
 
   const configPath = env.CLEANSTACK_CONFIG?.trim();
   return configPath === undefined || configPath === '' ? { config } : { config, configPath };
@@ -352,10 +369,12 @@ function parseBooleanOption(name: string, value: string | undefined): boolean {
 function assignOption(
   result: ConfigInput,
   optionValues: ConfigInput,
+  versionValues: ConfigInput,
   spec: OptionSpec,
   value: unknown,
 ): void {
-  const target = spec.scope === 'project' ? result : optionValues;
+  const target =
+    spec.scope === 'project' ? result : spec.scope === 'versions' ? versionValues : optionValues;
   const existing = target[spec.key];
   if (existing !== undefined) {
     throw new CliOptionError(`Option "--${spec.key}" was provided more than once.`);
@@ -466,11 +485,19 @@ async function readYamlConfig(filePath: string): Promise<ConfigInput> {
 function mergeConfig(base: ConfigInput, override: ConfigInput): ConfigInput {
   const baseOptions = isRecord(base.options) ? base.options : {};
   const overrideOptions = isRecord(override.options) ? override.options : {};
-  return {
+  const baseVersions = isRecord(base.versions) ? base.versions : {};
+  const overrideVersions = isRecord(override.versions) ? override.versions : {};
+  const merged: ConfigInput = {
     ...base,
     ...override,
     options: { ...baseOptions, ...overrideOptions },
   };
+  if (Object.keys(baseVersions).length > 0 || Object.keys(overrideVersions).length > 0) {
+    merged.versions = { ...baseVersions, ...overrideVersions };
+  } else {
+    delete merged.versions;
+  }
+  return merged;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

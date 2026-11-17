@@ -10,6 +10,21 @@ import {
 } from '../core/migrations.js';
 import { readProjectMetadata, writeProjectMetadata } from '../core/project-metadata.js';
 import {
+  ANGULAR_VERSIONS,
+  COMPATIBILITY_MATRIX,
+  JAVA_VERSIONS,
+  buildToolchainContext,
+  getSpringBootRelease,
+  resolveAngularVersion,
+  resolveJavaVersion,
+  resolveSpringBootLine,
+  type AngularVersion,
+  type JavaVersion,
+  type SpringBootLine,
+  type VersionConfig,
+  type VersionKeyword,
+} from '../core/versions.js';
+import {
   kebabCase,
   renderManifest,
   templateContext,
@@ -41,6 +56,12 @@ Create a new project skeleton.
 
 Options:
   --package <name>             Java package, for example com.example
+  --java <17|21|25|latest|lts>
+                               Java version (default: 21)
+  --spring-boot <3.5|4.0|4.1|latest|lts>
+                               Spring Boot line (default: 4.1)
+  --angular <20|21|22|latest|lts>
+                               Angular version (default: 22)
   --db <postgresql|h2|mysql>   Database (default: postgresql)
   --auth <jwt|session|oidc|keycloak|auth0|none>
                                Authentication (default: jwt)
@@ -90,6 +111,7 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
   }
   validateProjectName(provided.name);
   const project = await loader.load({ cwd, cliOptions });
+  logToolchainSummary(options.logger, project.versions);
   const inputFs = new FileSystemService({ rootDir: cwd, logger: { log: () => {} } });
   let entityDescriptorFiles: string[] = [];
   if (await inputFs.exists('entities')) {
@@ -252,7 +274,7 @@ export async function runNewCommand(args: string[], options: NewCommandOptions):
       : [
           `cd ${quoteShellPath(path.join(targetRoot, backendDirectory))}`,
           project.options.buildTool === 'maven'
-            ? `${mavenWrapperCommand()} org.springframework.boot:spring-boot-maven-plugin:4.1.2:run -Dspring-boot.run.profiles=dev`
+            ? `${mavenWrapperCommand()} org.springframework.boot:spring-boot-maven-plugin:${getSpringBootRelease(project.versions.springBoot).version}:run -Dspring-boot.run.profiles=dev`
             : 'gradle bootRun "--args=--spring.profiles.active=dev"',
         ]),
   ];
@@ -461,6 +483,193 @@ async function collectInteractiveOptions(
       { name: 'No frontend', value: false },
     ],
   });
+  const versions = await collectInteractiveVersions(input, options.frontend === true);
   options.docker ??= await confirm({ message: 'Include Docker files?', default: defaults.docker });
-  return { ...input, name, packageName, options };
+  return { ...input, name, packageName, options, versions };
+}
+
+/**
+ * Prompts for Java, Spring Boot, and Angular versions. Choices are filtered by
+ * the already selected backend dimensions so an incompatible pair is never
+ * presented. Supplied values are preserved and only missing dimensions prompt.
+ */
+async function collectInteractiveVersions(
+  input: Record<string, unknown>,
+  includeFrontend: boolean,
+): Promise<VersionConfig> {
+  const requested = isRecord(input.versions) ? input.versions : {};
+
+  let java =
+    requested.java === undefined
+      ? undefined
+      : resolveJavaVersion(requestedJavaValue(requested.java) as JavaVersion | VersionKeyword);
+
+  let springBoot =
+    requested.springBoot === undefined
+      ? undefined
+      : resolveSpringBootLine(
+          requestedSpringBootValue(requested.springBoot) as SpringBootLine | VersionKeyword,
+        );
+
+  let angular =
+    requested.angular === undefined
+      ? undefined
+      : resolveAngularVersion(
+          requestedAngularValue(requested.angular) as AngularVersion | VersionKeyword,
+        );
+
+  if (java === undefined) {
+    const candidates = javaVersionsFor(springBoot);
+    java = await select({
+      message: 'Which Java version should the backend target?',
+      default: preferredJava(candidates),
+      choices: candidates.map((version) => ({
+        name: javaChoiceName(version),
+        value: version,
+        description: javaChoiceDescription(version),
+      })),
+    });
+  }
+
+  if (springBoot === undefined) {
+    const candidates = springBootLinesFor(java);
+    springBoot = await select({
+      message: 'Which Spring Boot line should the backend use?',
+      default: preferredSpringBoot(candidates),
+      choices: candidates.map((line) => ({
+        name: springBootChoiceName(line),
+        value: line,
+        description: springBootChoiceDescription(line),
+      })),
+    });
+  }
+
+  if (angular === undefined && includeFrontend) {
+    angular = await select({
+      message: 'Which Angular version should the frontend use?',
+      default: COMPATIBILITY_MATRIX.defaults.angular,
+      choices: ANGULAR_VERSIONS.map((version) => ({
+        name: angularChoiceName(version),
+        value: version,
+        description: angularChoiceDescription(version),
+      })),
+    });
+  }
+
+  return {
+    java,
+    springBoot,
+    angular: angular ?? COMPATIBILITY_MATRIX.defaults.angular,
+  };
+}
+
+/** Reads a raw config/CLI Java version value; keywords stay keywords for the resolver. */
+function requestedJavaValue(value: unknown): number | string {
+  if (typeof value === 'number') return value;
+  return String(value).trim();
+}
+
+/** Restores `4.0` when YAML parsed it as the number 4. */
+function requestedSpringBootValue(value: unknown): number | string {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 4 ? `${value}.0` : String(value);
+  }
+  return String(value).trim();
+}
+
+function requestedAngularValue(value: unknown): number | string {
+  if (typeof value === 'number') return value;
+  return String(value).trim();
+}
+
+function javaVersionsFor(springBoot: SpringBootLine | undefined): JavaVersion[] {
+  if (springBoot === undefined) return [...JAVA_VERSIONS];
+  return [...getSpringBootRelease(springBoot).java];
+}
+
+function springBootLinesFor(java: JavaVersion): SpringBootLine[] {
+  return COMPATIBILITY_MATRIX.springBoot
+    .filter((release) => release.java.includes(java))
+    .map((release) => release.line);
+}
+
+function preferredJava(candidates: readonly JavaVersion[]): JavaVersion {
+  return candidates.includes(COMPATIBILITY_MATRIX.defaults.java)
+    ? COMPATIBILITY_MATRIX.defaults.java
+    : (candidates[candidates.length - 1] ?? COMPATIBILITY_MATRIX.defaults.java);
+}
+
+function preferredSpringBoot(candidates: readonly SpringBootLine[]): SpringBootLine {
+  return candidates.includes(COMPATIBILITY_MATRIX.defaults.springBoot)
+    ? COMPATIBILITY_MATRIX.defaults.springBoot
+    : (candidates[candidates.length - 1] ?? COMPATIBILITY_MATRIX.defaults.springBoot);
+}
+
+function javaChoiceName(version: JavaVersion): string {
+  if (version === COMPATIBILITY_MATRIX.keywords.latest.java) return `Java ${version} (latest)`;
+  if (version === COMPATIBILITY_MATRIX.defaults.java) return `Java ${version} (LTS, recommended)`;
+  return `Java ${version} (legacy)`;
+}
+
+function javaChoiceDescription(version: JavaVersion): string {
+  if (version === COMPATIBILITY_MATRIX.keywords.latest.java) {
+    return 'Newest supported JDK; pair it with Spring Boot 4.0 or 4.1.';
+  }
+  if (version === COMPATIBILITY_MATRIX.defaults.java) {
+    return 'Long-term support and the recommended default for new projects.';
+  }
+  return 'Legacy migration path; only supported with Spring Boot 3.5.';
+}
+
+function springBootChoiceName(line: SpringBootLine): string {
+  if (line === COMPATIBILITY_MATRIX.defaults.springBoot) return `Spring Boot ${line} (default)`;
+  const release = getSpringBootRelease(line);
+  return release.support === 'legacy'
+    ? `Spring Boot ${line} (legacy migration)`
+    : `Spring Boot ${line} (previous)`;
+}
+
+function springBootChoiceDescription(line: SpringBootLine): string {
+  const release = getSpringBootRelease(line);
+  const java = release.java.join(' or ');
+  if (release.support === 'legacy') {
+    return `Last 3.x line for migrations; works with Java ${java}.`;
+  }
+  if (release.support === 'default') {
+    return `Current default; works with Java ${java}.`;
+  }
+  return `Previous supported line; works with Java ${java}.`;
+}
+
+function angularChoiceName(version: AngularVersion): string {
+  if (version === COMPATIBILITY_MATRIX.defaults.angular) return `Angular ${version} (default)`;
+  return version === COMPATIBILITY_MATRIX.keywords.lts.angular
+    ? `Angular ${version} (previous)`
+    : `Angular ${version} (legacy)`;
+}
+
+function angularChoiceDescription(version: AngularVersion): string {
+  if (version === COMPATIBILITY_MATRIX.defaults.angular) {
+    return 'Current default; newest supported Angular major.';
+  }
+  if (version === COMPATIBILITY_MATRIX.keywords.lts.angular) {
+    return 'Previous supported major for a conservative upgrade.';
+  }
+  return 'Legacy line for existing projects that are migrating forward.';
+}
+
+/** Lists the selected toolchain before any files are generated. */
+function logToolchainSummary(logger: Logger, versions: VersionConfig): void {
+  const toolchain = buildToolchainContext(versions);
+  const javaLabel =
+    versions.java === 21 ? ' (LTS)' : versions.java === 25 ? ' (latest)' : ' (legacy)';
+  logger.info('Toolchain');
+  logger.info(`  Java          ${toolchain.java.version}${javaLabel}`);
+  logger.info(`  Spring Boot   ${toolchain.springBoot.version} (${versions.springBoot} line)`);
+  logger.info(`  Angular       ${versions.angular} (${toolchain.angular.version})`);
+  logger.info(`  Node          ${toolchain.angular.node}`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

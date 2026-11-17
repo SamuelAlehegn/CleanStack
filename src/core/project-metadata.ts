@@ -5,10 +5,12 @@ import { ConfigLoader, findConfigFileInAncestors } from './config-loader.js';
 import {
   createConfigSchemas,
   GenerationOptionsSchema,
+  VersionSelectionSchema,
   type EntityConfig,
   type GenerationOptions,
   type ProjectConfig,
 } from './config.js';
+import { DEFAULT_VERSION_CONFIG } from './versions.js';
 import { activeSchemaInput } from './extensions/registry.js';
 import { formatZodError } from './entity-parser.js';
 import type { GeneratedProject } from './project.js';
@@ -36,6 +38,8 @@ const storedProjectConfigSchema = () =>
       // Built at call time so entities stored with extension field types
       // remain readable after the extensions have been loaded.
       entities: z.array(createConfigSchemas(activeSchemaInput()).EntityConfigSchema).default([]),
+      // Metadata written before version support falls back to the baseline.
+      versions: VersionSelectionSchema.default(() => ({ ...DEFAULT_VERSION_CONFIG })),
       options: GenerationOptionsSchema,
     })
     .strict();
@@ -200,6 +204,7 @@ export async function inferProjectConfig(
     name: path.basename(project.rootDir),
     packageName: backend?.packageName ?? 'com.example',
     entities: [],
+    versions: DEFAULT_VERSION_CONFIG,
     options: {
       backend: backend !== undefined,
       frontend: project.frontend !== undefined,

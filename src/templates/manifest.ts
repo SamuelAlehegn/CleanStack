@@ -4,6 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { buildEntityModels, type EntityModel } from '../core/entity-model.js';
 import type { ProjectConfig } from '../core/config.js';
 import {
+  DEFAULT_VERSION_CONFIG,
+  buildToolchainContext,
+  type VersionConfig,
+} from '../core/versions.js';
+import {
   writeGeneratedFile,
   type GeneratedFileResult,
 } from '../core/generated-file.js';
@@ -81,18 +86,22 @@ export function templateContext(
   migrationVersionOverrides?: ReadonlyMap<string, number>,
 ): Record<string, unknown> {
   const models = buildEntityModels(project.entities);
-  const versions = migrationVersions(models);
+  const migrationNumbers = migrationVersions(models);
+  const versions: VersionConfig = project.versions ?? DEFAULT_VERSION_CONFIG;
+  const toolchain = buildToolchainContext(versions);
   const entities = models.map((entity) => ({
     ...entity,
     migrationVersion:
       migrationVersionOverrides?.get(entity.tableName.toLowerCase()) ??
       migrationVersionOverrides?.get(entity.name.toLowerCase()) ??
-      versions.get(entity.name.toLowerCase()) ??
+      migrationNumbers.get(entity.name.toLowerCase()) ??
       2,
   }));
   return {
-    project: { ...project, entities },
+    project: { ...project, versions },
     ...project,
+    versions,
+    toolchain,
     entities,
     ...templateAliases(project),
   } as unknown as Record<string, unknown>;
@@ -336,7 +345,15 @@ function matchesConditions(project: ProjectConfig, when: Record<string, unknown>
 }
 
 function getCondition(project: ProjectConfig, key: string): unknown {
-  return key in project.options
-    ? project.options[key as keyof ProjectConfig['options']]
-    : (project as unknown as Record<string, unknown>)[key];
+  if (key in project.options) {
+    return project.options[key as keyof ProjectConfig['options']];
+  }
+  // Support dotted conditions such as "versions.springBoot" without a second
+  // condition syntax. Plain keys keep their existing top-level behavior.
+  let value: unknown = project;
+  for (const segment of key.split('.')) {
+    if (typeof value !== 'object' || value === null) return undefined;
+    value = (value as Record<string, unknown>)[segment];
+  }
+  return value;
 }

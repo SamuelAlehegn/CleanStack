@@ -1,5 +1,5 @@
 import { provideHttpClient, withFetch{{#unless (eq project.options.auth "none")}}, withInterceptors{{/unless}} } from '@angular/common/http';
-import { {{#unless (eq project.options.auth "none")}}inject, provideAppInitializer, {{/unless}}type ApplicationConfig } from '@angular/core';
+import { {{#unless (eq project.options.auth "none")}}inject, provideAppInitializer, {{/unless}}{{#if (or (eq toolchain.angular.major 20) (eq toolchain.angular.major 21))}}provideZonelessChangeDetection, {{/if}}type ApplicationConfig } from '@angular/core';
 import { provideRouter, withInMemoryScrolling } from '@angular/router';
 {{#unless (eq project.options.auth "none")}}
 {{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}
@@ -17,6 +17,9 @@ import { routes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
   providers: [
+{{#if (or (eq toolchain.angular.major 20) (eq toolchain.angular.major 21))}}
+    provideZonelessChangeDetection(),
+{{/if}}
     provideHttpClient(withFetch(){{#unless (eq project.options.auth "none")}}, withInterceptors([{{#if (or (eq project.options.auth "oidc") (eq project.options.auth "keycloak") (eq project.options.auth "auth0"))}}authInterceptor(){{else}}authInterceptor{{/if}}]){{/unless}}),
 {{#unless (eq project.options.auth "none")}}
     provideAppInitializer(() => inject(AuthService).initialize()),
