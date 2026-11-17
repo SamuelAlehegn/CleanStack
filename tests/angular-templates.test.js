@@ -3,6 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { buildToolchainContext, resolveVersions } from '../dist/core/versions.js';
 import { TemplateEngine } from '../dist/templates/template-engine.js';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -18,10 +19,12 @@ function applies(entry, options) {
 }
 
 function createContext(auth) {
+  const versions = resolveVersions();
   const project = {
     name: 'demo-shop',
     packageName: 'com.acme.shop',
     entities: [],
+    versions,
     options: {
       backend: true,
       frontend: true,
@@ -35,7 +38,13 @@ function createContext(auth) {
       outputDir: '.',
     },
   };
-  return { project, entities: [], ApplicationName: 'DemoShop' };
+  return {
+    project,
+    versions,
+    toolchain: buildToolchainContext(versions),
+    entities: [],
+    ApplicationName: 'DemoShop',
+  };
 }
 
 async function renderProject(auth) {
