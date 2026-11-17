@@ -7,6 +7,7 @@ import {
   CliOptionError,
   ConfigLoader,
   parseCommandLineOptions,
+  parseEnvironmentOptions,
 } from '../dist/core/config-loader.js';
 
 test('parses a positional project name and generation options', () => {
@@ -43,6 +44,89 @@ test('parses the migration tool and seed options', () => {
     parseCommandLineOptions(['new', 'shop', '--migration-tool=flyway', '--no-seed']),
     { name: 'shop', options: { migrationTool: 'flyway', seed: false } },
   );
+});
+
+test('parses toolchain version flags and environment variables', () => {
+  assert.deepEqual(
+    parseCommandLineOptions([
+      'new',
+      'shop',
+      '--java',
+      '17',
+      '--spring-boot',
+      '3.5',
+      '--angular',
+      '20',
+    ]),
+    { name: 'shop', versions: { java: '17', springBoot: '3.5', angular: '20' } },
+  );
+  assert.deepEqual(parseCommandLineOptions(['new', 'shop', '--java=latest', '--spring-boot=lts']), {
+    name: 'shop',
+    versions: { java: 'latest', springBoot: 'lts' },
+  });
+  assert.deepEqual(
+    parseEnvironmentOptions({
+      CLEANSTACK_JAVA: '25',
+      CLEANSTACK_SPRING_BOOT: '4.0',
+      CLEANSTACK_ANGULAR: '21',
+    }).config,
+    { versions: { java: '25', springBoot: '4.0', angular: '21' } },
+  );
+});
+
+test('resolves partial version config and applies CLI precedence', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-versions-'));
+  try {
+    await writeFile(
+      path.join(cwd, 'cleanstack.config.json'),
+      JSON.stringify({ name: 'demo', versions: { java: 'lts' } }),
+    );
+
+    const defaults = await new ConfigLoader().loadDefaults({ cwd });
+    assert.deepEqual(defaults.versions, { java: 21, springBoot: '4.1', angular: 22 });
+
+    const project = await new ConfigLoader().load({
+      cwd,
+      cliOptions: parseCommandLineOptions([
+        '--java',
+        'latest',
+        '--spring-boot',
+        '4.1',
+        '--angular',
+        '22',
+      ]),
+    });
+    assert.deepEqual(project.versions, { java: 25, springBoot: '4.1', angular: 22 });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('normalizes numeric YAML versions and rejects incompatible pairs', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'cleanstack-config-version-errors-'));
+  try {
+    await writeFile(
+      path.join(cwd, '.cleanstackrc.yml'),
+      ['name: demo', 'versions:', '  java: 17', '  springBoot: 3.5', '  angular: 20', ''].join(
+        '\n',
+      ),
+    );
+    const project = await new ConfigLoader().load({ cwd });
+    assert.deepEqual(project.versions, { java: 17, springBoot: '3.5', angular: 20 });
+
+    await writeFile(
+      path.join(cwd, '.cleanstackrc.yml'),
+      ['name: demo', 'versions:', '  java: 17', '  springBoot: 4.1', ''].join('\n'),
+    );
+    await assert.rejects(
+      new ConfigLoader().load({ cwd }),
+      (error) =>
+        /Unsupported toolchain/.test(error.message) &&
+        /Spring Boot 4\.1 does not support Java 17/.test(error.message),
+    );
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
 });
 
 test('accepts a project name after "--"', () => {

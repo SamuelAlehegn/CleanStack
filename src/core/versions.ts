@@ -174,40 +174,55 @@ export function getAngularRelease(major: AngularVersion): AngularRelease {
  */
 export function resolveVersions(requested: RequestedVersions = {}): VersionConfig {
   const versions: VersionConfig = {
-    java: resolveRequestedVersion(
-      'Java',
-      requested.java,
-      JAVA_VERSIONS,
-      COMPATIBILITY_MATRIX.defaults.java,
-      {
-        latest: COMPATIBILITY_MATRIX.keywords.latest.java,
-        lts: COMPATIBILITY_MATRIX.keywords.lts.java,
-      },
-    ),
-    springBoot: resolveRequestedVersion(
-      'Spring Boot',
-      requested.springBoot,
-      SPRING_BOOT_LINES,
-      COMPATIBILITY_MATRIX.defaults.springBoot,
-      {
-        latest: COMPATIBILITY_MATRIX.keywords.latest.springBoot,
-        lts: COMPATIBILITY_MATRIX.keywords.lts.springBoot,
-      },
-    ),
-    angular: resolveRequestedVersion(
-      'Angular',
-      requested.angular,
-      ANGULAR_VERSIONS,
-      COMPATIBILITY_MATRIX.defaults.angular,
-      {
-        latest: COMPATIBILITY_MATRIX.keywords.latest.angular,
-        lts: COMPATIBILITY_MATRIX.keywords.lts.angular,
-      },
-    ),
+    java: resolveJavaVersion(requested.java),
+    springBoot: resolveSpringBootLine(requested.springBoot),
+    angular: resolveAngularVersion(requested.angular),
   };
 
   assertSupportedVersions(versions);
   return versions;
+}
+
+/** Resolves one Java request (including `latest` / `lts`) without touching the other dimensions. */
+export function resolveJavaVersion(requested?: Requested<JavaVersion>): JavaVersion {
+  return resolveRequestedVersion(
+    'Java',
+    requested,
+    JAVA_VERSIONS,
+    COMPATIBILITY_MATRIX.defaults.java,
+    {
+      latest: COMPATIBILITY_MATRIX.keywords.latest.java,
+      lts: COMPATIBILITY_MATRIX.keywords.lts.java,
+    },
+  );
+}
+
+/** Resolves one Spring Boot request (including `latest` / `lts`). */
+export function resolveSpringBootLine(requested?: Requested<SpringBootLine>): SpringBootLine {
+  return resolveRequestedVersion(
+    'Spring Boot',
+    requested,
+    SPRING_BOOT_LINES,
+    COMPATIBILITY_MATRIX.defaults.springBoot,
+    {
+      latest: COMPATIBILITY_MATRIX.keywords.latest.springBoot,
+      lts: COMPATIBILITY_MATRIX.keywords.lts.springBoot,
+    },
+  );
+}
+
+/** Resolves one Angular request (including `latest` / `lts`). */
+export function resolveAngularVersion(requested?: Requested<AngularVersion>): AngularVersion {
+  return resolveRequestedVersion(
+    'Angular',
+    requested,
+    ANGULAR_VERSIONS,
+    COMPATIBILITY_MATRIX.defaults.angular,
+    {
+      latest: COMPATIBILITY_MATRIX.keywords.latest.angular,
+      lts: COMPATIBILITY_MATRIX.keywords.lts.angular,
+    },
+  );
 }
 
 function resolveRequestedVersion<T extends string | number>(
