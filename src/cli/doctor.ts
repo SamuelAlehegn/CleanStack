@@ -4,6 +4,8 @@ import { ZodError } from 'zod';
 import { CliOptionError, ConfigLoader, resolveConfigFile } from '../core/config-loader.js';
 import { formatZodError } from '../core/entity-parser.js';
 import { locateGeneratedProject, type GeneratedProject } from '../core/project.js';
+import { readProjectMetadata } from '../core/project-metadata.js';
+import { DEFAULT_VERSION_CONFIG, getAngularRelease } from '../core/versions.js';
 import type { TemplateManifest } from '../templates/manifest.js';
 import { BUILT_IN_TEMPLATE_ROOT } from '../templates/template-engine.js';
 import { execCommand } from '../utils/command.js';
@@ -13,8 +15,8 @@ import { stripBom } from '../utils/text.js';
 
 const COMMAND_TIMEOUT_MS = 5000;
 const MIN_NODE_MAJOR = 22;
-/** Keep in sync with `templates/angular/root/package.json.hbs`. */
-export const GENERATED_ANGULAR_NODE_RANGE = '^22.22.3 || ^24.15.0 || ^26.0.0';
+/** Default Angular release's Node range; the template reads the same matrix entry. */
+export const GENERATED_ANGULAR_NODE_RANGE = getAngularRelease(DEFAULT_VERSION_CONFIG.angular).node;
 const MIN_JAVA_MAJOR = 21;
 const TEMPLATE_PACKS = ['spring-boot', 'angular', 'project'] as const;
 /** Limits how many template problems are printed before the rest are summarized. */
@@ -112,9 +114,14 @@ export async function collectDoctorReport(options: DoctorCheckOptions = {}): Pro
   const env = options.env ?? process.env;
   const runner = options.commandRunner ?? defaultRunner;
   const project = await detectProject(cwd);
+  const angularNodeRange = await projectAngularNodeRange(project);
 
   const checks = await Promise.all([
-    checkNode(options.nodeVersion ?? process.versions.node, project?.frontend !== undefined),
+    checkNode(
+      options.nodeVersion ?? process.versions.node,
+      project?.frontend !== undefined,
+      angularNodeRange,
+    ),
     checkJava(runner),
     checkBuildTool(project, runner),
     checkAngularCli(project, runner),
@@ -159,7 +166,24 @@ export function parseDoctorArguments(args: string[]): { help: boolean } {
   return { help };
 }
 
-function checkNode(version: string, hasFrontend = false): DoctorCheck {
+/** Uses the Angular major stored for the project, falling back to the baseline. */
+async function projectAngularNodeRange(project: GeneratedProject | undefined): Promise<string> {
+  if (project === undefined) return GENERATED_ANGULAR_NODE_RANGE;
+  try {
+    const metadata = await readProjectMetadata(project.rootDir);
+    const versions = metadata?.versions ?? DEFAULT_VERSION_CONFIG;
+    return getAngularRelease(versions.angular).node;
+  } catch {
+    // Broken metadata is reported by the configuration check; keep Node usable.
+    return GENERATED_ANGULAR_NODE_RANGE;
+  }
+}
+
+function checkNode(
+  version: string,
+  hasFrontend = false,
+  angularNodeRange = GENERATED_ANGULAR_NODE_RANGE,
+): DoctorCheck {
   const parsed = parseNodeVersion(version);
   if (parsed === undefined) {
     return {
@@ -182,13 +206,13 @@ function checkNode(version: string, hasFrontend = false): DoctorCheck {
     };
   }
 
-  if (hasFrontend && !satisfiesNodeRange(parsed, GENERATED_ANGULAR_NODE_RANGE)) {
+  if (hasFrontend && !satisfiesNodeRange(parsed, angularNodeRange)) {
     return {
       name: 'Node.js',
       status: 'warn',
-      detail: `Node.js ${version} does not satisfy the generated Angular engine range (${GENERATED_ANGULAR_NODE_RANGE}).`,
+      detail: `Node.js ${version} does not satisfy the generated Angular engine range (${angularNodeRange}).`,
       suggestions: [
-        `Use a supported Node.js release: ${GENERATED_ANGULAR_NODE_RANGE}.`,
+        `Use a supported Node.js release: ${angularNodeRange}.`,
         'With nvm: "nvm install 22 && nvm use 22" (or the latest supported LTS line).',
         'Check the "engines" field in the generated frontend package.json for the exact range.',
       ],
